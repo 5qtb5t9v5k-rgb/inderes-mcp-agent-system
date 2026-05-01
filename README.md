@@ -1,4 +1,6 @@
-# inderes-research-agent
+# inderes-mcp-agent-system
+
+> **⚠️ Personal research project.** Independent learning experiment — **not affiliated with, endorsed by, or developed in collaboration with Inderes Oyj.** Uses the publicly available Inderes MCP server through the user's own Inderes Premium subscription. All Inderes analyst content (recommendations, target prices, written research) surfaced by this system is © Inderes Oyj.
 
 A multi-agent stock-research conversation system for Nordic equities. Built on **Microsoft Agent Framework 1.0+** (Python 3.11+), powered by **Google Gemini** with primary→fallback model selection, querying **Inderes MCP** at `https://mcp.inderes.com`.
 
