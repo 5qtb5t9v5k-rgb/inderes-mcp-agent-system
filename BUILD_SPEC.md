@@ -1,6 +1,8 @@
-# inderes-research-agent — Cursor build spec
+# inderes-research-agent — build specification
 
-> **Status**: rough spec for Cursor agent mode. Build a multi-agent stock research system on Microsoft Agent Framework (Python) using Google Gemini and Inderes MCP. Cursor has authority to make implementation decisions where this spec is silent.
+> **Status**: design specification for a multi-agent stock research system on Microsoft Agent Framework (Python) using Google Gemini and Inderes MCP. The implementation has authority to make decisions where this spec is silent.
+>
+> **Note**: this is the original specification used to bootstrap the project. The current implementation is described in [`ARCHITECTURE.md`](ARCHITECTURE.md). Some details here (e.g. exact API choices) were updated during build; see [`CHANGELOG.md`](CHANGELOG.md) for what changed.
 
 ---
 
@@ -31,7 +33,7 @@ python -m inderes_agent "What insider activity has there been at Sampo in the la
 | Language | Python 3.11+ |
 | Agent framework | `agent-framework` (Microsoft Agent Framework 1.0+) |
 | LLM provider | Google Gemini via `google-genai` package |
-| Primary model | `gemini-3.1-flash-lite-preview` (free-tier available) |
+| Primary model | `gemini-3.1-flash-lite-preview` |
 | Fallback model | `gemini-2.5-flash` (used on 503/429 from primary) |
 | MCP client | Built into Agent Framework (native MCP support since 1.0) |
 | Data source | Inderes MCP at `https://mcp.inderes.com` |
@@ -40,28 +42,29 @@ python -m inderes_agent "What insider activity has there been at Sampo in the la
 | Tests | `pytest` + `pytest-asyncio` |
 | Env | `python-dotenv`, `pydantic-settings` |
 
-### 2.1 Model availability constraint (free tier)
+### 2.1 Model selection
 
-This project runs on Google's free-tier Gemini quota. As of build time, only these models are usable:
+The system uses two Gemini Flash-tier models with automatic fallback:
 
-- ✅ `gemini-3.1-flash-lite-preview` — primary, may return `503 UNAVAILABLE` under load
-- ✅ `gemini-2.5-flash` — fallback, more reliable
-- ❌ `gemini-2.5-pro` — quota effectively zero on free tier (`429 RESOURCE_EXHAUSTED`)
+- ✅ `gemini-3.1-flash-lite-preview` — primary, can return `503 UNAVAILABLE` during capacity spikes
+- ✅ `gemini-2.5-flash` — fallback, used on persistent 503 or any 429
 - ❌ `gemini-3.1-flash-lite` (without `-preview` suffix) — `404 model not found`
 
-**This forces an architectural decision**: lead orchestrator and all subagents must use the same low-tier model class. There is no "smarter model for synthesis" — synthesis quality must come from prompt engineering, not model upgrade. Cursor: do not assume a stronger model is available for the lead. See Section 6.8 for fallback implementation.
+**Architectural implication**: lead orchestrator and all subagents share the same model class. Synthesis quality comes from prompt engineering, not from upgrading the lead to a smarter model. See §6.8 for the fallback implementation.
 
-**Why these choices** (Cursor: don't second-guess these):
-- Microsoft Agent Framework chosen explicitly — user wants OP-stack-aligned learning
-- Gemini chosen because user has free Google API tokens
-- Python over .NET because the user knows Python (J-Health, J-Finance MCPs)
-- MCP support is built into MAF, no custom client needed
+The system runs on the paid Gemini API tier in production. The free tier worked for early development but TPM (tokens-per-minute) limits became a bottleneck once code execution and multi-agent fan-out were enabled — paid tier removes those limits and substantially reduces 503 capacity errors. Per-query cost is roughly $0.005–0.02 depending on complexity.
+
+**Why these stack choices**:
+- Microsoft Agent Framework — alignment with the OP-aligned learning goal
+- Gemini — best price/quality at Flash tier and native code execution support
+- Python — broad MAF support and the developer's preferred language
+- MCP — first-class support in MAF 1.0+, no custom client needed
 
 ---
 
 ## 3. Inderes MCP — Tool Inventory
 
-The MCP server at `https://mcp.inderes.com` exposes 16 tools. Cursor: read this section carefully and design subagent specializations around these tool groups. Do NOT have one agent that uses all 16 — split by responsibility.
+The MCP server at `https://mcp.inderes.com` exposes 16 tools. Subagent specializations must be designed around these tool groups — do NOT give one agent all 16 tools; split by responsibility.
 
 ### 3.1 Discovery & Identifiers (every workflow starts here)
 
@@ -140,7 +143,7 @@ Calendar awareness:
 
 ### 4.1 Agents
 
-Cursor: implement these as separate Agent instances. Each has a focused tool subset and a clear role description.
+Implement these as separate `Agent` instances. Each has a focused tool subset and a clear role description.
 
 #### Lead Orchestrator: `aino-lead`
 - **Model**: `gemini-3.1-flash-lite-preview` (primary), `gemini-2.5-flash` (fallback) — see Section 6.8
@@ -200,7 +203,7 @@ The agent loop follows MAF's standard:
 7. Lead presents to user
 8. (Optional) User asks follow-up → repeat from step 1 with conversation context
 
-Cursor: use MAF's checkpointing so the user can interrupt and resume. Use streaming for the synthesis step so user sees partial output.
+Use MAF's checkpointing if the user should be able to interrupt and resume. Use streaming for the synthesis step so the user sees partial output.
 
 ---
 
@@ -279,9 +282,9 @@ inderes-research-agent/
 
 ### 6.1 Gemini setup with MAF
 
-Microsoft Agent Framework 1.0+ has first-party Gemini support. The Python package likely uses `google-genai` underneath. Cursor: verify exact import path at https://learn.microsoft.com/en-us/agent-framework/integrations/ (Python). If the direct Gemini integration is awkward, use the OpenAI-compatible Gemini endpoint at `https://generativelanguage.googleapis.com/v1beta/openai` with `OpenAIChatClient` setting `base_url`.
+Microsoft Agent Framework 1.0+ has first-party Gemini support via the `agent_framework_gemini` package (which uses `google-genai` underneath). Verify exact import paths at the official documentation. If the direct Gemini integration is awkward in some context, the OpenAI-compatible Gemini endpoint at `https://generativelanguage.googleapis.com/v1beta/openai` works with `OpenAIChatClient` setting `base_url`.
 
-Pattern (sketch — Cursor verifies actual API):
+Pattern (sketch — verify actual API at build time):
 
 ```python
 from agent_framework import Agent
@@ -304,7 +307,7 @@ agent = Agent(
 MAF 1.0+ supports MCP natively. Use streamable HTTP transport.
 
 ```python
-# Sketch — Cursor: use actual MAF MCP API
+# Sketch — use the actual MAF MCP API at build time
 from agent_framework.mcp import McpStreamableHttp
 
 inderes_mcp = McpStreamableHttp(
@@ -391,9 +394,9 @@ User can have multi-turn conversations. Use MAF's built-in conversation memory (
 
 When user follows up ("and the dividend yield?"), lead doesn't need to re-classify — it has context.
 
-### 6.8 Model fallback strategy (CRITICAL — free tier reality)
+### 6.8 Model fallback strategy (CRITICAL)
 
-The primary model `gemini-3.1-flash-lite-preview` is in preview and **regularly returns `503 UNAVAILABLE` under load**. The system must handle this gracefully without losing the user's query.
+The primary model `gemini-3.1-flash-lite-preview` is a preview model and can return `503 UNAVAILABLE` during capacity spikes (this happens on both free and paid tiers, just much less often on paid). The system must handle this gracefully without losing the user's query.
 
 **Required behavior**:
 
@@ -403,11 +406,11 @@ The primary model `gemini-3.1-flash-lite-preview` is in preview and **regularly 
 4. **On fallback success**: return result, mark response with model used (visible in `/trace`)
 5. **On fallback failure**: surface a clear error to the user, do not silently fail
 
-**Implementation approach** (Cursor: choose what fits MAF's middleware/retry hooks):
+**Implementation approach** (choose what fits MAF's middleware/retry hooks at build time):
 
 Option A — middleware in MAF:
 ```python
-# Sketch — pseudocode, Cursor uses actual MAF middleware API
+# Sketch — pseudocode; use the actual MAF middleware API
 class ModelFallbackMiddleware:
     async def on_request(self, ctx):
         try:
@@ -436,18 +439,17 @@ RETRY_DELAY_MS=1000
 MAX_RETRIES=1
 ```
 
-**Quota awareness**: Free-tier Gemini has per-minute and per-day request limits. For a research session with several questions, you may hit the daily limit. Surface this clearly:
-- On `429 RESOURCE_EXHAUSTED` from BOTH primary and fallback: show "Daily Gemini quota exhausted. Try tomorrow or upgrade to paid tier."
-- Include a current request counter in `/trace` output so user sees usage.
+**Quota awareness**: free tier has tight daily request limits (500 RPD primary, 20 RPD fallback). On the paid tier these are removed but per-token cost applies. Either way, surface quota exhaustion clearly:
+- On `429 RESOURCE_EXHAUSTED` from BOTH primary and fallback: surface a clear `QuotaExhaustedError` to the user.
 
-### 6.9 Concurrency limits and quota budgeting
+### 6.9 Concurrency limits
 
-Because free-tier Gemini has request limits, multi-agent fan-out is a quota multiplier. A "compare two companies" query that triggers quant + research + sentiment in parallel for both companies = 6+ LLM calls per question.
+Multi-agent fan-out is a request multiplier. A "compare two companies" query triggering quant + research + sentiment in parallel for both companies can be 6+ LLM calls per question; with each subagent's internal AFC loop the real number is higher.
 
 **Mitigations**:
-- Set `MAX_CONCURRENT_AGENTS=2` environment variable (default), allowing user to cap fan-out
-- When lead decides on fan-out, respect this limit; queue the rest
-- For comparison queries with N companies, prefer sequential per-company processing if N > 2, with a note to user: "Processing 3 companies sequentially to stay within quota."
+- Set `MAX_CONCURRENT_AGENTS=2` env var (default), capping parallel fan-out.
+- For comparison queries with N companies, prefer sequential per-company processing if N > 2.
+- This protects against rate-limit spikes (TPM/RPM) on either tier and keeps cost predictable.
 
 ---
 
@@ -503,7 +505,7 @@ Sources: get-fundamentals, get-inderes-estimates, list-content
 
 ## 8. Example Use Cases (Acceptance Tests)
 
-These are the queries the system must handle correctly. Cursor: include these as examples in tests.
+These are the queries the system must handle correctly. Include them as examples in tests where applicable.
 
 ### 8.1 Simple quant
 > "What's Konecranes' current P/E?"
@@ -560,7 +562,7 @@ GEMINI_API_KEY=
 INDERES_MCP_URL=https://mcp.inderes.com
 INDERES_MCP_CLIENT_ID=inderes-mcp
 
-# Models — free-tier reality
+# Models — primary lite-preview with stable fallback
 PRIMARY_MODEL=gemini-3.1-flash-lite-preview
 FALLBACK_MODEL=gemini-2.5-flash
 
@@ -568,7 +570,7 @@ FALLBACK_MODEL=gemini-2.5-flash
 RETRY_DELAY_MS=1000
 MAX_RETRIES=1
 
-# Concurrency control (protects against free-tier quota burn)
+# Concurrency control (rate-limit safety + predictable cost)
 MAX_CONCURRENT_AGENTS=2
 
 # Logging
@@ -603,57 +605,55 @@ inderes-agent = "inderes_agent.__main__:main"
 ### 9.3 Setup steps in README
 
 1. `pip install -e .`
-2. Copy `.env.example` to `.env`, add `GEMINI_API_KEY` (get free at aistudio.google.com)
+2. Copy `.env.example` to `.env`, add `GEMINI_API_KEY` (get from aistudio.google.com)
 3. Subscribe to Inderes Premium (`inderes.fi/premium`)
 4. Run `python -m inderes_agent` — first run opens browser for Inderes OAuth
 5. Ask questions
 
 ---
 
-## 10. What Cursor Should Do
+## 10. Build process
 
-1. Read this entire spec
-2. Verify Microsoft Agent Framework Python API at https://learn.microsoft.com/en-us/agent-framework/ (the Python docs specifically)
-3. Verify Gemini integration approach in MAF — either native `GeminiChatClient` or OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai`
-4. Verify MCP client API in MAF
-5. Generate the full project per Section 5 structure
-6. Implement all 5 agents (Section 4)
-7. Implement orchestration patterns (Section 4.2)
-8. Implement CLI (Section 7)
-9. Write tests for the 7 example queries (Section 8)
-10. Ensure `python -m inderes_agent "What's Konecranes P/E?"` works end-to-end (mocked MCP for tests, real for manual run)
+1. Read this entire spec.
+2. Verify the Microsoft Agent Framework Python API at https://learn.microsoft.com/en-us/agent-framework/ (the Python docs specifically) — the framework is recent enough that training-data references can be stale.
+3. Verify Gemini integration approach in MAF — either native `GeminiChatClient` or OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai`.
+4. Verify MCP client API in MAF (especially `MCPStreamableHTTPTool` and how it accepts auth).
+5. Generate the full project per §5 structure.
+6. Implement all 5 agents (§4).
+7. Implement orchestration patterns (§4.2).
+8. Implement CLI (§7).
+9. Write tests for the 7 example queries (§8).
+10. Ensure `python -m inderes_agent "What's Konecranes' P/E?"` works end-to-end (mocked MCP for tests, real for manual run).
 
-### Cursor's authority
+### Implementation authority
 
-- Make implementation choices the spec doesn't cover
-- Choose specific MAF API patterns (sequential vs concurrent vs handoff) per orchestration need
-- Write subagent prompts (in `prompts/*.md`) using this spec's role descriptions as guidance
-- Add reasonable error handling, retries
-- Use latest stable versions of all packages
+- Make implementation choices the spec doesn't cover.
+- Choose specific MAF API patterns (sequential vs concurrent vs handoff) per orchestration need.
+- Write subagent prompts (in `prompts/*.md`) using this spec's role descriptions as guidance.
+- Add reasonable error handling and retries beyond what's described in §6.8.
+- Use latest stable versions of all packages.
 
-### Cursor's NON-authority
+### Hard constraints
 
-- Don't change the framework (MAF, not LangGraph or anything else)
-- Don't change LLM provider (Gemini, not Claude or GPT)
-- Don't change MCP source (Inderes only)
-- Don't add a web frontend (CLI only)
-- Don't auto-buy or recommend stocks — surface data, user decides
+- Don't change the framework (MAF, not LangGraph or LangChain).
+- Don't change the LLM provider (Gemini).
+- Don't change the data source (Inderes MCP).
+- Don't add a web frontend (CLI only).
+- Don't auto-buy or recommend stocks — surface data, the user decides.
 
 ---
 
 ## 11. Anti-Patterns
 
 ❌ One mega-agent with all 16 MCP tools — split by responsibility
-❌ Bypassing MAF orchestration with manual asyncio — use MAF's patterns
 ❌ Hardcoding company IDs — always go through `search-companies` first
 ❌ Passing entire MCP responses to the user — synthesize, don't dump
 ❌ Saying "BUY" or "SELL" as the system's view — surface Inderes' rec separately
 ❌ Calling `list-content` without `types` filter — gets drowned by press releases
 ❌ Reading entire PDF reports — use `get-document` for TOC, then `read-document-sections` for relevant sections only
-❌ Using `gemini-2.5-pro` anywhere — it returns 429 on free tier, build will appear to work in dev then fail in real use
-❌ Hardcoding model names in agent constructors — all model selection goes through the fallback layer (Section 6.8)
-❌ Silent fallback without logging — user must be able to see in `/trace` which model handled a request
-❌ Unbounded concurrent fan-out — respect `MAX_CONCURRENT_AGENTS`, free-tier quotas burn fast
+❌ Hardcoding model names in agent constructors — all model selection goes through the fallback layer (§6.8)
+❌ Silent fallback without logging — `/trace` and `narrative.md` must show which model handled each request
+❌ Unbounded concurrent fan-out — respect `MAX_CONCURRENT_AGENTS` to control rate-limit and cost
 
 ---
 
@@ -670,9 +670,8 @@ Build is complete when:
 - [ ] Multi-turn conversation maintains context
 - [ ] Comparison queries fan out and produce side-by-side output (respecting concurrency limit)
 - [ ] **Model fallback works**: simulate `503` from primary, system retries then falls back to `gemini-2.5-flash` cleanly
-- [ ] **Quota exhaustion handled**: simulate `429` from both models, system surfaces clear error message
+- [ ] **Quota exhaustion handled**: simulate `429` from both models, system surfaces a clear error message
 - [ ] `/trace` command shows which model handled each request
-- [ ] No reference to `gemini-2.5-pro` anywhere in source (it's not available on free tier)
 - [ ] README explains setup, OAuth flow, model fallback behavior, example questions
 
 User-side manual steps after build:
