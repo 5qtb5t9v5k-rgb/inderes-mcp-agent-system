@@ -1,0 +1,37 @@
+# env / secrets — NEVER commit
+.env
+.env.local
+*.pem
+*.key
+
+# venv / Python build artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code local settings (user-specific permission grants)
+.claude/settings.local.json
+
+# Logs and OAuth caches (these live in $HOME by default; here as belt-and-braces)
+*.log
+.tokens.json
+.inderes_oauth_cache/
+.inderes_agent/

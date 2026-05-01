@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "inderes-agent"
+version = "0.1.0"
+description = "Multi-agent stock research conversation system on Microsoft Agent Framework + Gemini + Inderes MCP"
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    "agent-framework>=1.0",
+    # agent-framework-gemini is pre-release; install with --pre flag
+    "agent-framework-gemini>=1.0.0a0",
+    "google-genai>=1.0",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "structlog>=24",
+    "rich>=13",
+    "prompt_toolkit>=3",
+    "python-dotenv>=1",
+    "httpx>=0.27",
+    "opentelemetry-api>=1.25",
+    "opentelemetry-sdk>=1.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+inderes-agent = "inderes_agent.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/inderes_agent"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["E501"]
