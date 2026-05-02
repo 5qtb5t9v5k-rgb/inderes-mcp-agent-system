@@ -1,0 +1,581 @@
+/* Inderes Agent — Trading Desk theme for Streamlit
+   Drop-in CSS injected via st.markdown(...,unsafe_allow_html=True).
+   All custom classes are prefixed `ia-` to avoid clashing with Streamlit's own. */
+
+:root {
+  --ia-bg: #0a0e0c;
+  --ia-panel: #0f1512;
+  --ia-panel-2: #131a16;
+  --ia-border: #1f2a23;
+  --ia-text: #c9d4cc;
+  --ia-dim: #6b7a72;
+  --ia-faint: #3a4640;
+  --ia-green: #4ade80;
+  --ia-amber: #ffd24a;
+  --ia-orange: #fb923c;
+  --ia-red: #f87171;
+  --ia-blue: #60a5fa;
+  --ia-pink: #f472b6;
+  --ia-violet: #a78bfa;
+  --ia-mono: "JetBrains Mono", "IBM Plex Mono", "Menlo", monospace;
+}
+
+/* ---- global Streamlit overrides ---- */
+html, body, .stApp {
+  background: var(--ia-bg) !important;
+  color: var(--ia-text) !important;
+  font-family: var(--ia-mono);
+}
+.stApp, .stApp * { font-family: var(--ia-mono); }
+.stApp { background: var(--ia-bg) !important; }
+
+/* DON'T override the Material Icons / Symbols font — Streamlit's chrome
+   (sidebar collapse arrow, expander chevrons, etc.) uses ligature icons
+   that render as garbled text ("keyboard_double_arrow_right") if the icon
+   font is replaced by our mono font.
+
+   Streamlit's exact element is `<span data-testid="stIconMaterial">…</span>`
+   with a class like `st-emotion-cache-xxxx`. We target it via the
+   data-testid since the emotion-cache class hash changes per release. */
+.stApp [data-testid="stIconMaterial"],
+.stApp [data-testid*="stIcon"],
+.stApp [class*="material-symbols"],
+.stApp [class*="material-icons"],
+.stApp .material-icons,
+.stApp .material-icons-outlined,
+.stApp .material-symbols-rounded,
+.stApp .material-symbols-outlined {
+  font-family: "Material Symbols Rounded", "Material Symbols Outlined",
+               "Material Icons", sans-serif !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+section[data-testid="stSidebar"] {
+  background: var(--ia-panel) !important;
+  border-right: 1px solid var(--ia-border) !important;
+}
+section[data-testid="stSidebar"] * { color: var(--ia-text) !important; font-family: var(--ia-mono) !important; }
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 { color: var(--ia-amber) !important; letter-spacing: 0.12em; font-size: 12px !important; }
+
+/* main area headers */
+h1, h2, h3 { color: var(--ia-amber) !important; font-family: var(--ia-mono) !important; letter-spacing: 0.06em; }
+h1 { font-size: 22px !important; }
+h2 { font-size: 16px !important; }
+
+/* code-ish inputs */
+input, textarea {
+  background: var(--ia-panel) !important;
+  color: var(--ia-text) !important;
+  border: 1px solid var(--ia-border) !important;
+  font-family: var(--ia-mono) !important;
+  caret-color: var(--ia-amber) !important;
+}
+input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
+
+/* chat input pinned bottom */
+[data-testid="stChatInput"] {
+  background: var(--ia-panel) !important;
+  border-top: 1px solid var(--ia-border) !important;
+}
+[data-testid="stChatInput"] textarea { font-family: var(--ia-mono) !important; }
+
+/* Override Streamlit's default coral/red focus ring on the chat input
+   wrapper. Targets every level of the BaseWeb input shell that picks up
+   the primary-color border on focus-within. */
+[data-testid="stChatInput"] [data-baseweb="textarea"],
+[data-testid="stChatInput"] [data-baseweb="base-input"],
+[data-testid="stChatInput"] > div > div {
+  border-color: var(--ia-border) !important;
+  box-shadow: none !important;
+}
+[data-testid="stChatInput"] [data-baseweb="textarea"]:focus-within,
+[data-testid="stChatInput"] [data-baseweb="base-input"]:focus-within,
+[data-testid="stChatInput"] > div > div:focus-within {
+  border-color: var(--ia-amber) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* chat message bubbles */
+[data-testid="stChatMessage"] {
+  background: var(--ia-panel) !important;
+  border: 1px solid var(--ia-border) !important;
+  border-radius: 0 !important;
+  padding: 10px 14px !important;
+}
+[data-testid="stChatMessage"][data-testid*="user"] { border-left: 2px solid var(--ia-amber) !important; }
+[data-testid="stChatMessage"][data-testid*="assistant"] { border-left: 2px solid var(--ia-green) !important; }
+
+/* expanders */
+[data-testid="stExpander"] summary {
+  background: var(--ia-panel-2) !important;
+  border: 1px solid var(--ia-border) !important;
+  color: var(--ia-amber) !important;
+  font-family: var(--ia-mono) !important;
+  letter-spacing: 0.08em;
+  font-size: 11px !important;
+}
+
+/* buttons */
+.stButton > button {
+  background: var(--ia-amber) !important;
+  color: #1a1300 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  font-family: var(--ia-mono) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.1em !important;
+  font-size: 11px !important;
+}
+.stButton > button:hover { background: #ffe082 !important; }
+
+/* progress bar (quota) */
+[data-testid="stProgress"] > div > div > div {
+  background: var(--ia-green) !important;
+}
+
+/* status box */
+[data-testid="stStatusWidget"], [data-testid="stStatus"] {
+  background: var(--ia-panel) !important;
+  border: 1px solid var(--ia-border) !important;
+  border-left: 2px solid var(--ia-amber) !important;
+  border-radius: 0 !important;
+  font-family: var(--ia-mono) !important;
+}
+
+/* metrics */
+[data-testid="stMetric"] {
+  background: var(--ia-panel) !important;
+  border: 1px solid var(--ia-border) !important;
+  padding: 10px 12px !important;
+}
+[data-testid="stMetricLabel"] {
+  color: var(--ia-faint) !important;
+  font-size: 9px !important;
+  letter-spacing: 0.14em !important;
+  font-family: var(--ia-mono) !important;
+}
+[data-testid="stMetricValue"] {
+  color: var(--ia-amber) !important;
+  font-family: var(--ia-mono) !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+}
+
+/* ============ custom components ============ */
+
+/* TITLEBAR */
+.ia-titlebar {
+  display: flex; align-items: center; gap: 14px;
+  background: #050706;
+  border-bottom: 1px solid var(--ia-border);
+  padding: 6px 12px;
+  margin: -1rem -1rem 1rem -1rem;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ia-dim);
+}
+.ia-titlebar .ia-brand {
+  color: var(--ia-amber); font-weight: 700; letter-spacing: 0.18em;
+}
+.ia-titlebar .ia-tag { padding: 0 8px; border-right: 1px solid var(--ia-border); }
+.ia-titlebar .ia-spacer { flex: 1; }
+.ia-titlebar .ia-online { color: var(--ia-green); }
+.ia-titlebar .ia-online::before { content: "● "; }
+
+/* TICKER */
+.ia-tape {
+  height: 26px;
+  background: #050706;
+  border: 1px solid var(--ia-border);
+  overflow: hidden;
+  position: relative;
+  margin: 0 -1rem 1rem -1rem;
+  display: flex; align-items: center;
+  font-size: 11px;
+}
+.ia-tape-track {
+  display: inline-flex; gap: 32px; white-space: nowrap;
+  animation: ia-scroll 60s linear infinite;
+  padding-left: 100%;
+}
+.ia-tape-item .ia-tk { color: var(--ia-dim); margin-right: 6px; }
+.ia-tape-item .ia-px { color: var(--ia-text); margin-right: 6px; }
+.ia-tape-item .ia-up { color: var(--ia-green); }
+.ia-tape-item .ia-dn { color: var(--ia-red); }
+@keyframes ia-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+/* HERO — top intro panel: short description + agent roster + GitHub CTA.
+   Replaces the old big-orange disclaimer. The disclaimer line lives at the
+   bottom of this panel as fine print. */
+.ia-hero {
+  background: var(--ia-panel);
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-amber);
+  padding: 14px 18px;
+  margin: 0 0 14px 0;
+  font-size: 12px;
+  color: var(--ia-text);
+  line-height: 1.55;
+}
+.ia-hero .ia-hero-tag {
+  color: var(--ia-amber);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ia-hero .ia-hero-text {
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--ia-dim);
+}
+.ia-hero .ia-hero-eq {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 4px 0 8px 0;
+  font-family: var(--ia-mono);
+}
+.ia-hero .ia-hero-eq .op { color: var(--ia-text); }
+.ia-hero .ia-hero-eq .plus { color: var(--ia-faint); font-weight: 400; }
+.ia-hero .ia-hero-eq .eq { color: var(--ia-faint); font-weight: 400; }
+.ia-hero .ia-hero-eq .result { color: var(--ia-amber); }
+.ia-hero .ia-hero-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+.ia-hero .ia-hero-agents .ag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+/* SIDEBAR DISCLAIMER — red-bordered fine print at the very top */
+.ia-side-disclaimer {
+  background: rgba(248, 113, 113, 0.06);  /* ia-red @ 6% */
+  border: 1px solid var(--ia-red);
+  border-left: 2px solid var(--ia-red);
+  padding: 8px 10px;
+  margin: 0 0 12px 0;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.ia-side-disclaimer .ia-sd-h {
+  color: var(--ia-red);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 9px;
+  margin-bottom: 4px;
+}
+.ia-side-disclaimer .ia-sd-b {
+  color: var(--ia-text);
+}
+
+/* SIDEBAR GITHUB CTA */
+.ia-side-cta {
+  display: block;
+  text-align: center;
+  color: var(--ia-amber) !important;
+  text-decoration: none !important;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  border: 1px solid var(--ia-amber);
+  padding: 6px 10px;
+  margin: 8px 0 12px 0;
+  transition: background 0.15s ease;
+}
+.ia-side-cta:hover {
+  background: var(--ia-amber);
+  color: #1a1300 !important;
+}
+
+/* ROUTING CARD */
+.ia-routing {
+  background: var(--ia-panel);
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-orange);
+  padding: 10px 14px;
+  margin: 8px 0;
+  display: grid;
+  grid-template-columns: auto 1fr 1fr 2fr;
+  gap: 14px;
+  font-size: 11px;
+}
+.ia-routing .ia-rl { color: var(--ia-faint); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+.ia-routing .ia-rv { color: var(--ia-text); font-size: 12px; margin-top: 2px; }
+.ia-routing .ia-rv.amber { color: var(--ia-amber); }
+.ia-routing .ia-pill {
+  display: inline-block; padding: 1px 6px;
+  border: 1px solid currentColor;
+  margin-right: 4px; font-size: 10px; letter-spacing: 0.06em;
+}
+
+/* METRIC ROW */
+.ia-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+.ia-metric {
+  background: var(--ia-panel); border: 1px solid var(--ia-border);
+  padding: 10px 12px; position: relative;
+}
+.ia-metric .ia-ml { font-size: 9px; color: var(--ia-faint); letter-spacing: 0.14em; text-transform: uppercase; }
+.ia-metric .ia-mv { font-size: 24px; color: var(--ia-amber); font-weight: 700; margin-top: 2px; letter-spacing: -0.02em; }
+.ia-metric .ia-mv.green { color: var(--ia-green); }
+.ia-metric .ia-mv.blue  { color: var(--ia-blue); }
+.ia-metric .ia-mv.small { font-size: 18px; }
+.ia-metric .ia-ms { font-size: 10px; color: var(--ia-dim); margin-top: 2px; }
+
+/* AGENT TRACE — colored row per subagent */
+.ia-agent-row {
+  background: var(--ia-panel-2);
+  border: 1px solid var(--ia-border);
+  padding: 8px 10px;
+  margin: 6px 0;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+}
+.ia-agent-row.done { border-left: 2px solid var(--ia-green); }
+.ia-agent-row.err  { border-left: 2px solid var(--ia-red); }
+.ia-agent-row .ia-glyph {
+  width: 22px; height: 22px;
+  display: inline-grid; place-items: center;
+  border: 1px solid currentColor;
+  font-weight: 700;
+}
+.ia-agent-row .ia-name { font-weight: 700; letter-spacing: 0.06em; }
+.ia-agent-row .ia-role { color: var(--ia-dim); font-size: 10px; }
+.ia-agent-row .ia-model { color: var(--ia-blue); font-size: 10px; }
+.ia-agent-row .ia-status { font-size: 10px; letter-spacing: 0.12em; color: var(--ia-green); }
+.ia-agent-row.err .ia-status { color: var(--ia-red); }
+
+.ia-agent-output {
+  background: var(--ia-panel);
+  border: 1px solid var(--ia-border);
+  padding: 10px 14px;
+  margin: 4px 0 10px 30px;
+  font-family: "Helvetica Neue", "Inter", sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ia-text);
+}
+.ia-agent-output strong { color: var(--ia-amber); font-weight: 600; }
+
+/* code blocks inside agent output — markdown_it emits <pre><code class="language-*"> */
+.ia-agent-output pre {
+  background: #050706;
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-blue);
+  padding: 10px 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: var(--ia-mono) !important;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ia-text);
+}
+/* stdout / sandbox output blocks — green border, slightly dimmer text */
+.ia-agent-output pre:has(> code.language-output) {
+  border-left-color: var(--ia-green);
+  margin-top: -4px;        /* close the gap to the code block above */
+  color: var(--ia-dim);
+}
+.ia-agent-output code.language-output { color: var(--ia-dim); }
+.ia-agent-output pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-family: var(--ia-mono) !important;
+  font-size: inherit;
+  white-space: pre;
+}
+.ia-agent-output code {
+  background: var(--ia-panel-2);
+  border: 1px solid var(--ia-border);
+  padding: 1px 5px;
+  font-family: var(--ia-mono) !important;
+  font-size: 12px;
+  color: var(--ia-amber);
+}
+.ia-agent-output table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.ia-agent-output th, .ia-agent-output td {
+  border: 1px solid var(--ia-border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.ia-agent-output th { background: var(--ia-panel-2); color: var(--ia-amber); font-weight: 600; }
+
+/* SIDEBAR — personas + about panels */
+.ia-side-h {
+  color: var(--ia-amber) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  margin: 14px 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ia-border);
+}
+.ia-persona {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px dotted var(--ia-border);
+  font-size: 11px;
+}
+.ia-persona:last-child { border-bottom: none; }
+.ia-persona .ia-pg {
+  width: 22px; height: 22px;
+  display: inline-grid; place-items: center;
+  border: 1px solid currentColor;
+  font-weight: 700;
+  font-size: 12px;
+}
+.ia-persona .ia-pn { font-weight: 700; letter-spacing: 0.08em; }
+.ia-persona .ia-pr { color: var(--ia-dim); font-size: 10px; }
+.ia-persona .ia-pd { color: var(--ia-text); font-size: 11px; line-height: 1.45; margin-top: 2px; }
+
+.ia-about {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ia-text);
+  margin: 4px 0;
+}
+.ia-about p { margin: 0 0 8px 0; }
+.ia-about .ia-kv {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 6px;
+  font-size: 10px;
+  margin: 2px 0;
+}
+.ia-about .ia-kv .k { color: var(--ia-faint); letter-spacing: 0.1em; text-transform: uppercase; }
+.ia-about .ia-kv .v { color: var(--ia-text); }
+.ia-about .ia-kv .v.amber { color: var(--ia-amber); }
+.ia-about .ia-kv .v.green { color: var(--ia-green); }
+
+/* IDLE HERO */
+.ia-idle {
+  text-align: center;
+  padding: 36px 20px;
+  border: 1px dashed var(--ia-border);
+  margin: 12px 0;
+}
+.ia-idle .ia-glyphs {
+  font-size: 48px;
+  color: var(--ia-amber);
+  letter-spacing: 0.3em;
+  margin-bottom: 8px;
+}
+.ia-idle .ia-title {
+  color: var(--ia-amber);
+  font-size: 16px;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+}
+.ia-idle .ia-sub {
+  color: var(--ia-dim);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* FULL NARRATIVE — scrollable run log at the bottom of the trace */
+.ia-narrative-h {
+  color: var(--ia-amber);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  margin: 18px 0 4px 0;
+}
+.ia-narrative-sub {
+  color: var(--ia-dim);
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+.ia-narrative {
+  background: var(--ia-panel);
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-amber);
+  padding: 14px 18px;
+  max-height: 480px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ia-text);
+  font-family: "Helvetica Neue", "Inter", sans-serif;
+}
+.ia-narrative h1 { font-size: 14px !important; margin: 6px 0 10px 0; }
+.ia-narrative h2 { font-size: 12px !important; margin: 14px 0 6px 0; letter-spacing: 0.08em; }
+.ia-narrative h3 { font-size: 11px !important; margin: 10px 0 4px 0; color: var(--ia-blue) !important; }
+.ia-narrative ul, .ia-narrative ol { margin: 4px 0 8px 18px; padding: 0; }
+.ia-narrative li { margin: 2px 0; }
+.ia-narrative code {
+  background: var(--ia-panel-2);
+  border: 1px solid var(--ia-border);
+  padding: 0 4px;
+  font-family: var(--ia-mono);
+  font-size: 11px;
+  color: var(--ia-amber);
+}
+.ia-narrative pre {
+  background: #050706;
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-blue);
+  padding: 8px 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+  font-family: var(--ia-mono);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.ia-narrative pre:has(> code.language-output) {
+  border-left-color: var(--ia-green);
+  margin-top: -4px;
+  color: var(--ia-dim);
+}
+.ia-narrative pre code { background: transparent; border: none; padding: 0; color: inherit; }
+.ia-narrative table { border-collapse: collapse; margin: 8px 0; font-size: 11px; }
+.ia-narrative th, .ia-narrative td { border: 1px solid var(--ia-border); padding: 3px 7px; }
+.ia-narrative th { background: var(--ia-panel-2); color: var(--ia-amber); }
+.ia-narrative strong { color: var(--ia-amber); }
+/* scrollbar — make it match the dark theme */
+.ia-narrative::-webkit-scrollbar { width: 8px; }
+.ia-narrative::-webkit-scrollbar-track { background: var(--ia-panel); }
+.ia-narrative::-webkit-scrollbar-thumb { background: var(--ia-border); border: 1px solid var(--ia-faint); }
+
+/* STATUSBAR */
+.ia-statusbar {
+  background: #050706;
+  border-top: 1px solid var(--ia-border);
+  padding: 6px 12px;
+  margin: 1rem -1rem -1rem -1rem;
+  display: flex; align-items: center; gap: 14px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ia-faint);
+}
+.ia-statusbar .ia-hot { color: var(--ia-green); }
+.ia-statusbar .ia-warn { color: var(--ia-amber); }
+.ia-statusbar .ia-spacer { flex: 1; }

@@ -72,6 +72,26 @@ from inderes_agent.orchestration.router import classify_query  # noqa: E402
 from inderes_agent.orchestration.synthesis import synthesize  # noqa: E402
 from inderes_agent.orchestration.workflows import run_workflow  # noqa: E402
 
+# Trading Desk visual layer — pure cosmetics, no agent-pipeline impact.
+# `streamlit run ui/app.py` puts `ui/` on sys.path (not the repo root), so we
+# import the sibling module by its bare name. Works the same in cloud + local.
+from components import (  # noqa: E402
+    inject_theme,
+    render_titlebar,
+    render_ticker,
+    render_disclaimer,
+    render_routing_card,
+    render_metrics_row,
+    render_agent_row,
+    render_agent_output,
+    render_statusbar,
+    render_personas_panel,
+    render_about_panel,
+    render_full_narrative,
+    render_sidebar_disclaimer,
+    render_github_link,
+)
+
 
 # ---------------------------------------------------------------------------
 # Page setup
@@ -82,6 +102,10 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+# Trading Desk theme — must run right after set_page_config so the CSS lands
+# before any other widget is rendered.
+inject_theme()
 
 
 # ---------------------------------------------------------------------------
@@ -170,15 +194,13 @@ def _enforce_daily_cap_or_stop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Title and header
+# Title and header — Trading Desk chrome
 # ---------------------------------------------------------------------------
 
-st.title("📊 inderes-mcp-agent-system")
-st.caption(
-    "Multi-agent research over Inderes MCP. "
-    "Surfaces signals — never gives buy/sell calls. "
-    "Personal project, not affiliated with Inderes Oyj."
-)
+_lang = st.session_state.get("ui_lang", "fi")
+render_titlebar(_lang)
+# render_ticker() — disabled: distracting, replace with a real feed if/when one's available
+render_disclaimer(_lang)
 
 
 # ---------------------------------------------------------------------------
@@ -233,19 +255,22 @@ def _render_subagent_text(run_dir: Path, sa: dict) -> None:
 
 
 def render_trace_expander(run_dir: Path) -> None:
-    """Show routing + per-subagent + tool-call trace inside an expander."""
+    """Show routing + per-subagent + tool-call trace inside an expander.
+
+    Same data as before, Trading Desk styling on top.
+    """
     routing_path = run_dir / "routing.json"
     meta_path = run_dir / "meta.json"
+    lang = st.session_state.get("ui_lang", "fi")
 
     with st.expander("🔍 Subagent trace", expanded=False):
         if routing_path.exists():
             r = json.loads(routing_path.read_text(encoding="utf-8"))
-            cols = st.columns(3)
-            cols[0].metric("Domains", " + ".join(r.get("domains", [])))
-            cols[1].metric("Companies", ", ".join(r.get("companies", [])) or "—")
-            cols[2].metric("Comparison", "yes" if r.get("is_comparison") else "no")
-            if r.get("reasoning"):
-                st.caption(f"Routing reasoning: _{r['reasoning']}_")
+            render_routing_card(r, lang)
+
+        # Big metric cards from QUANT's structured output (if present —
+        # silently no-ops when the subagent JSON has no `metrics` block).
+        render_metrics_row(run_dir, lang)
 
         if meta_path.exists():
             m = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -257,25 +282,20 @@ def render_trace_expander(run_dir: Path) -> None:
 
         for sub_path in sorted(run_dir.glob("subagent-*.json")):
             sa = json.loads(sub_path.read_text(encoding="utf-8"))
-            domain = sa.get("domain", "?")
-            company = sa.get("company")
-            model = sa.get("model_used", "?")
-            err = sa.get("error")
-
-            head = f"**{domain}**" + (f" — {company}" if company else "")
-            head += f"  · `{model}`"
-            head += "  · ❌ ERROR" if err else "  · ✓ ok"
-            st.markdown(head)
-
-            if err:
-                st.error(err)
+            render_agent_row(sa, lang)
+            if sa.get("error"):
+                st.error(sa["error"])
             else:
-                with st.container(border=True):
-                    _render_subagent_text(run_dir, sa)
+                render_agent_output(sa.get("text"))
 
+        # Full narrative — same data the CLI writes to narrative.md, rendered
+        # inline in a scrollable container so the user can review the routing
+        # decisions, tool-call timeline, and raw subagent answers without
+        # leaving the app.
+        render_full_narrative(run_dir, st.session_state.get("ui_lang", "fi"))
         narrative_path = run_dir / "narrative.md"
         if narrative_path.exists():
-            st.caption(f"Full narrative: `{narrative_path}`")
+            st.caption(f"On-disk: `{narrative_path}`")
 
 
 # ---------------------------------------------------------------------------
@@ -283,18 +303,40 @@ def render_trace_expander(run_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.subheader("Conversation")
-    if st.button("🗑️ Clear chat", use_container_width=True):
+    _lang_side = st.session_state.get("ui_lang", "fi")
+
+    # Red disclaimer at the very top — sets expectations before anything else
+    render_sidebar_disclaimer(_lang_side)
+
+    # Project description
+    render_about_panel(_lang_side)
+
+    # GitHub CTA — link out for more info
+    render_github_link(_lang_side)
+
+    # Agent roster
+    render_personas_panel(_lang_side)
+
+    # Conversation controls
+    _conv_h = "KESKUSTELU" if _lang_side == "fi" else "CONVERSATION"
+    _clear_lbl = "🗑️ Tyhjennä keskustelu" if _lang_side == "fi" else "🗑️ Clear chat"
+    st.markdown(f'<div class="ia-side-h">{_conv_h}</div>', unsafe_allow_html=True)
+    if st.button(_clear_lbl, use_container_width=True):
         st.session_state.state = ConversationState()
         st.session_state.history = []
         st.rerun()
 
-    st.subheader("Recent runs")
-    st.caption(
-        "Each query saves a forensic record (query, routing, per-subagent "
-        "outputs, synthesis, full timeline) to disk. The 8 most recent are "
-        "listed below."
+    # Recent runs
+    _runs_h = "VIIMEISIMMÄT AJOT" if _lang_side == "fi" else "RECENT RUNS"
+    _runs_cap = (
+        "Jokainen ajo tallentaa kysymyksen, reitityksen, subagenttien vastaukset "
+        "ja aikajanan levylle. Kahdeksan viimeisintä alla."
+        if _lang_side == "fi"
+        else "Each run saves the query, routing, subagent outputs, and timeline "
+        "to disk. The eight most recent are listed below."
     )
+    st.markdown(f'<div class="ia-side-h">{_runs_h}</div>', unsafe_allow_html=True)
+    st.caption(_runs_cap)
     if RUNS_ROOT.exists():
         recent = sorted(RUNS_ROOT.iterdir(), reverse=True)[:8]
         for d in recent:
@@ -303,28 +345,30 @@ with st.sidebar:
             label = label[:60] + ("…" if len(label) > 60 else "")
             st.caption(f"`{d.name[:15]}` — {label}")
     else:
-        st.caption("No runs yet.")
+        st.caption("Ei vielä ajoja." if _lang_side == "fi" else "No runs yet.")
 
-    cap = _daily_cap()
-    if cap > 0:
-        used = _query_count_today()
-        st.subheader("Daily quota")
-        st.progress(min(used / cap, 1.0), text=f"{used} / {cap} queries today")
+    # Daily quota progress bar removed from the sidebar — the cap still
+    # applies (enforced before each query in `_enforce_daily_cap_or_stop`),
+    # we just don't surface the count in the chrome anymore.
 
-    st.subheader("About")
-    st.caption(
-        "5 agents — a lead orchestrator plus four specialized subagents "
-        "(quant, research, sentiment, portfolio). Built on Microsoft Agent "
-        "Framework + Google Gemini Flash, querying Inderes MCP."
-    )
+    # Logs path note
     runs_dir_display = str(RUNS_ROOT)
-    storage_note = (
-        "Per-run logs saved to ephemeral container storage — they reset on "
-        "every container restart."
-        if runs_dir_display.startswith("/tmp")
-        else "Per-run logs saved persistently."
-    )
-    st.caption(f"Logs at `{runs_dir_display}`. {storage_note}")
+    if _lang_side == "fi":
+        storage_note = (
+            "Lokit ephemeraalisessa container-storagessa — nollautuvat "
+            "uudelleenkäynnistyksessä."
+            if runs_dir_display.startswith("/tmp")
+            else "Lokit tallennetaan pysyvästi."
+        )
+        st.caption(f"Logit: `{runs_dir_display}`. {storage_note}")
+    else:
+        storage_note = (
+            "Per-run logs saved to ephemeral container storage — they reset on "
+            "every container restart."
+            if runs_dir_display.startswith("/tmp")
+            else "Per-run logs saved persistently."
+        )
+        st.caption(f"Logs at `{runs_dir_display}`. {storage_note}")
 
 
 # ---------------------------------------------------------------------------
@@ -427,3 +471,20 @@ if prompt:
         except Exception as exc:
             status.update(label="Error", state="error", expanded=True)
             st.error(f"{type(exc).__name__}: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Trading Desk statusbar pinned at the bottom — pulls last run's stats
+# ---------------------------------------------------------------------------
+
+_last_meta: dict = {}
+if st.session_state.history:
+    _last = st.session_state.history[-1]
+    if _last.get("run_dir"):
+        _meta_path = Path(_last["run_dir"]) / "meta.json"
+        if _meta_path.exists():
+            try:
+                _last_meta = json.loads(_meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+render_statusbar(_last_meta, st.session_state.get("ui_lang", "fi"))
