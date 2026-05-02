@@ -263,7 +263,10 @@ def render_trace_expander(run_dir: Path) -> None:
     meta_path = run_dir / "meta.json"
     lang = st.session_state.get("ui_lang", "fi")
 
-    with st.expander("🔍 Subagent trace", expanded=False):
+    _trace_label = (
+        "🔍 Subagenttien jälki" if lang == "fi" else "🔍 Subagent trace"
+    )
+    with st.expander(_trace_label, expanded=False):
         if routing_path.exists():
             r = json.loads(routing_path.read_text(encoding="utf-8"))
             render_routing_card(r, lang)

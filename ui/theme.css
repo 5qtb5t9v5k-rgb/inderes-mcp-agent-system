@@ -144,13 +144,22 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   background: var(--ia-green) !important;
 }
 
-/* status box */
+/* status box — DON'T set font-family here. The status widget uses a Material
+   Symbols icon (check_circle / spinner) for its state, and a parent rule
+   with `font-family !important` would clobber the icon font via inheritance,
+   making the literal ligature text ("check_circle") render on top of the
+   label. Mono comes from `.stApp *` (no !important) which icons can override. */
 [data-testid="stStatusWidget"], [data-testid="stStatus"] {
   background: var(--ia-panel) !important;
   border: 1px solid var(--ia-border) !important;
   border-left: 2px solid var(--ia-amber) !important;
   border-radius: 0 !important;
-  font-family: var(--ia-mono) !important;
+}
+/* Belt-and-suspenders: also pin the icon font for icons inside status. */
+[data-testid="stStatusWidget"] [data-testid="stIconMaterial"],
+[data-testid="stStatus"] [data-testid="stIconMaterial"] {
+  font-family: "Material Symbols Rounded", "Material Symbols Outlined",
+               "Material Icons", sans-serif !important;
 }
 
 /* metrics */
@@ -320,6 +329,15 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-routing .ia-rl { color: var(--ia-faint); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
 .ia-routing .ia-rv { color: var(--ia-text); font-size: 12px; margin-top: 2px; }
 .ia-routing .ia-rv.amber { color: var(--ia-amber); }
+/* PERUSTELU — free-form prose field, distinct pink/violet accent so it
+   reads differently from the categorical fields (yhtiö / domainit / vertailu). */
+.ia-routing .ia-rl.reason { color: var(--ia-pink); }
+.ia-routing .ia-rv.reason {
+  color: var(--ia-violet);
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.4;
+}
 .ia-routing .ia-pill {
   display: inline-block; padding: 1px 6px;
   border: 1px solid currentColor;
