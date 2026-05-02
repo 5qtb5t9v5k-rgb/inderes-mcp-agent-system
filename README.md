@@ -155,6 +155,18 @@ python -m inderes_agent
 The REPL keeps conversation context — follow-up questions like "and the dividend
 yield?" inherit the company from the previous turn.
 
+### Browser UI (Streamlit)
+
+```bash
+uv pip install --pre -e '.[ui]'
+streamlit run ui/app.py
+```
+
+Opens `http://localhost:8501` with a chat interface, live phase indicators
+(routing → subagents → synthesis), and an expandable per-query subagent trace.
+Same agent code as the CLI underneath. Local-only — OAuth callback uses
+localhost. See [`ui/README.md`](ui/README.md) for hosting notes.
+
 ### REPL slash commands
 
 | Command | Action |
