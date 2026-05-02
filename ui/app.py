@@ -88,6 +88,17 @@ if "history" not in st.session_state:
 # Trace rendering helper
 # ---------------------------------------------------------------------------
 
+def _render_subagent_text(run_dir: Path, sa: dict) -> None:
+    """Render a subagent's text. Image extraction is not supported in this
+    build (`agent_framework_gemini` doesn't surface inline_data parts), so
+    we just render the markdown directly. `extract_parts` has already
+    stripped any dangling `![alt](...)` references that would render as
+    broken icons.
+    """
+    text = sa.get("text") or "_(empty response)_"
+    st.markdown(text)
+
+
 def render_trace_expander(run_dir: Path) -> None:
     """Show routing + per-subagent + tool-call trace inside an expander."""
     routing_path = run_dir / "routing.json"
@@ -127,7 +138,7 @@ def render_trace_expander(run_dir: Path) -> None:
                 st.error(err)
             else:
                 with st.container(border=True):
-                    st.markdown(sa.get("text") or "_(empty response)_")
+                    _render_subagent_text(run_dir, sa)
 
         narrative_path = run_dir / "narrative.md"
         if narrative_path.exists():
@@ -171,7 +182,7 @@ with st.sidebar:
 for msg in st.session_state.history:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if msg.get("run_dir"):
+        if msg["role"] == "assistant" and msg.get("run_dir"):
             render_trace_expander(Path(msg["run_dir"]))
 
 
@@ -197,7 +208,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
         )
 
         status.write("⚙️  Subagentit ajetaan rinnakkain…")
-        workflow_result = await run_workflow(query, classification)
+        workflow_result = await run_workflow(query, classification, run_dir=run_dir)
         for sr in workflow_result.subagent_results:
             mark = "❌ ERROR" if sr.error else "✓"
             company = f" — {sr.company}" if sr.company else ""
