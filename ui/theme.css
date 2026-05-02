@@ -238,8 +238,19 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-hero .ia-hero-text {
   font-size: 13px;
   margin-bottom: 10px;
-  color: var(--ia-text);
+  color: var(--ia-dim);
 }
+.ia-hero .ia-hero-eq {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 4px 0 8px 0;
+  font-family: var(--ia-mono);
+}
+.ia-hero .ia-hero-eq .op { color: var(--ia-text); }
+.ia-hero .ia-hero-eq .plus { color: var(--ia-faint); font-weight: 400; }
+.ia-hero .ia-hero-eq .eq { color: var(--ia-faint); font-weight: 400; }
+.ia-hero .ia-hero-eq .result { color: var(--ia-amber); }
 .ia-hero .ia-hero-agents {
   display: flex;
   flex-wrap: wrap;

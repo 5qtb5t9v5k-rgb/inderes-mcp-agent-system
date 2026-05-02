@@ -176,25 +176,30 @@ GITHUB_URL = "https://github.com/5qtb5t9v5k-rgb/inderes-mcp-agent-system"
 
 
 def render_disclaimer(lang: str = "fi") -> None:
-    """Hero panel: short description + agent roster + GitHub CTA.
+    """Hero panel: brand equation + one-line tagline + agent roster.
 
-    Replaces the old big-orange disclaimer. The not-affiliated-with-Inderes
-    line lives as fine print at the bottom so the box is more inviting and
-    less alarmist.
+    The not-affiliated notice lives in the sidebar disclaimer, not here, so
+    this panel reads as an inviting intro instead of a legal notice.
     """
     if lang == "fi":
         tag = "MULTI-AGENT RESEARCH"
-        text = (
-            "Viisi agenttia työstää jokaisen kysymyksen yhdessä — yksi reitittäjä ja "
-            "neljä erikoistunutta. Kysy Pohjoismaisista osakkeista; saat signaaleja, "
-            "et osta- tai myy-suosituksia."
-        )
+        tagline = "Pohjoismaisia osakkeita viiden erikoistuneen agentin kautta."
     else:
         tag = "MULTI-AGENT RESEARCH"
-        text = (
-            "Five agents work each query together — one router and four "
-            "specialists. Ask about Nordic equities; get signals, never buy/sell calls."
-        )
+        tagline = "Nordic equities through five specialised agents."
+
+    # Equation — INDERES + MCP + AGENTIT = INSIGHTS — captures what this is
+    # at a glance. Operators and the equals sign get colored separately so
+    # the eye lands on the three operands.
+    eq_html = (
+        '<span class="op">INDERES</span>'
+        '<span class="plus"> + </span>'
+        '<span class="op">MCP</span>'
+        '<span class="plus"> + </span>'
+        '<span class="op">AGENTIT</span>'
+        '<span class="eq"> = </span>'
+        '<span class="result">INSIGHTS</span>'
+    )
 
     agents_html = ""
     for code, p in PERSONAS.items():
@@ -206,7 +211,8 @@ def render_disclaimer(lang: str = "fi") -> None:
     html = (
         '<div class="ia-hero">'
         f'<div class="ia-hero-tag">{tag}</div>'
-        f'<div class="ia-hero-text">{text}</div>'
+        f'<div class="ia-hero-eq">{eq_html}</div>'
+        f'<div class="ia-hero-text">{tagline}</div>'
         f'<div class="ia-hero-agents">{agents_html}</div>'
         '</div>'
     )
@@ -214,22 +220,23 @@ def render_disclaimer(lang: str = "fi") -> None:
 
 
 def render_sidebar_disclaimer(lang: str = "fi") -> None:
-    """Red-bordered fine-print disclaimer at the very top of the sidebar."""
+    """Red-bordered fine-print disclaimer at the very top of the sidebar.
+
+    The single source of truth for the legal notice: not endorsed by Inderes,
+    not investment advice, user takes their own decisions. No other panel
+    repeats this — they focus on what the project IS, not what it isn't.
+    """
     if lang == "fi":
         head = "HUOM"
         body = (
-            "Henkilökohtainen tutkimusprojekti, ei Inderes Oyj:n tuottama, "
-            "tukema tai hyväksymä. Pinnistää signaaleja Inderesin julkisesta "
-            "datasta — ei anna osta- tai myy-suosituksia. Käyttäjä vastaa "
-            "omista sijoituspäätöksistään."
+            "Ei Inderes Oyj:n tuottama tai hyväksymä. Ei sijoitusneuvoja — "
+            "käyttäjä vastaa omista päätöksistään."
         )
     else:
         head = "DISCLAIMER"
         body = (
-            "Personal research project, not produced, supported, or endorsed "
-            "by Inderes Oyj. Surfaces signals from public Inderes data — does "
-            "not issue buy/sell calls. The user is responsible for their own "
-            "investment decisions."
+            "Not produced or endorsed by Inderes Oyj. Not investment advice "
+            "— the user is responsible for their own decisions."
         )
     html = (
         f'<div class="ia-side-disclaimer">'
@@ -389,6 +396,30 @@ def render_agent_row(sa: dict, lang: str = "fi") -> None:
     st.html(html)
 
 
+def _ensure_python_fenced(text: str) -> str:
+    """Wrap raw Python source in a ```python fence if no fences are present.
+
+    QUANT sometimes returns Python code without any markdown fencing — its
+    first line is a comment (``# Puuilon …``) or an assignment, which the
+    markdown renderer otherwise interprets as headings / paragraphs. Detect
+    that case and add a fence so it renders as a proper code block.
+    """
+    import re
+
+    if not text or "```" in text:
+        return text
+    first = text.lstrip().split("\n", 1)[0]
+    py_lead = re.compile(
+        r"^\s*(#\s|import\s+\w|from\s+\w[\w.]*\s+import\b|"
+        r"def\s+\w+\s*\(|class\s+\w+\s*[:(]|"
+        r"\w+\s*=\s*[\[\{\(\d\'\"]|"  # assignment to literal
+        r"print\(|for\s+\w+\s+in\b)"
+    )
+    if py_lead.match(first):
+        return f"```python\n{text.rstrip()}\n```"
+    return text
+
+
 def _wrap_python_output(text: str) -> str:
     """Wrap Python sandbox stdout (the line right after a ```python block) as a
     fenced ``output`` block so it renders distinctly from both code and prose.
@@ -430,6 +461,7 @@ def render_agent_output(text: str | None) -> None:
     """
     if not text:
         text = "_(empty response)_"
+    text = _ensure_python_fenced(text)
     text = _wrap_python_output(text)
     try:
         from markdown_it import MarkdownIt
@@ -470,6 +502,7 @@ def render_full_narrative(run_dir: Path, lang: str = "fi") -> None:
     try:
         from markdown_it import MarkdownIt
 
+        text = _ensure_python_fenced(text)
         text = _wrap_python_output(text)
         md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
         html_content = md.render(text)
@@ -492,14 +525,14 @@ def render_full_narrative(run_dir: Path, lang: str = "fi") -> None:
 # ---------------------------------------------------------------------------
 
 def render_statusbar(meta: dict | None = None, lang: str = "fi") -> None:
+    """Tech status footer — only system info, no disclaimer text.
+
+    The legal notice is already in the sidebar disclaimer; repeating it
+    here would be the fourth time the user sees the same warning.
+    """
     meta = meta or {}
     errors = meta.get("subagent_errors", 0)
     fbacks = meta.get("fallback_events", 0)
-    not_advice = (
-        "Not investment advice. Surfaces signals, never issues buy/sell calls."
-        if lang == "en"
-        else "Ei sijoitusneuvonta. Pinnistää signaaleja, ei anna osta/myy-suosituksia."
-    )
     err_lbl = "errors" if lang == "en" else "virheet"
     fb_lbl  = "fallbacks" if lang == "en" else "fallbackit"
 
@@ -510,8 +543,7 @@ def render_statusbar(meta: dict | None = None, lang: str = "fi") -> None:
         f'<span>│ {err_lbl}: <span class="ia-warn">{errors}</span></span>'
         f'<span>│ {fb_lbl}: {fbacks}</span>'
         '<span class="ia-spacer"></span>'
-        f'<span>{not_advice}</span>'
-        "</div>"
+        '</div>'
     )
     st.html(html)
 
@@ -541,33 +573,34 @@ def render_personas_panel(lang: str = "fi") -> None:
 
 
 def render_about_panel(lang: str = "fi") -> None:
-    """Render a project description block in the sidebar."""
-    title = "PROJEKTI" if lang == "fi" else "PROJECT"
+    """Architecture summary in the sidebar.
+
+    Focuses on HOW the system works — routing, MCP tools, synthesis. The
+    legal "not Inderes-affiliated" part lives in render_sidebar_disclaimer
+    above, not here.
+    """
+    title = "ARKKITEHTUURI" if lang == "fi" else "ARCHITECTURE"
     if lang == "fi":
         intro = (
-            "Henkilökohtainen tutkimusprojekti. Päätoimittaja-agentti reitittää "
-            "Pohjoismaisia osakkeita koskevan kysymyksen 1–4 erikoistuneelle "
-            "subagentille, joista jokainen ottaa yhteyttä Inderes MCP -palveluun "
-            "omilla työkaluillaan. Synteesi kootaan aina lopuksi yhdeksi vastaukseksi — "
-            "ei koskaan osta- tai myy-suosituksia."
+            "LEAD reitittää kysymyksen 1–4 subagentille, jokainen kutsuu "
+            "Inderes MCP:tä omilla työkaluillaan. LEAD kokoaa vastaukset "
+            "yhdeksi synteesiksi."
         )
         kv = [
             ("STACK", "MAF + Gemini Flash"),
             ("DATA", "Inderes MCP", "amber"),
-            ("OUTPUT", "Signaalit, ei suosituksia"),
+            ("LOG", "narrative.md / ajo"),
             ("STATUS", "● Live", "green"),
         ]
     else:
         intro = (
-            "Personal research project. A lead orchestrator routes a Nordic-equity "
-            "question to 1–4 specialized subagents, each calling the Inderes MCP "
-            "with their own toolset. Outputs are always synthesized into a single "
-            "answer — never buy/sell calls."
+            "LEAD routes the query to 1–4 subagents, each calls the "
+            "Inderes MCP with its own toolset. LEAD synthesises the answers."
         )
         kv = [
             ("STACK", "MAF + Gemini Flash"),
             ("DATA", "Inderes MCP", "amber"),
-            ("OUTPUT", "Signals, not advice"),
+            ("LOG", "narrative.md / run"),
             ("STATUS", "● Live", "green"),
         ]
     rows = ""

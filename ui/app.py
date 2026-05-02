@@ -318,19 +318,25 @@ with st.sidebar:
     render_personas_panel(_lang_side)
 
     # Conversation controls
-    st.markdown('<div class="ia-side-h">CONVERSATION</div>', unsafe_allow_html=True)
-    if st.button("🗑️ Clear chat", use_container_width=True):
+    _conv_h = "KESKUSTELU" if _lang_side == "fi" else "CONVERSATION"
+    _clear_lbl = "🗑️ Tyhjennä keskustelu" if _lang_side == "fi" else "🗑️ Clear chat"
+    st.markdown(f'<div class="ia-side-h">{_conv_h}</div>', unsafe_allow_html=True)
+    if st.button(_clear_lbl, use_container_width=True):
         st.session_state.state = ConversationState()
         st.session_state.history = []
         st.rerun()
 
     # Recent runs
-    st.markdown('<div class="ia-side-h">RECENT RUNS</div>', unsafe_allow_html=True)
-    st.caption(
-        "Each query saves a forensic record (query, routing, per-subagent "
-        "outputs, synthesis, full timeline) to disk. The 8 most recent are "
-        "listed below."
+    _runs_h = "VIIMEISIMMÄT AJOT" if _lang_side == "fi" else "RECENT RUNS"
+    _runs_cap = (
+        "Jokainen ajo tallentaa kysymyksen, reitityksen, subagenttien vastaukset "
+        "ja aikajanan levylle. Kahdeksan viimeisintä alla."
+        if _lang_side == "fi"
+        else "Each run saves the query, routing, subagent outputs, and timeline "
+        "to disk. The eight most recent are listed below."
     )
+    st.markdown(f'<div class="ia-side-h">{_runs_h}</div>', unsafe_allow_html=True)
+    st.caption(_runs_cap)
     if RUNS_ROOT.exists():
         recent = sorted(RUNS_ROOT.iterdir(), reverse=True)[:8]
         for d in recent:
@@ -339,7 +345,7 @@ with st.sidebar:
             label = label[:60] + ("…" if len(label) > 60 else "")
             st.caption(f"`{d.name[:15]}` — {label}")
     else:
-        st.caption("No runs yet.")
+        st.caption("Ei vielä ajoja." if _lang_side == "fi" else "No runs yet.")
 
     # Daily quota progress bar removed from the sidebar — the cap still
     # applies (enforced before each query in `_enforce_daily_cap_or_stop`),
@@ -347,13 +353,22 @@ with st.sidebar:
 
     # Logs path note
     runs_dir_display = str(RUNS_ROOT)
-    storage_note = (
-        "Per-run logs saved to ephemeral container storage — they reset on "
-        "every container restart."
-        if runs_dir_display.startswith("/tmp")
-        else "Per-run logs saved persistently."
-    )
-    st.caption(f"Logs at `{runs_dir_display}`. {storage_note}")
+    if _lang_side == "fi":
+        storage_note = (
+            "Lokit ephemeraalisessa container-storagessa — nollautuvat "
+            "uudelleenkäynnistyksessä."
+            if runs_dir_display.startswith("/tmp")
+            else "Lokit tallennetaan pysyvästi."
+        )
+        st.caption(f"Logit: `{runs_dir_display}`. {storage_note}")
+    else:
+        storage_note = (
+            "Per-run logs saved to ephemeral container storage — they reset on "
+            "every container restart."
+            if runs_dir_display.startswith("/tmp")
+            else "Per-run logs saved persistently."
+        )
+        st.caption(f"Logs at `{runs_dir_display}`. {storage_note}")
 
 
 # ---------------------------------------------------------------------------
