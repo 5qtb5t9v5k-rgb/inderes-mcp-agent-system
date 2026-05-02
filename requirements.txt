@@ -1,21 +1,33 @@
-# Pinned for Streamlit Cloud.
-# Local development should use `uv pip install --pre -e '.[ui]'` instead;
-# this file exists because Streamlit Cloud auto-detects requirements.txt
-# and won't honor pyproject.toml's optional-dependencies.
+# Streamlit Cloud uses uv pip install. Pre-releases must be allowed because
+# agent-framework-gemini is still alpha and was built against beta versions of
+# agent-framework that ship symbols (BaseChatClient etc.) the latest stable
+# 1.2.2 release does not export. Without --pre, uv resolves agent-framework
+# to 1.2.2 stable and import fails:
+#   ImportError: cannot import name 'BaseChatClient' from 'agent_framework'
+--pre
 
-# Core agent stack
-agent-framework>=1.0
-# Pin the alpha explicitly — `pip install -r` in Streamlit Cloud doesn't pass --pre.
-# Bump this version manually when agent-framework-gemini cuts a new release.
+# Core agent stack — pinned to known-compatible betas. Bump these together
+# when a new alpha/beta cycle drops.
+agent-framework==1.0.0b260429
 agent-framework-gemini==1.0.0a260429
+agent-framework-orchestrations==1.0.0b260429
+
+# LLM + protocol
 google-genai>=1.0
+mcp>=1.27.0
+
+# Pydantic + config
 pydantic>=2
 pydantic-settings>=2
+
+# Logging + CLI rendering (used by inderes_agent.cli even when run from Streamlit)
 structlog>=24
 rich>=13
 prompt_toolkit>=3
 python-dotenv>=1
 httpx>=0.27
+
+# Telemetry
 opentelemetry-api>=1.25
 opentelemetry-sdk>=1.25
 
