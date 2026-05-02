@@ -183,10 +183,10 @@ def render_disclaimer(lang: str = "fi") -> None:
     """
     if lang == "fi":
         tag = "MULTI-AGENT RESEARCH"
-        tagline = "Pohjoismaisia osakkeita viiden erikoistuneen agentin kautta."
+        tagline = "Tutki pohjoismaisia osakkeita viiden erikoistuneen agentin kautta."
     else:
         tag = "MULTI-AGENT RESEARCH"
-        tagline = "Nordic equities through five specialised agents."
+        tagline = "Research Nordic equities through five specialised agents."
 
     # Equation — INDERES + MCP + AGENTIT = INSIGHTS — captures what this is
     # at a glance. Operators and the equals sign get colored separately so
@@ -294,6 +294,7 @@ def render_routing_card(routing: dict, lang: str = "fi") -> None:
     co_label = "COMPANY" if lang == "en" else "YHTIÖ"
     dom_label = "DOMAINS" if lang == "en" else "DOMAINIT"
     cmp_label = "COMPARISON" if lang == "en" else "VERTAILU"
+    rea_label = "REASON" if lang == "en" else "PERUSTELU"
     yes = "yes" if lang == "en" else "kyllä"
     no  = "no"  if lang == "en" else "ei"
 
@@ -305,8 +306,11 @@ def render_routing_card(routing: dict, lang: str = "fi") -> None:
         f'<div class="ia-rv">{pills}</div></div>'
         f'<div><div class="ia-rl">{cmp_label}</div>'
         f'<div class="ia-rv">{yes if is_cmp else no}</div></div>'
-        f'<div><div class="ia-rl">REASON</div>'
-        f'<div class="ia-rv" style="font-size:11px;color:var(--ia-dim)">{_esc(reason)}</div></div>'
+        # PERUSTELU gets its own pink-ish accent so it's visually distinct
+        # from the structured fields above — it's free-form prose, the others
+        # are categorical.
+        f'<div><div class="ia-rl reason">{rea_label}</div>'
+        f'<div class="ia-rv reason">{_esc(reason)}</div></div>'
         "</div>"
     )
     st.html(html)
@@ -420,27 +424,61 @@ def _ensure_python_fenced(text: str) -> str:
     return text
 
 
-def _wrap_python_output(text: str) -> str:
-    """Wrap Python sandbox stdout (the line right after a ```python block) as a
-    fenced ``output`` block so it renders distinctly from both code and prose.
+def _looks_like_python_output(s: str) -> bool:
+    """Does this paragraph look like Python sandbox stdout (vs. prose)?
 
-    Detection: a closing ``⁠```⁠`` followed by one or more blank lines and
-    a paragraph whose first line starts with a Python repr marker (``{``, ``[``,
-    ``(``, a digit, or a quote). The paragraph runs until the next blank line.
+    Catches:
+      * Python repr starts: ``{``, ``[``, ``(``, ``'``, ``"``, digit
+      * pandas DataFrame output (alphabetic column names + 2+ aligned
+        whitespace runs on the same line)
+      * Output containing ``NaN`` / ``None`` / ``True`` / ``False`` / ``dtype``
+      * Numeric-heavy text without sentence terminators
+    """
+    import re
+
+    s = s.strip()
+    if not s:
+        return False
+    if s[0] in "{[('\"0123456789":
+        return True
+    # DataFrame-style: column names with 2+ spaces between them
+    if re.search(r"\S {2,}\S", s):
+        return True
+    # Characteristic Python output tokens
+    if re.search(r"\b(NaN|None|True|False|dtype|Name:|object|float64|int64)\b", s):
+        return True
+    # Numeric and not a sentence (no terminal . ! ? :)
+    if re.search(r"\d", s) and not s.rstrip().endswith((".", "!", "?", ":")):
+        return True
+    return False
+
+
+def _wrap_python_output(text: str) -> str:
+    """Wrap Python sandbox stdout (the paragraph right after a ```python block)
+    as a fenced ``output`` block so it renders distinctly from both code and
+    prose.
+
+    Heuristics live in ``_looks_like_python_output`` so we can extend them
+    without touching the regex. Discriminates against actual prose
+    (paragraphs ending in a period, no numbers, etc.) so explanation text
+    after a code block doesn't get mis-styled.
     """
     import re
 
     pat = re.compile(
-        r"(^```\s*$\n)"          # 1: closing fence on its own line
-        r"\n+"                   #    one or more blank lines
-        r"([\{\[\(\d\'\"][^\n]*" # 2: first repr-like line
-        r"(?:\n[^\n]+)*?)"       #    optional further lines (no blanks)
-        r"(?=\n\s*\n|\Z)",       #    stop at blank line or end-of-string
-        re.MULTILINE,
+        r"(^```\s*$\n)"      # 1: closing fence on its own line
+        r"\n+"               #    one or more blank lines
+        r"(.+?)"             # 2: candidate paragraph (greedy-min)
+        r"(?=\n\s*\n|\Z)",   #    stop at blank line or end-of-string
+        re.MULTILINE | re.DOTALL,
     )
 
     def _replace(m: "re.Match[str]") -> str:
-        return f"{m.group(1)}\n```output\n{m.group(2)}\n```"
+        end_fence = m.group(1)
+        candidate = m.group(2)
+        if _looks_like_python_output(candidate):
+            return f"{end_fence}\n```output\n{candidate}\n```"
+        return m.group(0)  # leave prose untouched
 
     return pat.sub(_replace, text)
 
