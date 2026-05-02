@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from inderes_agent.observability.output_parts import extract_parts
+from inderes_agent.observability.output_parts import (
+    _looks_like_python,
+    _strip_dangling_image_refs,
+    extract_parts,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -17,10 +20,6 @@ from inderes_agent.observability.output_parts import extract_parts
 class FakeContent:
     type: str
     text: str | None = None
-    inputs: list = field(default_factory=list)
-    outputs: list = field(default_factory=list)
-    media_type: str | None = None
-    uri: str | None = None
 
 
 @dataclass
@@ -34,62 +33,92 @@ class FakeResponse:
     text: str = ""
 
 
-def _data_uri(media_type: str, payload: bytes) -> str:
-    return f"data:{media_type};base64,{base64.b64encode(payload).decode()}"
+# ---------------------------------------------------------------------------
+# Heuristic detection
+# ---------------------------------------------------------------------------
+
+def test_python_detection_import_lead():
+    assert _looks_like_python("import pandas as pd\nimport numpy as np")
+
+
+def test_python_detection_from_import():
+    assert _looks_like_python("from collections import defaultdict\n\ndefaultdict(list)")
+
+
+def test_python_detection_def():
+    assert _looks_like_python("def hello():\n    print('hi')\n")
+
+
+def test_python_detection_pandas_token_pattern():
+    code = "data = {'Year': [2020]}\ndf = pd.DataFrame(data)\nprint(df)"
+    assert _looks_like_python(code)
+
+
+def test_prose_not_detected_as_python():
+    assert not _looks_like_python("Tässä on Konecranesin liikevaihto vuosittain.")
+
+
+def test_short_string_not_detected():
+    assert not _looks_like_python("Hello!")
+
+
+def test_empty_not_detected():
+    assert not _looks_like_python("")
+    assert not _looks_like_python("   \n  ")
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Image-ref stripping
+# ---------------------------------------------------------------------------
+
+def test_image_refs_stripped():
+    text = "Tässä kuvaaja: ![chart](revenue_comparison.png) Loppu."
+    cleaned = _strip_dangling_image_refs(text)
+    assert "![chart]" not in cleaned
+    assert "Tässä kuvaaja:" in cleaned
+    assert "Loppu." in cleaned
+
+
+def test_no_image_refs_passes_through():
+    text = "Plain text without images."
+    assert _strip_dangling_image_refs(text) == text
+
+
+# ---------------------------------------------------------------------------
+# extract_parts integration
 # ---------------------------------------------------------------------------
 
 def test_text_only(tmp_path):
     response = FakeResponse(messages=[FakeMessage(contents=[
-        FakeContent(type="text", text="Hello world."),
+        FakeContent(type="text", text="Sammon P/E on 12,53."),
     ])])
     md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert md == "Hello world."
+    assert md == "Sammon P/E on 12,53."
     assert images == []
 
 
-def test_code_block_fenced(tmp_path):
-    code = "x = 1\nprint(x)"
+def test_python_text_wrapped_as_code_block(tmp_path):
+    code = "import pandas as pd\ndata = {'a': [1, 2]}\nprint(data)"
     response = FakeResponse(messages=[FakeMessage(contents=[
-        FakeContent(type="text", text="Computing:"),
-        FakeContent(
-            type="code_interpreter_tool_call",
-            inputs=[FakeContent(type="text", text=code)],
-        ),
-        FakeContent(
-            type="code_interpreter_tool_result",
-            outputs=[FakeContent(type="text", text="1\n")],
-        ),
-        FakeContent(type="text", text="Done."),
+        FakeContent(type="text", text=code),
     ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert "```python\nx = 1\nprint(x)\n```" in md
-    assert "```\n1\n```" in md
-    assert images == []
+    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    assert md.startswith("```python\n")
+    assert md.rstrip().endswith("```")
+    assert "import pandas" in md
 
 
-def test_image_extraction(tmp_path):
-    fake_png = b"\x89PNG\r\n\x1a\nfakepayload"
+def test_mixed_prose_and_code(tmp_path):
+    """Multiple text chunks: prose then code then prose."""
     response = FakeResponse(messages=[FakeMessage(contents=[
-        FakeContent(
-            type="code_interpreter_tool_result",
-            outputs=[
-                FakeContent(type="text", text="plot saved"),
-                FakeContent(
-                    type="data",
-                    media_type="image/png",
-                    uri=_data_uri("image/png", fake_png),
-                ),
-            ],
-        ),
+        FakeContent(type="text", text="Lasken CAGR:n:"),
+        FakeContent(type="text", text="import math\ncagr = (b/a) ** (1/n) - 1\nprint(cagr)"),
+        FakeContent(type="text", text="Tulos: 7,4 %."),
     ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert images == ["images/quant-1.png"]
-    assert "![chart](images/quant-1.png)" in md
-    assert (tmp_path / "images" / "quant-1.png").read_bytes() == fake_png
+    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    assert "Lasken CAGR:n:" in md
+    assert "```python\nimport math" in md
+    assert "Tulos: 7,4 %." in md
 
 
 def test_function_calls_skipped(tmp_path):
@@ -104,26 +133,17 @@ def test_function_calls_skipped(tmp_path):
     assert "should not appear" not in md
 
 
-def test_label_safe_for_filenames(tmp_path):
-    """Agent labels with slashes / spaces become safe filename fragments."""
-    fake_png = b"\x89PNG"
+def test_dangling_image_ref_stripped(tmp_path):
     response = FakeResponse(messages=[FakeMessage(contents=[
-        FakeContent(
-            type="code_interpreter_tool_result",
-            outputs=[FakeContent(type="data", media_type="image/png", uri=_data_uri("image/png", fake_png))],
-        ),
+        FakeContent(type="text", text="Tässä: ![chart](revenue.png) and ![](other.png)"),
     ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant — Sampo / Inc")
-    # In the filename portion (after the leading "images/"), no emdash / space allowed.
-    # Forward-slash will appear because of the "images/" prefix — that's intentional.
-    assert images, "image should have been extracted"
-    filename = images[0].rsplit("/", 1)[1]
-    for ch in "— ":
-        assert ch not in filename, f"unsafe char {ch!r} in {filename!r}"
+    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    assert images == []
+    assert "![chart]" not in md
+    assert "![" not in md
 
 
 def test_fallback_when_no_messages(tmp_path):
-    """If response shape is unexpected, fall back to .text."""
     @dataclass
     class WeirdResponse:
         text: str = "fallback content"
@@ -134,7 +154,6 @@ def test_fallback_when_no_messages(tmp_path):
 
 
 def test_empty_response_returns_empty_text(tmp_path):
-    """No content + no .text → empty string, not crash."""
     @dataclass
     class EmptyResponse:
         messages: list = field(default_factory=list)
@@ -142,90 +161,3 @@ def test_empty_response_returns_empty_text(tmp_path):
 
     md, _ = extract_parts(EmptyResponse(), run_dir=tmp_path, agent_label="quant")
     assert md == ""
-
-
-# ---------------------------------------------------------------------------
-# raw_representation-based classification (the agent_framework_gemini path)
-# ---------------------------------------------------------------------------
-
-@dataclass
-class FakeGeminiPart:
-    """Mimics google.genai's Part: only one of these fields is set per part."""
-
-    text: str | None = None
-    executable_code: object | None = None
-    code_execution_result: object | None = None
-
-
-@dataclass
-class _ECode:
-    code: str = ""
-
-
-@dataclass
-class _ERes:
-    output: str = ""
-
-
-def _text_part(text: str, *, raw: FakeGeminiPart | None = None) -> FakeContent:
-    c = FakeContent(type="text", text=text)
-    if raw is not None:
-        # Simulate raw_representation attribute that agent_framework_gemini sets.
-        object.__setattr__(c, "raw_representation", raw)
-    return c
-
-
-def test_executable_code_wrapped_as_python_block(tmp_path):
-    code = "x = 1\nprint(x)"
-    raw = FakeGeminiPart(executable_code=_ECode(code=code))
-    response = FakeResponse(messages=[FakeMessage(contents=[_text_part(code, raw=raw)])])
-    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert md.startswith("```python\n")
-    assert md.rstrip().endswith("```")
-    assert "x = 1" in md
-
-
-def test_code_execution_result_wrapped_as_plain_block(tmp_path):
-    output = "Result: 42"
-    raw = FakeGeminiPart(code_execution_result=_ERes(output=output))
-    response = FakeResponse(messages=[FakeMessage(contents=[_text_part(output, raw=raw)])])
-    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert md.startswith("```\n")
-    assert "Result: 42" in md
-
-
-def test_plain_text_passes_through(tmp_path):
-    response = FakeResponse(messages=[FakeMessage(contents=[
-        _text_part("Hello, world.", raw=FakeGeminiPart(text="Hello, world.")),
-    ])])
-    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert md == "Hello, world."
-    assert "```" not in md
-
-
-def test_dangling_image_ref_stripped(tmp_path):
-    """Agent-written ![](filename.png) where filename.png isn't an extracted image."""
-    response = FakeResponse(messages=[FakeMessage(contents=[
-        _text_part("Tässä kuvaaja: ![chart](revenue_comparison.png) Loppu."),
-    ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert images == []
-    assert "![chart]" not in md
-    assert "Tässä kuvaaja:" in md
-    assert "Loppu." in md
-
-
-def test_real_image_ref_preserved(tmp_path):
-    """A ![](images/quant-1.png) ref pointing to an actually-saved image is kept."""
-    fake_png = b"\x89PNG\r\n"
-    response = FakeResponse(messages=[FakeMessage(contents=[
-        _text_part("Look:"),
-        FakeContent(
-            type="data",
-            media_type="image/png",
-            uri=_data_uri("image/png", fake_png),
-        ),
-    ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
-    assert images == ["images/quant-1.png"]
-    assert "![chart](images/quant-1.png)" in md

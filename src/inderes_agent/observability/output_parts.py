@@ -6,104 +6,78 @@
   - `code_execution_result.output` (the stdout)            → text
   - `inline_data` (matplotlib figures etc.)                → DROPPED entirely
 
-That collapse is the reason `result.text` produces an unstructured blob with
-code, output and prose merged together. To recover structure we inspect each
-Content's `raw_representation` (the original Gemini `Part`) and re-wrap:
-  - executable_code  → ```python ... ```
-  - execution result → ``` ... ```
-  - actual text      → rendered as-is
+Each text Content carries a `raw_representation` that *should* let us tell
+these apart, but in practice the field is sometimes stripped or unavailable
+through the agent loop. So we use a content-based heuristic: text that looks
+like Python source (starts with `import`/`from`/`def`/`class` or contains
+distinctive Python tokens like `print(`, `plt.`, `pd.`) gets wrapped in
+` ```python ``` `. Anything else passes through as-is.
 
-Images cannot currently be recovered: `agent_framework_gemini` doesn't surface
-`inline_data` parts at all. Sandboxed `plt.show()` figures are lost upstream.
-We compensate by stripping any `![alt](filename)` markdown that the agent
-wrote referencing files it `savefig()`'d into the sandbox FS — those would
-render as broken icons in Streamlit. If we ever capture inline_data properly,
-this stripping can be relaxed.
+We also strip stray `![alt](filename)` markdown that the agent sometimes
+writes referencing files it `savefig()`'d into the sandbox FS — those would
+render as broken icons in the UI. Inline_data (real chart capture) is not
+supported by `agent_framework_gemini`, so charts are not extracted in this
+build; that's documented as a known limitation.
 """
 
 from __future__ import annotations
 
-import base64
 import re
 from pathlib import Path
 from typing import Any
 
+# Heuristic patterns for detecting Python source in a text chunk.
+_PY_LEAD_RE = re.compile(r"^\s*(import\s+\w+|from\s+\w[\w.]*\s+import\b|def\s+\w+\s*\(|class\s+\w+\s*[:(])")
+_PY_TOKEN_RES = [
+    re.compile(r"\bplt\.[a-zA-Z_]+\("),
+    re.compile(r"\bpd\.(DataFrame|read_[a-zA-Z_]+|Series)\b"),
+    re.compile(r"\bnp\.[a-zA-Z_]+\("),
+    re.compile(r"^\s*print\(", re.MULTILINE),
+    re.compile(r"^\s*\w+\s*=\s*\{", re.MULTILINE),  # dict assignment
+    re.compile(r"^\s*for\s+\w+\s+in\s+", re.MULTILINE),
+    re.compile(r"^\s*if\s+\w+", re.MULTILINE),
+]
 
-_DATA_URI_RE = re.compile(r"^data:(?P<media>[^;,]+)(;base64)?,(?P<payload>.*)$", re.DOTALL)
 _IMG_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)\s*")
 
 
-def _extension_for(media_type: str) -> str:
-    return {
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/jpg": "jpg",
-        "image/svg+xml": "svg",
-        "image/webp": "webp",
-    }.get(media_type, media_type.split("/")[-1])
-
-
-def _save_image(uri: str, target: Path) -> bool:
-    m = _DATA_URI_RE.match(uri or "")
-    if not m:
+def _looks_like_python(text: str) -> bool:
+    """Heuristic — does this text chunk look like Python source code?"""
+    if not text or not text.strip():
         return False
-    payload = m.group("payload")
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(base64.b64decode(payload))
+    if _PY_LEAD_RE.match(text.lstrip()):
         return True
-    except Exception:
-        return False
+    matches = sum(1 for r in _PY_TOKEN_RES if r.search(text))
+    return matches >= 2
 
 
-def _classify_text_content(content: Any) -> str:
-    """Inspect raw_representation to classify a 'text' Content.
+def _strip_dangling_image_refs(text: str) -> str:
+    """Remove `![alt](path)` references from text — image capture isn't supported.
 
-    Returns one of: 'code', 'code_output', 'text'.
+    Inline_data parts are dropped by agent_framework_gemini, so any image
+    references the agent writes point to sandbox-only files. Strip them so
+    the UI doesn't show broken-icon thumbnails.
     """
-    raw = getattr(content, "raw_representation", None)
-    if raw is None:
-        return "text"
-    # Gemini Part objects have these optional fields.
-    if getattr(raw, "executable_code", None) is not None:
-        return "code"
-    if getattr(raw, "code_execution_result", None) is not None:
-        return "code_output"
-    return "text"
-
-
-def _strip_dangling_image_refs(text: str, kept_images: list[str]) -> str:
-    """Remove `![alt](path)` references that don't point to a known image file.
-
-    Agents using `plt.savefig('foo.png')` then writing `![chart](foo.png)` create
-    references to files that exist only inside the sandbox. Those would render
-    as broken icons. We keep references whose path appears in `kept_images`
-    (the images we actually extracted and saved).
-    """
-    kept_set = {str(p) for p in kept_images}
-
-    def _keep_or_strip(m: re.Match[str]) -> str:
-        path = m.group(1).strip()
-        return m.group(0) if path in kept_set else ""
-
-    return _IMG_REF_RE.sub(_keep_or_strip, text)
+    return _IMG_REF_RE.sub("", text)
 
 
 def extract_parts(
     response: Any,
     *,
     run_dir: Path,
-    agent_label: str,
+    agent_label: str,  # kept for API compat; unused now that images aren't extracted
 ) -> tuple[str, list[str]]:
-    """Walk the response's content parts and return (markdown, image_paths)."""
+    """Walk the response's content parts and return (markdown, image_paths).
+
+    Returns a markdown string with Python source wrapped in ```python``` blocks,
+    and an empty image_paths list (image extraction is not supported in this
+    build — see module docstring).
+    """
     messages = getattr(response, "messages", None)
     if messages is None:
-        return _strip_dangling_image_refs(_fallback_text(response), []), []
+        return _strip_dangling_image_refs(_fallback_text(response)), []
 
     rendered: list[str] = []
-    image_paths: list[str] = []
-    image_index = 0
-    safe_label = re.sub(r"[^A-Za-z0-9_.-]", "-", agent_label).strip("-") or "agent"
 
     for msg in messages:
         for content in (getattr(msg, "contents", None) or []):
@@ -113,78 +87,20 @@ def extract_parts(
                 text = getattr(content, "text", None) or ""
                 if not text.strip():
                     continue
-                kind = _classify_text_content(content)
-                if kind == "code":
+                if _looks_like_python(text):
                     rendered.append(f"```python\n{text.rstrip()}\n```")
-                elif kind == "code_output":
-                    rendered.append(f"```\n{text.rstrip()}\n```")
                 else:
                     rendered.append(text)
 
-            elif ctype == "data":
-                # Future: when agent_framework_gemini supports inline_data,
-                # images will arrive here. For now this branch may never fire
-                # with the current connector, but kept for forward compat.
-                media = getattr(content, "media_type", "") or ""
-                uri = getattr(content, "uri", "") or ""
-                if media.startswith("image/"):
-                    image_index += 1
-                    ext = _extension_for(media)
-                    rel = f"images/{safe_label}-{image_index}.{ext}"
-                    target = run_dir / rel
-                    if _save_image(uri, target):
-                        image_paths.append(rel)
-                        rendered.append(f"![chart]({rel})")
-
-            elif ctype == "code_interpreter_tool_call":
-                code = _join_text_inputs(getattr(content, "inputs", None) or [])
-                if code.strip():
-                    rendered.append(f"```python\n{code.rstrip()}\n```")
-
-            elif ctype == "code_interpreter_tool_result":
-                outputs = getattr(content, "outputs", None) or []
-                stdout_chunks: list[str] = []
-                for out in outputs:
-                    out_type = getattr(out, "type", None)
-                    if out_type == "text":
-                        t = getattr(out, "text", None)
-                        if t:
-                            stdout_chunks.append(t)
-                    elif out_type == "data":
-                        media = getattr(out, "media_type", "") or ""
-                        uri = getattr(out, "uri", "") or ""
-                        if media.startswith("image/"):
-                            image_index += 1
-                            ext = _extension_for(media)
-                            rel = f"images/{safe_label}-{image_index}.{ext}"
-                            target = run_dir / rel
-                            if _save_image(uri, target):
-                                image_paths.append(rel)
-                                rendered.append(f"![chart]({rel})")
-                if stdout_chunks:
-                    combined = "".join(stdout_chunks).strip()
-                    if combined:
-                        rendered.append(f"```\n{combined}\n```")
-
-            # function_call / function_result / mcp_server_* / text_reasoning /
-            # error / usage parts intentionally skipped.
+            # function_call / function_result and any non-text parts are
+            # intentionally skipped — already in console.log; not user-facing.
 
     md = "\n\n".join(s for s in rendered if s).strip()
     if not md:
         md = _fallback_text(response)
 
-    md = _strip_dangling_image_refs(md, image_paths)
-    return md, image_paths
-
-
-def _join_text_inputs(inputs: list[Any]) -> str:
-    chunks = []
-    for inp in inputs:
-        if getattr(inp, "type", None) == "text":
-            t = getattr(inp, "text", None)
-            if t:
-                chunks.append(t)
-    return "".join(chunks)
+    md = _strip_dangling_image_refs(md)
+    return md, []
 
 
 def _fallback_text(response: Any) -> str:

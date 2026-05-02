@@ -88,59 +88,15 @@ if "history" not in st.session_state:
 # Trace rendering helper
 # ---------------------------------------------------------------------------
 
-_IMG_RE = __import__("re").compile(r"!\[[^\]]*\]\(([^)]+)\)\s*")
-
-
-def _render_markdown_with_images(text: str, run_dir: Path, fallback_paths: list[str] | None = None) -> None:
-    """Render markdown that may contain `![alt](images/foo.png)` references.
-
-    Streamlit's `st.markdown` doesn't resolve relative paths from the run
-    directory. So we strip the image markdown, render the cleaned text, and
-    then `st.image()` each referenced (or known) image explicitly.
-
-    Strategy:
-    1. Find every `![alt](path)` reference and remember its path.
-    2. Strip those references from the text.
-    3. Render the cleaned text via `st.markdown`.
-    4. Render each unique image path via `st.image`. If a known image
-       (from `fallback_paths`) wasn't referenced in the text, include it too,
-       so charts produced by subagents still appear even when the lead
-       forgot to mention them.
-    """
-    text = text or ""
-    referenced = _IMG_RE.findall(text)
-    cleaned = _IMG_RE.sub("", text).strip()
-
-    if cleaned:
-        st.markdown(cleaned)
-
-    rendered: set[str] = set()
-    for rel in referenced + (fallback_paths or []):
-        if rel in rendered:
-            continue
-        rendered.add(rel)
-        img_path = run_dir / rel if not Path(rel).is_absolute() else Path(rel)
-        if img_path.exists():
-            st.image(str(img_path), use_container_width=True)
-
-
 def _render_subagent_text(run_dir: Path, sa: dict) -> None:
-    """Render a subagent's text + any of its extracted images."""
+    """Render a subagent's text. Image extraction is not supported in this
+    build (`agent_framework_gemini` doesn't surface inline_data parts), so
+    we just render the markdown directly. `extract_parts` has already
+    stripped any dangling `![alt](...)` references that would render as
+    broken icons.
+    """
     text = sa.get("text") or "_(empty response)_"
-    image_paths = sa.get("image_paths") or []
-    _render_markdown_with_images(text, run_dir, fallback_paths=image_paths)
-
-
-def _all_images_in_run(run_dir: Path) -> list[str]:
-    """Return all images saved by any subagent in this run, as relative paths."""
-    out: list[str] = []
-    for sub_path in sorted(run_dir.glob("subagent-*.json")):
-        try:
-            sa = json.loads(sub_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        out.extend(sa.get("image_paths") or [])
-    return out
+    st.markdown(text)
 
 
 def render_trace_expander(run_dir: Path) -> None:
@@ -225,16 +181,9 @@ with st.sidebar:
 
 for msg in st.session_state.history:
     with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
         if msg["role"] == "assistant" and msg.get("run_dir"):
-            run_dir_path = Path(msg["run_dir"])
-            _render_markdown_with_images(
-                msg["content"],
-                run_dir_path,
-                fallback_paths=_all_images_in_run(run_dir_path),
-            )
-            render_trace_expander(run_dir_path)
-        else:
-            st.markdown(msg["content"])
+            render_trace_expander(Path(msg["run_dir"]))
 
 
 # ---------------------------------------------------------------------------
@@ -310,11 +259,7 @@ if prompt:
                 run_pipeline(prompt, st.session_state.state, status)
             )
             status.update(label="Valmis", state="complete", expanded=False)
-            _render_markdown_with_images(
-                answer,
-                run_dir,
-                fallback_paths=_all_images_in_run(run_dir),
-            )
+            st.markdown(answer)
             render_trace_expander(run_dir)
             st.session_state.history.append(
                 {"role": "assistant", "content": answer, "run_dir": str(run_dir)}
