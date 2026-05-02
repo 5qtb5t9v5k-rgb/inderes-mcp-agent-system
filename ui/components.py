@@ -129,6 +129,35 @@ def inject_theme() -> None:
         f"<style>{font_import}{css}</style>",
         unsafe_allow_html=True,
     )
+    # JS belt-and-suspenders: capture the scroll position before any <details>
+    # toggles and restore it right after. Chrome's implicit "scroll the
+    # opening element into view" behaviour can't be killed by CSS alone,
+    # but freezing window.scrollY across the toggle event hides the jump.
+    st.markdown(
+        """
+        <script>
+        (function() {
+          if (window.__inderes_scroll_lock_installed) return;
+          window.__inderes_scroll_lock_installed = true;
+          const root = window.parent || window;
+          root.document.addEventListener('click', (e) => {
+            const summary = e.target.closest('summary');
+            if (!summary) return;
+            const before = root.scrollY;
+            // Restore on the next two animation frames — Chrome's auto-scroll
+            // happens after the toggle event commits.
+            requestAnimationFrame(() => {
+              root.scrollTo({ top: before, behavior: 'instant' });
+              requestAnimationFrame(() => {
+                root.scrollTo({ top: before, behavior: 'instant' });
+              });
+            });
+          }, true);
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------

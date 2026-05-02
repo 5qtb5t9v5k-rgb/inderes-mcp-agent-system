@@ -25,13 +25,29 @@ html, body, .stApp {
   background: var(--ia-bg) !important;
   color: var(--ia-text) !important;
   font-family: var(--ia-mono);
-  /* Disable the browser's scroll-anchoring heuristic. When an expander opens
-     mid-page, the browser otherwise tries to keep the visual position of
-     elements below the click constant — which means it scrolls *down* to
-     compensate for the expander pushing those elements lower. The user reads
-     top-to-bottom, so we want the click point to stay where it is and the
-     new content to push the rest down naturally. */
-  overflow-anchor: none;
+  /* Disable browser scroll-anchoring + smooth-scroll. Without this, opening
+     an expander mid-page makes Chrome auto-scroll to compensate for layout
+     shift, and the smooth-scroll animation makes it feel like the page jumps
+     to the bottom on every interaction. */
+  scroll-behavior: auto !important;
+}
+/* overflow-anchor needs to be on every element to actually disable Chrome's
+   anchor heuristic — setting it on body alone leaves child containers
+   anchoring on their own. */
+* { overflow-anchor: none !important; }
+/* Streamlit expanders use <details> which Chrome auto-focuses + scrolls into
+   view on open. Pin scroll-margin to 0 so the implicit scrollIntoView is a
+   no-op. */
+[data-testid="stExpander"],
+[data-testid="stExpander"] details,
+[data-testid="stExpander"] summary {
+  scroll-margin: 0 !important;
+  scroll-margin-block: 0 !important;
+}
+/* Remove the focus outline + tabindex side-effect that triggers scroll. */
+[data-testid="stExpander"] summary:focus,
+[data-testid="stExpander"] summary:focus-visible {
+  outline: none !important;
 }
 .stApp, .stApp * { font-family: var(--ia-mono); }
 .stApp { background: var(--ia-bg) !important; }
