@@ -105,10 +105,14 @@ INDERES_OAUTH_TOKENS_JSON = """
 }
 """
 
-# Path C: gate access with a shared password
+# Path C: gate access with a shared password.
+# Optional — if you don't set APP_PASSWORD, the app is open to anyone with
+# the URL. Skip the password if you've set a Gemini budget cap and don't
+# have auto-recharge enabled in Google AI Studio (worst case is bounded
+# by what you've prepaid).
 APP_PASSWORD = "<a strong 12+ character password>"
 
-# Limit damage if the password leaks
+# Optional cap to limit damage if password leaks
 DAILY_QUERY_CAP = "50"
 
 # Cloud filesystem is ephemeral. Use /tmp for caches.
