@@ -88,28 +88,59 @@ if "history" not in st.session_state:
 # Trace rendering helper
 # ---------------------------------------------------------------------------
 
-def _render_subagent_text(run_dir: Path, sa: dict) -> None:
-    """Render a subagent's text plus any extracted images.
+_IMG_RE = __import__("re").compile(r"!\[[^\]]*\]\(([^)]+)\)\s*")
 
-    The `text` field is markdown that may contain `![chart](images/foo.png)`
-    references — Streamlit's `st.markdown` won't resolve relative paths from
-    the run dir, so we render the markdown without images and then explicitly
-    `st.image()` each saved image.
+
+def _render_markdown_with_images(text: str, run_dir: Path, fallback_paths: list[str] | None = None) -> None:
+    """Render markdown that may contain `![alt](images/foo.png)` references.
+
+    Streamlit's `st.markdown` doesn't resolve relative paths from the run
+    directory. So we strip the image markdown, render the cleaned text, and
+    then `st.image()` each referenced (or known) image explicitly.
+
+    Strategy:
+    1. Find every `![alt](path)` reference and remember its path.
+    2. Strip those references from the text.
+    3. Render the cleaned text via `st.markdown`.
+    4. Render each unique image path via `st.image`. If a known image
+       (from `fallback_paths`) wasn't referenced in the text, include it too,
+       so charts produced by subagents still appear even when the lead
+       forgot to mention them.
     """
-    import re
+    text = text or ""
+    referenced = _IMG_RE.findall(text)
+    cleaned = _IMG_RE.sub("", text).strip()
 
-    text = sa.get("text") or "_(empty response)_"
-    image_paths = sa.get("image_paths") or []
-
-    # Strip image markdown so it doesn't render as broken links.
-    cleaned = re.sub(r"!\[[^\]]*\]\([^)]+\)\s*", "", text).strip()
     if cleaned:
         st.markdown(cleaned)
 
-    for rel in image_paths:
-        img_path = run_dir / rel
+    rendered: set[str] = set()
+    for rel in referenced + (fallback_paths or []):
+        if rel in rendered:
+            continue
+        rendered.add(rel)
+        img_path = run_dir / rel if not Path(rel).is_absolute() else Path(rel)
         if img_path.exists():
             st.image(str(img_path), use_container_width=True)
+
+
+def _render_subagent_text(run_dir: Path, sa: dict) -> None:
+    """Render a subagent's text + any of its extracted images."""
+    text = sa.get("text") or "_(empty response)_"
+    image_paths = sa.get("image_paths") or []
+    _render_markdown_with_images(text, run_dir, fallback_paths=image_paths)
+
+
+def _all_images_in_run(run_dir: Path) -> list[str]:
+    """Return all images saved by any subagent in this run, as relative paths."""
+    out: list[str] = []
+    for sub_path in sorted(run_dir.glob("subagent-*.json")):
+        try:
+            sa = json.loads(sub_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        out.extend(sa.get("image_paths") or [])
+    return out
 
 
 def render_trace_expander(run_dir: Path) -> None:
@@ -194,9 +225,16 @@ with st.sidebar:
 
 for msg in st.session_state.history:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg.get("run_dir"):
-            render_trace_expander(Path(msg["run_dir"]))
+        if msg["role"] == "assistant" and msg.get("run_dir"):
+            run_dir_path = Path(msg["run_dir"])
+            _render_markdown_with_images(
+                msg["content"],
+                run_dir_path,
+                fallback_paths=_all_images_in_run(run_dir_path),
+            )
+            render_trace_expander(run_dir_path)
+        else:
+            st.markdown(msg["content"])
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +310,11 @@ if prompt:
                 run_pipeline(prompt, st.session_state.state, status)
             )
             status.update(label="Valmis", state="complete", expanded=False)
-            st.markdown(answer)
+            _render_markdown_with_images(
+                answer,
+                run_dir,
+                fallback_paths=_all_images_in_run(run_dir),
+            )
             render_trace_expander(run_dir)
             st.session_state.history.append(
                 {"role": "assistant", "content": answer, "run_dir": str(run_dir)}
