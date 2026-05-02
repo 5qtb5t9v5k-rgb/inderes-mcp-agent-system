@@ -333,11 +333,9 @@ with st.sidebar:
     else:
         st.caption("No runs yet.")
 
-    cap = _daily_cap()
-    if cap > 0:
-        used = _query_count_today()
-        st.markdown('<div class="ia-side-h">DAILY QUOTA</div>', unsafe_allow_html=True)
-        st.progress(min(used / cap, 1.0), text=f"{used} / {cap} queries today")
+    # Daily quota progress bar removed from the sidebar — the cap still
+    # applies (enforced before each query in `_enforce_daily_cap_or_stop`),
+    # we just don't surface the count in the chrome anymore.
 
     # Logs path note
     runs_dir_display = str(RUNS_ROOT)

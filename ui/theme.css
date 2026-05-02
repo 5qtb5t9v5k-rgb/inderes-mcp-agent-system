@@ -21,12 +21,27 @@
 }
 
 /* ---- global Streamlit overrides ---- */
-html, body, [class*="css"], .stApp {
+html, body, .stApp {
   background: var(--ia-bg) !important;
   color: var(--ia-text) !important;
-  font-family: var(--ia-mono) !important;
+  font-family: var(--ia-mono);
 }
+.stApp, .stApp * { font-family: var(--ia-mono); }
 .stApp { background: var(--ia-bg) !important; }
+
+/* DON'T override the Material Icons / Symbols font — Streamlit's chrome
+   (sidebar collapse arrow, expander chevrons, etc.) uses ligature icons
+   that render as garbled text ("keyboard_double_arrow_left") if the icon
+   font is replaced by our mono font. */
+[class*="material-symbols"],
+[class*="material-icons"],
+.material-icons,
+.material-icons-outlined,
+.material-symbols-outlined,
+[data-testid*="Icon"] svg,
+[data-testid*="icon"] svg {
+  font-family: "Material Symbols Outlined", "Material Icons", sans-serif !important;
+}
 section[data-testid="stSidebar"] {
   background: var(--ia-panel) !important;
   border-right: 1px solid var(--ia-border) !important;
@@ -184,18 +199,75 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-tape-item .ia-dn { color: var(--ia-red); }
 @keyframes ia-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
-/* DISCLAIMER overlay */
-.ia-disclaimer {
+/* HERO — top intro panel: short description + agent roster + GitHub CTA.
+   Replaces the old big-orange disclaimer. The disclaimer line lives at the
+   bottom of this panel as fine print. */
+.ia-hero {
   background: var(--ia-panel);
-  border: 1px solid var(--ia-orange);
-  border-left: 2px solid var(--ia-orange);
-  padding: 12px 16px;
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-amber);
+  padding: 14px 18px;
   margin: 0 0 14px 0;
   font-size: 12px;
   color: var(--ia-text);
-  line-height: 1.6;
+  line-height: 1.55;
 }
-.ia-disclaimer .ia-dh { color: var(--ia-orange); font-weight: 700; letter-spacing: 0.14em; font-size: 10px; margin-bottom: 4px; }
+.ia-hero .ia-hero-tag {
+  color: var(--ia-amber);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ia-hero .ia-hero-text {
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--ia-text);
+}
+.ia-hero .ia-hero-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+.ia-hero .ia-hero-agents .ag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.ia-hero .ia-hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px dotted var(--ia-border);
+  padding-top: 8px;
+}
+.ia-hero .ia-hero-cta a {
+  color: var(--ia-amber);
+  text-decoration: none;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  border: 1px solid var(--ia-amber);
+  padding: 4px 10px;
+  transition: background 0.15s ease;
+}
+.ia-hero .ia-hero-cta a:hover {
+  background: var(--ia-amber);
+  color: #1a1300;
+}
+.ia-hero .ia-hero-fine {
+  color: var(--ia-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  flex: 1;
+  min-width: 200px;
+}
 
 /* ROUTING CARD */
 .ia-routing {

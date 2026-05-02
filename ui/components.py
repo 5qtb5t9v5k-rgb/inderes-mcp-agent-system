@@ -166,22 +166,52 @@ def render_ticker() -> None:
 # Disclaimer + idle hero
 # ---------------------------------------------------------------------------
 
+GITHUB_URL = "https://github.com/5qtb5t9v5k-rgb/inderes-mcp-agent-system"
+
+
 def render_disclaimer(lang: str = "fi") -> None:
+    """Hero panel: short description + agent roster + GitHub CTA.
+
+    Replaces the old big-orange disclaimer. The not-affiliated-with-Inderes
+    line lives as fine print at the bottom so the box is more inviting and
+    less alarmist.
+    """
     if lang == "fi":
-        head = "HUOM"
-        body = (
-            "Henkilökohtainen tutkimusprojekti, ei Inderes Oyj:n tuottama tai hyväksymä. "
-            "Pinnistää signaaleja Inderes-datasta — ei anna osta- tai myy-suosituksia. "
-            "Käyttäjä päättää itse."
+        tag = "MULTI-AGENT RESEARCH"
+        text = (
+            "Viisi agenttia työstää jokaisen kysymyksen yhdessä — yksi reitittäjä ja "
+            "neljä erikoistunutta. Kysy Pohjoismaisista osakkeista; saat signaaleja, "
+            "et osta- tai myy-suosituksia."
         )
+        cta = "LISÄTIEDOT GITHUBISSA →"
+        fine = "Henkilökohtainen tutkimusprojekti, ei Inderes Oyj:n tuottama."
     else:
-        head = "NOTE"
-        body = (
-            "Personal research project, not affiliated with or endorsed by Inderes Oyj. "
-            "Surfaces signals from Inderes data — does not issue buy/sell calls. "
-            "The user decides."
+        tag = "MULTI-AGENT RESEARCH"
+        text = (
+            "Five agents work each query together — one router and four "
+            "specialists. Ask about Nordic equities; get signals, never buy/sell calls."
         )
-    html = f'<div class="ia-disclaimer"><div class="ia-dh">{head}</div>{body}</div>'
+        cta = "MORE INFO ON GITHUB →"
+        fine = "Personal research project, not affiliated with Inderes Oyj."
+
+    agents_html = ""
+    for code, p in PERSONAS.items():
+        agents_html += (
+            f'<span class="ag" style="color:{p["color"]}">'
+            f'{p["glyph"]} {code}</span>'
+        )
+
+    html = (
+        '<div class="ia-hero">'
+        f'<div class="ia-hero-tag">{tag}</div>'
+        f'<div class="ia-hero-text">{text}</div>'
+        f'<div class="ia-hero-agents">{agents_html}</div>'
+        '<div class="ia-hero-cta">'
+        f'<span class="ia-hero-fine">{fine}</span>'
+        f'<a href="{GITHUB_URL}" target="_blank" rel="noopener">{cta}</a>'
+        '</div>'
+        '</div>'
+    )
     st.html(html)
 
 
