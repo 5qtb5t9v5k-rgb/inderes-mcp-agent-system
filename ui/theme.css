@@ -328,6 +328,88 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   line-height: 1.7;
 }
 
+/* INDERES RECOMMENDATION BADGE — sits above LEAD synthesis when QUANT
+   surfaced a recommendation. Color (green/amber/red) tracks the actual
+   call so the user sees the headline at a glance. */
+.ia-rec {
+  background: var(--ia-panel);
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-amber);
+  padding: 10px 16px;
+  margin: 0 0 14px 0;
+  font-family: var(--ia-mono);
+}
+.ia-rec .ia-rec-label {
+  color: var(--ia-faint);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ia-rec .ia-rec-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px;
+  font-size: 14px;
+}
+.ia-rec .ia-rec-mark {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.ia-rec .ia-rec-tgt {
+  color: var(--ia-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.ia-rec .ia-rec-risk,
+.ia-rec .ia-rec-eps {
+  color: var(--ia-dim);
+  font-size: 11px;
+}
+
+/* FOLLOWUP CHIPS — clickable suggestion buttons under each LEAD answer.
+   Tertiary in visual hierarchy: small, outlined, dim text. The amber
+   primaryColor in .streamlit/config.toml normally floods every button,
+   so we override that within the followup-label-following sibling block
+   to render an outlined-ghost style. */
+.ia-followup-label {
+  color: var(--ia-amber);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  margin: 18px 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px dotted var(--ia-border);
+}
+/* Style buttons that follow our followup-label. Streamlit nests the
+   button inside [data-testid="stButton"]; we target everything inside
+   it. The followup-label and its button cluster live in the same
+   chat-message container so the sibling combinator finds them. */
+.ia-followup-label ~ div [data-testid="stButton"] > button,
+.ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button {
+  background: transparent !important;
+  color: var(--ia-dim) !important;
+  border: 1px solid var(--ia-border) !important;
+  border-radius: 0 !important;
+  font-family: var(--ia-mono) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.04em !important;
+  font-weight: 400 !important;
+  padding: 6px 10px !important;
+  white-space: normal !important;
+  line-height: 1.35 !important;
+  min-height: 0 !important;
+  text-align: left !important;
+}
+.ia-followup-label ~ div [data-testid="stButton"] > button:hover,
+.ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button:hover {
+  border-color: var(--ia-amber) !important;
+  color: var(--ia-amber) !important;
+  background: rgba(255, 210, 74, 0.04) !important;
+}
+
 /* HERO — top intro panel: short description + agent roster + GitHub CTA.
    Replaces the old big-orange disclaimer. The disclaimer line lives at the
    bottom of this panel as fine print. */
