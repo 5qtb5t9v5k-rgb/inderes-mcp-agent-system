@@ -20,9 +20,11 @@ its own. The user makes the decision; the agent shows them the data.
 
 > **Documentation map**
 > - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design, components, lifecycle, key decisions
+> - [`LESSONS.md`](LESSONS.md) — reflections on building this; what AI / UI / infra each contribute, what time really went to, what I'd do differently
 > - [`AGENT_FRAMEWORK.md`](AGENT_FRAMEWORK.md) — Microsoft Agent Framework primer + which features we use
 > - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — every error encountered, with fix
 > - [`CHANGELOG.md`](CHANGELOG.md) — version history and design rationale
+> - [`BACKLOG.md`](BACKLOG.md) — feature ideas not yet built, ordered by interest
 > - [`CONTRIBUTING.md`](CONTRIBUTING.md) — developer setup, testing, extending
 > - [`BUILD_SPEC.md`](BUILD_SPEC.md) — original build specification (historical)
 
@@ -38,6 +40,7 @@ its own. The user makes the decision; the agent shows them the data.
 - [Configuration](#configuration)
 - [Cost and quotas](#cost-and-quotas)
 - [Limitations and non-goals](#limitations-and-non-goals)
+- [Reflections](#reflections)
 - [Testing](#testing)
 - [Project layout](#project-layout)
 - [Pre-flight checklist](#pre-flight-checklist)
@@ -377,6 +380,32 @@ It is also **not** a peer-to-peer agent network. Subagents do not communicate wi
 each other; the lead reads each one's output as text in its prompt. See
 [ARCHITECTURE.md → "What this is and isn't"](ARCHITECTURE.md#what-this-is-and-isnt)
 for honest framing.
+
+---
+
+## Reflections
+
+This started as "build a multi-agent stock-research demo" and turned into a
+roughly even three-way split between the agents themselves, the UI that makes
+them legible, and the infrastructure that keeps them alive in production.
+Some of what I learned in the process:
+
+- Per-agent tool partitioning beats monolithic agents at the same scale.
+- Prompts are code, and they deserve to be reviewed like code.
+- Multi-agent UI isn't decoration — it's epistemic infrastructure. Without
+  thought traces, persona styling, and source links, users can't tell whether
+  an answer is grounded.
+- About half the code in this repo isn't AI at all. It's OAuth, schema
+  sanitization, fallback chains, observability, deploy plumbing. That's not
+  unique to this project; it seems to be the shape of agentic systems in
+  general.
+- "Free tier" of any LLM provider has hidden cliffs (capacity 503s, quota,
+  Pro-tier zero allocation). Plan for them up front rather than getting
+  surprised.
+
+For a longer write-up — the AI / UI / infra breakdown, lessons per pillar,
+cross-cutting themes, things I'd do differently next time, and the open
+questions I haven't resolved — see [`LESSONS.md`](LESSONS.md).
 
 ---
 
