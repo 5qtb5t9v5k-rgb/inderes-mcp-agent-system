@@ -9,6 +9,47 @@ All notable changes to this project. Format roughly follows
 A heavy iteration on the Streamlit UI plus operational improvements to the
 agent layer. No breaking changes.
 
+### Added — UI polish (recommendation, followups, sources, status)
+
+- **Inderes recommendation badge** rendered above the LEAD synthesis when the
+  router has resolved a single primary company (PR #28). Pulls
+  `recommendation` + `target_price` from `get-inderes-estimates` and renders
+  them as a colored chip (green / amber / red) so the user sees Inderes' own
+  call before reading the synthesis prose.
+- **Follow-up suggestion chips** below the synthesis (PR #28): LEAD generates
+  three short, clickable next-question chips ("💡 Voisit kysyä myös: …"). The
+  chips are rendered as Streamlit buttons that re-submit on click. The chips
+  list comes from a structured tail block in the LEAD prompt; if the model
+  omits it, the UI just doesn't render chips.
+- **Clickable Inderes source links** in the synthesis "Lähteet:" footer and
+  in each subagent's output (PR #29). Tool results are post-processed so any
+  `pageUrl` / `url` / `threadUrl` field is woven back into the markdown as a
+  proper link to inderes.fi rather than a bare tool-name token.
+- **Persona-styled, descriptive live status box** during query execution
+  (PR #23): replaces the generic "LEAD"/"Subagentit" labels with one-line
+  state descriptions in the persona color, e.g. `▲ aino-quant: hakee P/E:tä
+  ja tavoitehintaa…`. Driven by phase + classification context so the user
+  can read what's happening rather than just seeing a spinner.
+
+### Added — infrastructure (durable OAuth on Streamlit Cloud)
+
+- **GitHub Action cron `refresh-inderes-tokens.yml`** runs every 15 min and
+  refreshes the Inderes OAuth tokens via the gist mirror (PR #25). Solves the
+  Streamlit Cloud failure mode where containers idle long enough that the
+  refresh-token rotation chain breaks. The cron keeps the Keycloak SSO
+  session warm without requiring a real user query. Same gist (configured by
+  `INDERES_TOKENS_GIST_ID`) is shared between the cron and the running app;
+  the app pulls fresh tokens on each cold start.
+- **Force gist pull on first auth call** (PR #27): the previous `pull only on
+  cache miss` policy meant a stale local `tokens.json` survived restarts and
+  blocked the rotation chain. Now we always pull the gist version once at
+  startup; the local file is only authoritative once we've confirmed it
+  matches the gist.
+- **Debug logging for secrets→env bridge + gist visibility** (PR #26): logs
+  whether each Streamlit secret bridged to env, and whether the gist ID/token
+  are visible at OAuth time. Made it possible to diagnose
+  "tokens persist locally but not on cloud" failures without speculation.
+
 ### Added — Streamlit UI ("Trading Desk" visual layer)
 
 - Bloomberg-style dark theme: JetBrains Mono throughout, amber accents, agent
@@ -80,6 +121,25 @@ agent layer. No breaking changes.
   written to disk by the pipeline.
 - Daily-quota progress bar from the sidebar — cap mechanism still works
   server-side; just don't surface the count.
+
+### Reverted
+
+- Tightened thought-trace format experiment (PR #24, reverted in the same
+  series): forcing a one-line `**Ajatus:**` produced more model refusals
+  than it solved rendering quirks. Original looser rubric restored.
+
+### Parked
+
+- **LEAD on Pro-tier model toggle** (`feat/lead-pro-toggle` branch, not
+  merged). Goal: let the user opt-in to `gemini-2.5-pro` for the synthesis
+  step only — bigger reasoning, better synthesis, only one extra LLM call
+  per query so cost impact is small. Blocked on a MAF / Gemini compatibility
+  issue: Pro rejects requests with `Function calling config is set without
+  function_declarations` even though LEAD has `tools=None`. Three attempts
+  in `_prepare_config()` to clear `tool_config` / `tools` when no function
+  declarations are present did not unblock it. The branch keeps the WIP and
+  a debug-logging hook (`INDERES_DEBUG_GEMINI_CONFIG=1`) for whoever picks
+  it up next; root cause is in MAF's internal config building.
 
 ---
 

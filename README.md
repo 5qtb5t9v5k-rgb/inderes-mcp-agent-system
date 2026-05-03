@@ -163,10 +163,16 @@ streamlit run ui/app.py
 ```
 
 Opens `http://localhost:8501` with a chat interface, live phase indicators
-(routing → subagents → synthesis), and an expandable per-query subagent trace.
-Same agent code as the CLI underneath. See [`ui/README.md`](ui/README.md)
-and [`ui/DEPLOY.md`](ui/DEPLOY.md) for Streamlit Cloud deployment notes
-(public app + password gate + daily query cap).
+(routing → subagents → synthesis), an Inderes recommendation badge above the
+synthesis when a single company is in scope, follow-up suggestion chips, and
+clickable inderes.fi source links. Same agent code as the CLI underneath. See
+[`ui/README.md`](ui/README.md) and [`ui/DEPLOY.md`](ui/DEPLOY.md) for
+Streamlit Cloud deployment notes (public app + password gate + daily query
+cap). For long-running cloud deployments,
+[`.github/workflows/refresh-inderes-tokens.yml`](.github/workflows/refresh-inderes-tokens.yml)
+runs every 15 min to keep the Inderes OAuth refresh-token chain alive via a
+private gist mirror — without it, an idle Streamlit Cloud container will
+eventually 401 on the next user query.
 
 ### REPL slash commands
 

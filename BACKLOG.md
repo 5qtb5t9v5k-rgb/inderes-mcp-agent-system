@@ -6,6 +6,12 @@ Kiinnostavin = "miksi siirtyä reaktiivisesta proaktiiviseen". Suurin oppimisarv
 
 **Toteutetut alunperin samasta listasta:**
 - ✅ #3 Thought traces (Ajatus-rivit subagenteilla, 💭 Perustelut LEADilla) — PR #18, #20, #21
+- ✅ Inderes-suositus-badge LEAD-vastauksen yläpuolella — PR #28
+- ✅ Followup-chip:t synteesin alle (3 klikattavaa jatkokyselyä) — PR #28
+- ✅ Lähteet klikattavina linkkeinä Inderes.fi:hin — PR #29
+- ✅ Persona-värinen live-status box — PR #23
+- ✅ GitHub Actions -cron joka 15 min token-rotaatioon — PR #25
+- ⏸ **Parked**: LEAD Pro-malli togglellä — `feat/lead-pro-toggle` branchilla. Blokattu MAF/Gemini-yhteensopivuusongelmaan: Pro hylkää `Function calling config is set without function_declarations` vaikka LEAD:llä ei ole työkaluja. Vaatii MAF:n internal config-rakentamisen tutkimista.
 
 ---
 
@@ -160,10 +166,11 @@ ennen omaa päätöstään.
 
 ## Pienempiä ideoita / nice-to-have
 
-- **Suggested follow-ups**: Synteesin loppuun "💡 Voisit kysyä myös: ..." 3 ehdotusta
 - **Confidence scoring**: Jokainen subagentti raportoi 1-5 confidence per claim
-- **Source provenance**: Jokainen claim synteesissä → eksplisiittinen tool-call-viittaus
-  (`(get-fundamentals/Sampo, 2025)`)
+- **Source provenance per claim**: Jokainen claim synteesissä → eksplisiittinen
+  inline-viittaus (`(get-fundamentals/Sampo, 2025)`). PR #29 toi klikattavat
+  linkit Lähteet-osioon, mut väitteen kanssa rinnakkain olevat tarkat
+  citations vielä puuttuvat.
 - **Web search -työkalu RESEARCHille**: Pull recent news context (esim. Reuters/Bloomberg)
 - **PDF-raportit**: "Vie tämä kysely PDF:ksi" → matplotlib-charts + tableat + analyysi
 - **Historiallinen backtest**: "Mitä olisit suositellut 3kk sitten Sammosta?" — agentti

@@ -1,8 +1,9 @@
 # Architecture
 
-A deep walkthrough of `inderes-research-agent`: what each piece does, why it exists,
-and how the pieces fit together. Read this if you intend to extend the system,
-debug it, or understand the design rationale beyond what `README.md` covers.
+A deep walkthrough of `inderes-mcp-agent-system`: what each piece does, why it
+exists, and how the pieces fit together. Read this if you intend to extend the
+system, debug it, or understand the design rationale beyond what `README.md`
+covers.
 
 ## Table of contents
 
@@ -151,6 +152,19 @@ metadata (`$schema`, `$id`, `$ref`, `$defs`, `$comment`). Gemini's
 `google.genai.types.FunctionDeclaration` Pydantic model has `extra='forbid'` and
 rejects these. `_SanitizingMCPTool` overrides `connect()` and recursively strips
 those keys from each tool's cached input schema.
+
+**Durable token storage on Streamlit Cloud.** When `INDERES_TOKENS_GIST_ID` and
+`INDERES_TOKENS_GH_TOKEN` are set, the OAuth layer mirrors `tokens.json` to a
+private GitHub gist on every refresh and pulls from the gist on cold start.
+This solves the Streamlit Cloud failure mode where ephemeral containers lose
+the local cache between restarts and the refresh-token rotation chain breaks.
+A separate GitHub Actions cron — `.github/workflows/refresh-inderes-tokens.yml`
+running every 15 min — performs a token refresh against Keycloak using only
+the gist, with no Streamlit involvement. The cron keeps the SSO session warm
+even when the app is idle for hours, so the next user query doesn't hit a
+dead refresh-token. The local `tokens.json` cache and gist are kept
+consistent: PR #27 changed cold-start logic to always pull the gist version
+first rather than trusting a stale local file.
 
 ### Gemini client with fallback
 
