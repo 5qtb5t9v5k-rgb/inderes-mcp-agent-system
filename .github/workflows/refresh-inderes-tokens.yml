@@ -1,0 +1,50 @@
+name: Refresh Inderes tokens
+
+# Periodic OAuth refresh against Inderes' Keycloak. Pulls latest tokens from
+# the configured private gist, rotates them, pushes the new ones back. Keeps
+# the SSO session alive so it doesn't hit idle-timeout, and keeps the gist
+# (which the Streamlit Cloud deployment reads on cold start) always-fresh.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   INDERES_TOKENS_GIST_ID   - hex ID of the private tokens gist
+#   INDERES_TOKENS_GH_TOKEN  - GitHub PAT with Gists: Read+Write scope
+#
+# Cadence rationale:
+#   Keycloak's default SSO-session idle-timeout is 30 min. Refreshing every
+#   15 min keeps the session continuously active with a comfortable buffer.
+#   ~96 runs/day, ~30s each → ~50 min/day → free tier on a public repo.
+#
+# Manual trigger: workflow_dispatch lets you fire one off on demand from
+# the Actions tab — useful right after a fresh local relogin to verify the
+# new tokens propagate correctly.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Don't queue up multiple runs if a previous one is slow — we'll catch
+    # the next 15-min slot.
+    concurrency:
+      group: refresh-inderes-tokens
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install httpx
+        run: pip install --quiet httpx
+
+      - name: Refresh tokens
+        env:
+          INDERES_TOKENS_GIST_ID: ${{ secrets.INDERES_TOKENS_GIST_ID }}
+          INDERES_TOKENS_GH_TOKEN: ${{ secrets.INDERES_TOKENS_GH_TOKEN }}
+        run: python scripts/refresh_inderes_tokens.py
