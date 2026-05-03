@@ -416,22 +416,34 @@ uv pip install -e '.[dev]'
 pytest -q
 ```
 
-Thirteen unit tests cover:
+38 unit tests across:
 
-- Router JSON parsing (with code fences, prose leaks, plain JSON)
-- `QueryClassification` Pydantic validation
-- Fallback client semantics: 503 retry → fallback model, 429 → `QuotaExhaustedError`, success path
-- Workflow fan-out: per-company branching for comparisons, no fan-out for single-domain, concurrency cap
+- **Router** (`test_router.py`): JSON parsing with code fences, prose leaks,
+  plain JSON; `QueryClassification` Pydantic validation incl. invalid-domain
+  rejection.
+- **Fallback client** (`test_fallback.py`): 503 retry → fallback model,
+  429 → `QuotaExhaustedError`, success-without-fallback, hybrid tool-config
+  injection for server-side tools.
+- **Workflow** (`test_workflows.py`): per-company branching for
+  comparisons, no fan-out for single-domain queries, concurrency cap
+  enforcement.
+- **Output parts** (`test_output_parts.py`): MAF response-part parsing
+  (text, code, code-result, function-call, function-result combinations)
+  used by the Streamlit trace renderer.
+- **OAuth bootstrap** (`test_oauth_bootstrap.py`): gist mirror push/pull,
+  cold-start ordering, refresh-token rotation, env-bridge fallback.
+- **Per-agent specs** (`tests/test_agents/`): prompt/tool-set sanity checks
+  per subagent (lead, quant, research, sentiment, portfolio).
 
-End-to-end tests against the real Gemini API and Inderes MCP are not in CI (they
-require live credentials and consume quota). Run them manually:
+End-to-end tests against the real Gemini API and Inderes MCP are not in CI
+(they require live credentials and consume quota). Run them manually:
 
 ```bash
 python -m inderes_agent "What's Konecranes' current P/E?"
 ```
 
-The diagnostic `python scripts/diag.py` independently probes Gemini and MCP with
-per-step timing — useful when something is hanging.
+The diagnostic `python scripts/diag.py` independently probes Gemini and MCP
+with per-step timing — useful when something is hanging.
 
 ---
 
@@ -448,12 +460,13 @@ src/inderes_agent/
 │   ├── research.py    # aino-research
 │   ├── sentiment.py   # aino-sentiment
 │   ├── portfolio.py   # aino-portfolio
+│   ├── _common.py     # load_prompt() + today_prompt_prefix() (date-aware)
 │   └── prompts/       # system prompts for each agent (markdown)
 ├── llm/
-│   └── gemini_client.py    # FallbackGeminiChatClient
+│   └── gemini_client.py    # FallbackGeminiChatClient + hybrid tool-config fix
 ├── mcp/
 │   ├── inderes_client.py   # MCP tool factory + schema sanitization
-│   └── oauth.py            # OAuth Authorization Code + PKCE flow
+│   └── oauth.py            # OAuth Authorization Code + PKCE flow + gist mirror
 ├── orchestration/
 │   ├── router.py      # query classification (structured-output Gemini call)
 │   ├── workflows.py   # asyncio.gather + semaphore fan-out
@@ -462,20 +475,38 @@ src/inderes_agent/
 │   ├── repl.py        # interactive mode + slash commands
 │   └── render.py      # rich-formatted output
 └── observability/
-    ├── tracing.py     # OpenTelemetry tracer
-    ├── run_log.py     # per-run directory writer
-    └── narrate.py     # narrative.md generator
+    ├── tracing.py        # OpenTelemetry tracer
+    ├── run_log.py        # per-run directory writer
+    ├── output_parts.py   # MAF response-part parser (text/code/result/calls)
+    └── narrate.py        # narrative.md generator
+
+ui/
+├── app.py             # Streamlit Trading Desk app
+├── components.py      # CustomStatus, hero panel, agent rows, chips, badge
+├── theme.css          # JetBrains Mono + persona colors + dark chrome
+├── README.md          # UI walkthrough
+└── DEPLOY.md          # Streamlit Cloud deployment guide
 
 scripts/
-├── diag.py            # standalone Gemini + MCP connectivity diagnostic
-└── explain.py         # regenerate narrative.md for any past run
+├── diag.py                       # standalone Gemini + MCP diagnostic
+├── explain.py                    # regenerate narrative.md for any past run
+├── probe_mcp_response.py         # raw-MCP debugging helper
+└── refresh_inderes_tokens.py     # cron worker — refreshes tokens via gist
 
-tests/                 # pytest unit tests
-examples/              # programmatic-use samples
+.github/workflows/
+└── refresh-inderes-tokens.yml    # 15-min cron invoking the script above
+
+tests/                 # 38 pytest unit tests (router/fallback/workflow/parts/oauth/agents)
+examples/              # single_question.py, conversation.py
 ```
 
+Top-level docs: `README.md`, `ARCHITECTURE.md`, `LESSONS.md`,
+`AGENT_FRAMEWORK.md`, `TROUBLESHOOTING.md`, `CHANGELOG.md`, `BACKLOG.md`,
+`CONTRIBUTING.md`, `BUILD_SPEC.md`.
+
 Module-level explanations in [ARCHITECTURE.md](ARCHITECTURE.md). Build rationale
-in [`BUILD_SPEC.md`](BUILD_SPEC.md).
+in [`BUILD_SPEC.md`](BUILD_SPEC.md). Reflective write-up in
+[`LESSONS.md`](LESSONS.md).
 
 ---
 
