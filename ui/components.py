@@ -548,6 +548,36 @@ def render_agent_output(text: str | None) -> None:
     st.html(f'<div class="ia-agent-output">{html_content}</div>')
 
 
+def render_lead_answer(text: str | None) -> None:
+    """Render LEAD's synthesis answer with an amber **💭 Perustelut** callout
+    at the top.
+
+    LEAD's prompt instructs it to start with ``**💭 Perustelut:** [meta-level
+    reasoning]``. The CSS scopes its callout styling to ``.ia-lead-answer``,
+    and gives the first paragraph (the bold-led reasoning line) an
+    amber-bordered look distinct from the violet ``Ajatus`` traces of the
+    subagents. This preserves visual hierarchy: ◆ LEAD = amber accent,
+    subagents = their persona colors.
+
+    Same Python-fence + stdout-wrap preprocessing as ``render_agent_output``
+    so code blocks land styled correctly inside the answer body.
+    """
+    if not text:
+        text = "_(empty)_"
+    text = _ensure_python_fenced(text)
+    text = _wrap_python_output(text)
+    try:
+        from markdown_it import MarkdownIt
+
+        md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+        html_content = md.render(text)
+    except Exception:
+        from html import escape as _html_escape
+
+        html_content = f"<pre>{_html_escape(text)}</pre>"
+    st.html(f'<div class="ia-lead-answer">{html_content}</div>')
+
+
 def render_full_narrative(run_dir: Path, lang: str = "fi") -> None:
     """Render the full narrative.md (routing + tool-call timeline + subagent
     answers) in a scrollable container at the bottom of the trace.

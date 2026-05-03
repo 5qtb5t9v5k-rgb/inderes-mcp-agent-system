@@ -90,6 +90,7 @@ from components import (  # noqa: E402
     render_full_narrative,
     render_sidebar_disclaimer,
     render_github_link,
+    render_lead_answer,
     CustomStatus,
 )
 
@@ -381,12 +382,15 @@ with st.sidebar:
 
 for msg in st.session_state.history:
     with st.chat_message(msg["role"]):
-        # Order: LEAD answer first (the synthesis is the headline), then
-        # the agent activity log behind a collapsed expander at the
-        # bottom for those who want to drill into per-agent thinking.
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and msg.get("run_dir"):
-            render_trace_expander(Path(msg["run_dir"]))
+        # LEAD answers go through render_lead_answer so the
+        # **💭 Perustelut:** callout gets its amber styling. User messages
+        # are plain markdown.
+        if msg["role"] == "assistant":
+            render_lead_answer(msg["content"])
+            if msg.get("run_dir"):
+                render_trace_expander(Path(msg["run_dir"]))
+        else:
+            st.markdown(msg["content"])
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +477,7 @@ if prompt:
             status.update(label="Valmis", state="complete", expanded=False)
             # Order: LEAD synthesis first (the answer is the headline),
             # then the agent activity log behind a collapsed expander.
-            st.markdown(answer)
+            render_lead_answer(answer)
             render_trace_expander(run_dir)
             st.session_state.history.append(
                 {"role": "assistant", "content": answer, "run_dir": str(run_dir)}
