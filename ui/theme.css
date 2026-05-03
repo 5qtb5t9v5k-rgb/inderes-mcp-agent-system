@@ -498,6 +498,24 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   color: var(--ia-text);
 }
 .ia-agent-output strong { color: var(--ia-amber); font-weight: 600; }
+/* "Ajatus:" / "Thought:" trace — first paragraph if it starts with the
+   bolded prefix gets a left border + dim italic styling so it reads as
+   "agent thinking aloud" before the actual structured response. The
+   selector is best-effort: markdown_it renders **Ajatus:** as the first
+   <strong> child of the first <p>; we use :first-child + :has() to scope.
+   Falls back gracefully on browsers without :has() (Safari < 15.4). */
+.ia-agent-output > p:first-child:has(> strong:first-child) {
+  border-left: 2px solid var(--ia-violet);
+  padding: 6px 10px;
+  background: rgba(167, 139, 250, 0.04);
+  font-style: italic;
+  color: var(--ia-dim);
+  margin-bottom: 12px;
+}
+.ia-agent-output > p:first-child:has(> strong:first-child) strong {
+  color: var(--ia-violet);
+  font-style: normal;
+}
 
 /* code blocks inside agent output — markdown_it emits <pre><code class="language-*"> */
 .ia-agent-output pre {
