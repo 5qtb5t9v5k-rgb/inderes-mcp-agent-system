@@ -498,12 +498,11 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   color: var(--ia-text);
 }
 .ia-agent-output strong { color: var(--ia-amber); font-weight: 600; }
-/* "Ajatus:" / "Thought:" trace — first paragraph if it starts with the
-   bolded prefix gets a left border + dim italic styling so it reads as
-   "agent thinking aloud" before the actual structured response. The
-   selector is best-effort: markdown_it renders **Ajatus:** as the first
-   <strong> child of the first <p>; we use :first-child + :has() to scope.
-   Falls back gracefully on browsers without :has() (Safari < 15.4). */
+/* "Ajatus:" trace — subagents' first paragraph starts with the bolded
+   prefix and gets a violet-bordered, italic, dim treatment ("agent thinking
+   aloud"). The selector targets the first <p> whose first child is <strong>,
+   which is what markdown_it produces for `**Ajatus:** ...`. Falls back
+   gracefully on browsers without :has() (Safari < 15.4). */
 .ia-agent-output > p:first-child:has(> strong:first-child) {
   border-left: 2px solid var(--ia-violet);
   padding: 6px 10px;
@@ -516,6 +515,68 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   color: var(--ia-violet);
   font-style: normal;
 }
+
+/* LEAD answer wrapper — same body styling as the chat bubble, but the
+   first paragraph (the **💭 Perustelut:** callout) gets an AMBER border +
+   italic body, distinct from the subagents' violet "Ajatus" treatment.
+   Amber matches LEAD's persona color (◆ amber) and signals "main agent
+   reasoning, not auxiliary thinking". */
+.ia-lead-answer {
+  font-family: "Helvetica Neue", "Inter", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ia-text);
+}
+.ia-lead-answer strong { color: var(--ia-amber); font-weight: 600; }
+.ia-lead-answer > p:first-child:has(> strong:first-child) {
+  border-left: 2px solid var(--ia-amber);
+  padding: 8px 12px;
+  background: rgba(255, 210, 74, 0.04);
+  font-style: italic;
+  margin-bottom: 16px;
+  color: var(--ia-text);
+}
+.ia-lead-answer > p:first-child:has(> strong:first-child) strong {
+  color: var(--ia-amber);
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+/* Same code-block / output / table styling inside LEAD answer as in agent
+   output — pulls in the existing rules by re-applying them under the new
+   scope. */
+.ia-lead-answer pre {
+  background: #050706;
+  border: 1px solid var(--ia-border);
+  border-left: 2px solid var(--ia-blue);
+  padding: 10px 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: var(--ia-mono) !important;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ia-text);
+}
+.ia-lead-answer pre:has(> code.language-output) {
+  border-left-color: var(--ia-green);
+  margin-top: -4px;
+  color: var(--ia-dim);
+}
+.ia-lead-answer code:not(pre code) {
+  background: var(--ia-panel-2);
+  border: 1px solid var(--ia-border);
+  padding: 1px 5px;
+  font-family: var(--ia-mono) !important;
+  font-size: 12px;
+  color: var(--ia-amber);
+}
+.ia-lead-answer table { border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.ia-lead-answer th, .ia-lead-answer td {
+  border: 1px solid var(--ia-border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.ia-lead-answer th { background: var(--ia-panel-2); color: var(--ia-amber); font-weight: 600; }
 
 /* code blocks inside agent output — markdown_it emits <pre><code class="language-*"> */
 .ia-agent-output pre {
