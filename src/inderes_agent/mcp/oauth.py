@@ -34,7 +34,7 @@ import threading
 import time
 import urllib.parse
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import httpx
@@ -93,7 +93,12 @@ class TokenSet:
 
     @classmethod
     def from_dict(cls, d: dict) -> TokenSet:
-        return cls(**d)
+        # Forward-compatible: tokens.json in the gist may carry extra
+        # bookkeeping fields (e.g. `_last_refresh_status`,
+        # `_last_refresh_at` written by the cron worker). Filter to the
+        # known dataclass fields so future additions don't break parsing.
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 # ---------------------------------------------------------------------------

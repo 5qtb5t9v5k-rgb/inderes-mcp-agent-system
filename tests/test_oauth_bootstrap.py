@@ -169,6 +169,29 @@ def test_refresh_failure_recovers_via_gist_when_rotation_race(
     assert len(pull_calls) >= 1
 
 
+def test_token_set_from_dict_ignores_unknown_fields():
+    """The cron worker decorates tokens.json in the gist with bookkeeping
+    fields like `_last_refresh_status`. TokenSet must tolerate those (and
+    any future additions) without crashing parsing — otherwise cold-start
+    on cloud fails with a confusing 'unexpected keyword argument' error.
+    """
+    payload = {
+        "access_token": "a",
+        "refresh_token": "b",
+        "expires_at": 1.0,
+        "token_endpoint": "https://example.com",
+        "client_id": "x",
+        # Extras written by the cron worker:
+        "_last_refresh_status": "ok",
+        "_last_refresh_at": "2026-05-04T12:34:00+00:00",
+        # Hypothetical future addition:
+        "_some_other_key": {"nested": "data"},
+    }
+    ts = oauth.TokenSet.from_dict(payload)
+    assert ts.access_token == "a"
+    assert ts.refresh_token == "b"
+
+
 def test_refresh_failure_no_gist_no_recovery(isolated_cache, monkeypatch):
     """Without gist configured, refresh failure still raises HeadlessAuthError.
 
