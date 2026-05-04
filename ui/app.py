@@ -236,7 +236,7 @@ render_disclaimer(_lang)
 #   💼 — briefcase, the "research desk" side
 #   🔶 — orange diamond, matches LEAD's amber ◆ glyph
 
-USER_AVATAR = "💼"
+USER_AVATAR = "👤"
 ASSISTANT_AVATAR = "🔶"
 
 
