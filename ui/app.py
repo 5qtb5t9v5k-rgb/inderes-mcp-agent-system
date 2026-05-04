@@ -340,21 +340,25 @@ def _record_help_request() -> tuple[bool, dict]:
     return False, current
 
 
-def _format_relative_fi(iso_ts: str | None) -> str:
-    """Format an ISO timestamp as a Finnish-language relative-time string."""
+def _format_timestamp_fi(iso_ts: str | None) -> str:
+    """Format an ISO UTC timestamp as a Finnish absolute timestamp.
+
+    Converts to Europe/Helsinki local time and formats as `4.5.2026 klo 20.34`.
+    Used for the auth-expired card's "Viimeisin" caption — visitors find
+    an actual timestamp easier to reason about than relative text like
+    "5 min sitten" (especially across day boundaries).
+    """
     if not iso_ts:
-        return "ei vielä yhtään"
+        return ""
     try:
-        from datetime import datetime, timezone
-        ts = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
-        secs = (datetime.now(timezone.utc) - ts).total_seconds()
-        if secs < 60:
-            return "juuri äsken"
-        if secs < 3600:
-            return f"{int(secs // 60)} min sitten"
-        if secs < 86400:
-            return f"{int(secs // 3600)} h sitten"
-        return f"{int(secs // 86400)} pv sitten"
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        ts_utc = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        ts_local = ts_utc.astimezone(ZoneInfo("Europe/Helsinki"))
+        # Use %d.%m.%Y to keep cross-platform — leading zeros are fine,
+        # %-d / %#d are platform-specific and break on either Linux or
+        # Windows depending on which we pick.
+        return ts_local.strftime("%d.%m.%Y klo %H.%M")
     except Exception:
         return ""
 
@@ -401,7 +405,7 @@ def _render_auth_expired() -> None:
         "🔴  **Järjestelmä alhaalla.**\n\n"
         "Yhteys Inderesin dataan täytyy autentikoida uudelleen. "
         "Sillä välin voit katsoa alla olevan demovideon ja pyytää "
-        "yhteyden korjaamista yhdellä klikkauksella."
+        "yhteyden korjaamista yhdellä klikkauksella. ↓"
     )
 
     try:
@@ -421,7 +425,7 @@ def _render_auth_expired() -> None:
             st.success(
                 "✓ Pyyntösi on tallennettu. Laitan yhteyden takaisin "
                 "pystyyn mahdollisimman pian.\n\n"
-                f"Tämä oli pyyntö **#{state['count']}** agentin elinaikana."
+                f"Tämä oli pyyntö **#{state['count']}** palvelun elinaikana."
             )
         else:
             if st.button(
@@ -447,9 +451,9 @@ def _render_auth_expired() -> None:
             value=str(state["count"]),
         )
         if state["last_at"]:
-            st.caption(f"viimeisin: {_format_relative_fi(state['last_at'])}")
+            st.caption(f"Viimeisin: {_format_timestamp_fi(state['last_at'])}")
         else:
-            st.caption("ei vielä pyyntöjä")
+            st.caption("Ei vielä pyyntöjä")
 
 
 # ---------------------------------------------------------------------------
