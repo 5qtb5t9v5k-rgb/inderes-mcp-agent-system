@@ -226,6 +226,18 @@ render_disclaimer(_lang)
 
 
 # ---------------------------------------------------------------------------
+# Trading Desk chat avatars
+# ---------------------------------------------------------------------------
+# Replace Streamlit's default cartoon person/robot icons with theme-matching
+# glyphs. ❯ for the user (terminal prompt vibe — fits the "research desk"
+# persona), ◆ for the assistant (matches LEAD's persona glyph elsewhere in
+# the UI). Single-char glyphs render via Streamlit's emoji-avatar path.
+
+USER_AVATAR = "❯"
+ASSISTANT_AVATAR = "◆"
+
+
+# ---------------------------------------------------------------------------
 # Public-safe error rendering
 # ---------------------------------------------------------------------------
 
@@ -428,7 +440,8 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 for msg in st.session_state.history:
-    with st.chat_message(msg["role"]):
+    avatar = ASSISTANT_AVATAR if msg["role"] == "assistant" else USER_AVATAR
+    with st.chat_message(msg["role"], avatar=avatar):
         # LEAD answers go through render_lead_answer so the
         # **💭 Perustelut:** callout gets its amber styling. User messages
         # are plain markdown.
@@ -589,10 +602,10 @@ if prompt:
     _enforce_daily_cap_or_stop()
 
     st.session_state.history.append({"role": "user", "content": prompt, "run_dir": None})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=USER_AVATAR):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
         # CustomStatus replaces st.status — same surface API, but pure
         # HTML/CSS rendering with no Material Symbols icon (which kept
         # racing the icon font load and producing "ieckalmis"-style
