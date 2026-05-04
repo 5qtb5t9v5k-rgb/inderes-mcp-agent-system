@@ -18,10 +18,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from datetime import date
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -223,6 +226,30 @@ render_disclaimer(_lang)
 
 
 # ---------------------------------------------------------------------------
+# Public-safe error rendering
+# ---------------------------------------------------------------------------
+
+def _render_auth_expired() -> None:
+    """Generic message for expired Inderes auth — safe to show to anyone.
+
+    The Streamlit app sits behind a password gate, but anything we render
+    is potentially visible to whoever knows the password (or anyone who
+    eventually gets past it). So this message doesn't expose internal
+    paths, scripts, repo names, or implementation details. The owner
+    knows what "autentikoi yhteys uudelleen" means in their setup;
+    a random visitor gets a clear "service unavailable" signal.
+
+    The full HeadlessAuthError text is still in the Streamlit Cloud
+    server logs for debugging — just not in the user-facing UI.
+    """
+    st.error(
+        "🔴  **Inderes-yhteys vanhentunut.**\n\n"
+        "Ole hyvä ja autentikoi yhteys uudelleen, ja yritä sitten "
+        "kysyä uudestaan."
+    )
+
+
+# ---------------------------------------------------------------------------
 # One-time setup (per Streamlit session)
 # ---------------------------------------------------------------------------
 
@@ -239,8 +266,11 @@ def _bootstrap() -> None:
     configure_logging()
     try:
         prefetch_token()
-    except HeadlessAuthError as exc:
-        st.error(str(exc))
+    except HeadlessAuthError:
+        # The full exception goes to server logs; the UI gets a generic
+        # public-safe message that doesn't expose paths/commands/scripts.
+        log.exception("oauth_headless_at_bootstrap")
+        _render_auth_expired()
         st.stop()
 
 
@@ -587,9 +617,26 @@ if prompt:
         except QuotaExhaustedError as exc:
             status.update(label="Quota exhausted", state="error", expanded=True)
             st.error(str(exc))
+        except HeadlessAuthError:
+            # Auth expired mid-query (e.g. tokens died between cold start
+            # and now). Don't leak the raw error which references local
+            # paths and scripts — show the same generic card as cold-start.
+            status.update(label="Inderes-yhteys vanhentunut", state="error", expanded=True)
+            log.exception("oauth_headless_during_query")
+            _render_auth_expired()
         except Exception as exc:
-            status.update(label="Error", state="error", expanded=True)
-            st.error(f"{type(exc).__name__}: {exc}")
+            # If anything looks like an auth/refresh problem, mask it the
+            # same way. Otherwise show the (already-non-sensitive)
+            # exception class — type names are safe.
+            msg = str(exc).lower()
+            if any(t in msg for t in ("session not active", "token is not active",
+                                       "invalid_grant", "headless")):
+                status.update(label="Inderes-yhteys vanhentunut", state="error", expanded=True)
+                log.exception("oauth_likely_failure_in_query")
+                _render_auth_expired()
+            else:
+                status.update(label="Error", state="error", expanded=True)
+                st.error(f"{type(exc).__name__}: {exc}")
 
 
 # ---------------------------------------------------------------------------
