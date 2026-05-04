@@ -398,12 +398,10 @@ def _render_auth_expired() -> None:
     password gate; this is a hobby-project tradeoff.
     """
     st.error(
-        "🔴  **Inderes-yhteys vanhentunut.**\n\n"
-        "Ole hyvä ja autentikoi yhteys uudelleen, ja yritä sitten "
-        "kysyä uudestaan."
+        "🔴  **Järjestelmä alhaalla.**\n\n"
+        "Yhteys Inderesin dataan täytyy autentikoida uudelleen."
     )
 
-    st.markdown("**Ensimmäistä kertaa täällä?** Katso lyhyt demo:")
     try:
         st.video(DEMO_VIDEO_URL)
     except Exception as exc:
@@ -419,15 +417,13 @@ def _render_auth_expired() -> None:
     with left:
         if st.session_state.get("_help_request_sent"):
             st.success(
-                "✓ Kiitos pyynnöstä — laitetaan agentti taas pystyyn "
+                "✓ Kiitos pyynnöstä — laitan agentin takaisin pystyyn "
                 "mahdollisimman pian.\n\n"
                 f"Olit pyyntö **#{state['count']}** agentin elinaikana."
             )
         else:
             st.markdown(
-                "**Haluatko että agentti laitetaan takaisin pystyyn?**\n\n"
-                "Klikkaa nappia — pyyntösi näkyy laskurissa, ja korjaan "
-                "tilanteen kun huomaan."
+                "**Voit pyytää että agentti laitetaan takaisin pystyyn:**"
             )
             if st.button(
                 "📧 Pyydä apua",
@@ -450,10 +446,6 @@ def _render_auth_expired() -> None:
         st.metric(
             label="Apupyyntöjä yhteensä",
             value=str(state["count"]),
-            help=(
-                "Kuinka monta kertaa joku on klikannut 'Pyydä apua' "
-                "-nappia agentin elinaikana."
-            ),
         )
         if state["last_at"]:
             st.caption(f"viimeisin: {_format_relative_fi(state['last_at'])}")
@@ -466,24 +458,40 @@ def _render_auth_expired() -> None:
 # ---------------------------------------------------------------------------
 
 @st.cache_resource(show_spinner="Authenticating with Inderes…")
-def _bootstrap() -> None:
-    """Run-once-per-session: load env, configure logging, prefetch OAuth token.
+def _bootstrap_auth() -> bool:
+    """Auth-bootstrap step, cached so we don't re-auth on every rerun.
 
-    On Streamlit Cloud `prefetch_token()` should succeed silently if
-    INDERES_OAUTH_TOKENS_JSON is in secrets — oauth.py bootstraps the cache
-    from the env var. If a fresh login is needed, raises HeadlessAuthError
-    which we surface as a clear ops message.
+    IMPORTANT: do NOT call any st.* widget functions (button, text_area,
+    metric, video, …) inside this function. Streamlit's cache decorator
+    prevents widgets from re-rendering on cache hits, so widgets here
+    would either warn or silently disappear after the first call. The
+    auth-expired UI is rendered in the *caller* outside the cache.
     """
     load_dotenv()
     configure_logging()
-    try:
-        prefetch_token()
-    except HeadlessAuthError:
-        # The full exception goes to server logs; the UI gets a generic
-        # public-safe message that doesn't expose paths/commands/scripts.
-        log.exception("oauth_headless_at_bootstrap")
-        _render_auth_expired()
-        st.stop()
+    prefetch_token()
+    return True
+
+
+def _bootstrap() -> None:
+    """Top-level bootstrap orchestrator. Either succeeds quietly or
+    renders the auth-expired UI (with widgets) and st.stop()s.
+
+    Uses a session-state flag to remember "auth is broken" so we don't
+    keep retrying the OAuth refresh on every Streamlit rerun while the
+    visitor sits on the help-request screen.
+    """
+    if not st.session_state.get("_auth_broken"):
+        try:
+            _bootstrap_auth()
+            return  # success, let the rest of the app render
+        except HeadlessAuthError:
+            log.exception("oauth_headless_at_bootstrap")
+            st.session_state["_auth_broken"] = True
+            # fall through to render the auth-expired UI
+
+    _render_auth_expired()
+    st.stop()
 
 
 _bootstrap()
