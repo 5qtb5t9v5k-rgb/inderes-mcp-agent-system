@@ -228,13 +228,16 @@ render_disclaimer(_lang)
 # ---------------------------------------------------------------------------
 # Trading Desk chat avatars
 # ---------------------------------------------------------------------------
-# Replace Streamlit's default cartoon person/robot icons with theme-matching
-# glyphs. ❯ for the user (terminal prompt vibe — fits the "research desk"
-# persona), ◆ for the assistant (matches LEAD's persona glyph elsewhere in
-# the UI). Single-char glyphs render via Streamlit's emoji-avatar path.
+# Streamlit's chat_message(avatar=...) only accepts URLs, image paths, or
+# *real* emoji codepoints — Unicode dingbats like ❯ (U+276F) or ◆ (U+25C6)
+# are NOT detected as emoji and Streamlit treats them as file paths,
+# crashing with FileNotFoundError. So we use proper emoji that match the
+# Trading Desk theme as closely as the emoji vocabulary allows:
+#   💼 — briefcase, the "research desk" side
+#   🔶 — orange diamond, matches LEAD's amber ◆ glyph
 
-USER_AVATAR = "❯"
-ASSISTANT_AVATAR = "◆"
+USER_AVATAR = "💼"
+ASSISTANT_AVATAR = "🔶"
 
 
 # ---------------------------------------------------------------------------
