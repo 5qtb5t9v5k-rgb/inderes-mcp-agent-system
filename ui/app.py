@@ -399,7 +399,9 @@ def _render_auth_expired() -> None:
     """
     st.error(
         "🔴  **Järjestelmä alhaalla.**\n\n"
-        "Yhteys Inderesin dataan täytyy autentikoida uudelleen."
+        "Yhteys Inderesin dataan täytyy autentikoida uudelleen. "
+        "Sillä välin voit katsoa alla olevan demovideon ja pyytää "
+        "yhteyden korjaamista yhdellä klikkauksella."
     )
 
     try:
@@ -417,16 +419,13 @@ def _render_auth_expired() -> None:
     with left:
         if st.session_state.get("_help_request_sent"):
             st.success(
-                "✓ Kiitos pyynnöstä — laitan agentin takaisin pystyyn "
-                "mahdollisimman pian.\n\n"
-                f"Olit pyyntö **#{state['count']}** agentin elinaikana."
+                "✓ Pyyntösi on tallennettu. Laitan yhteyden takaisin "
+                "pystyyn mahdollisimman pian.\n\n"
+                f"Tämä oli pyyntö **#{state['count']}** agentin elinaikana."
             )
         else:
-            st.markdown(
-                "**Voit pyytää että agentti laitetaan takaisin pystyyn:**"
-            )
             if st.button(
-                "📧 Pyydä apua",
+                "📧 Pyydä yhteyden korjaamista",
                 type="primary",
                 use_container_width=True,
             ):
