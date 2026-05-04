@@ -244,6 +244,77 @@ ASSISTANT_AVATAR = "🔶"
 # Public-safe error rendering
 # ---------------------------------------------------------------------------
 
+DEMO_VIDEO_URL = "https://www.youtube.com/watch?v=2lw6lC2ho_c"
+
+
+def _send_help_request(message: str) -> tuple[bool, str]:
+    """Send a 'help me' notification to the operator via Resend.
+
+    Returns (ok, reason). If ok is False, `reason` is a short string
+    suitable for showing to the user (no internal details).
+    """
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    notify_to = os.environ.get("HELP_REQUEST_NOTIFY_TO", "").strip()
+    sender = os.environ.get(
+        "HELP_REQUEST_FROM", "onboarding@resend.dev"
+    ).strip()
+
+    if not api_key:
+        log.warning("help_request_no_resend_api_key")
+        return False, "ilmoituskanava ei käytössä"
+    if not notify_to:
+        log.warning("help_request_no_notify_to")
+        return False, "vastaanottaja-osoitetta ei ole asetettu"
+
+    from datetime import datetime, timezone
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    body_lines = [
+        "Joku osui Inderes//Agentin auth-vanhentumisseinään ja painoi",
+        "'Pyydä apua' -nappia.",
+        "",
+        f"Aika (UTC): {timestamp}",
+    ]
+    if (message or "").strip():
+        body_lines += ["", "Viesti vierailijalta:", message.strip()]
+    else:
+        body_lines += ["", "(ei viestiä jätetty)"]
+    body_lines += [
+        "",
+        "Recovery: aja paikallisesti `bash scripts/relogin.sh`.",
+    ]
+
+    try:
+        import httpx
+        r = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": sender,
+                "to": [notify_to],
+                "subject": "🔴 Inderes//Agent — pyydetään apua",
+                "text": "\n".join(body_lines),
+            },
+            timeout=10.0,
+        )
+    except Exception as exc:
+        log.warning("help_request_send_exception %s", exc)
+        return False, "verkkovirhe — yritä myöhemmin uudelleen"
+
+    if r.status_code in (200, 202):
+        log.info("help_request_email_sent status=%d", r.status_code)
+        return True, "ok"
+    log.warning(
+        "help_request_email_failed status=%d body=%s",
+        r.status_code,
+        r.text[:200],
+    )
+    return False, "viestin lähetys epäonnistui"
+
+
 def _render_auth_expired() -> None:
     """Generic message for expired Inderes auth — safe to show to anyone.
 
@@ -254,6 +325,16 @@ def _render_auth_expired() -> None:
     knows what "autentikoi yhteys uudelleen" means in their setup;
     a random visitor gets a clear "service unavailable" signal.
 
+    Adds two affordances on top of the bare error:
+    - An embedded demo video so a first-time visitor can still see
+      what the tool does even when it can't run live.
+    - A "Pyydä apua" button that emails the operator via Resend so
+      the visitor can ask for the agent to be brought back up.
+
+    Anti-spam: per-session_state flag prevents re-sending within the
+    same browser session. Cross-session abuse mitigation is left to
+    Resend's own rate-limiting + the password gate.
+
     The full HeadlessAuthError text is still in the Streamlit Cloud
     server logs for debugging — just not in the user-facing UI.
     """
@@ -262,6 +343,48 @@ def _render_auth_expired() -> None:
         "Ole hyvä ja autentikoi yhteys uudelleen, ja yritä sitten "
         "kysyä uudestaan."
     )
+
+    st.markdown("**Ensimmäistä kertaa täällä?** Katso lyhyt demo:")
+    try:
+        st.video(DEMO_VIDEO_URL)
+    except Exception as exc:
+        # If the embed fails, at least surface the link.
+        log.warning("demo_video_embed_failed %s", exc)
+        st.markdown(f"[Katso demo YouTubessa]({DEMO_VIDEO_URL})")
+
+    st.markdown("---")
+
+    if st.session_state.get("_help_request_sent"):
+        st.success(
+            "✓ Kiitos viestistä — laitetaan agentti taas pystyyn "
+            "mahdollisimman pian."
+        )
+        return
+
+    st.markdown(
+        "**Haluatko että agentti laitetaan takaisin pystyyn?** "
+        "Lähetä viesti — saan ilmoituksen ja käyn fixaamassa."
+    )
+    msg = st.text_area(
+        "Viestisi (valinnainen)",
+        placeholder=(
+            "Esim. 'Haluan kokeilla työkalua Sampon analyysiin' — "
+            "tai jätä tyhjäksi"
+        ),
+        max_chars=500,
+        key="_help_request_msg",
+        label_visibility="collapsed",
+    )
+    if st.button("📧 Pyydä apua", type="primary", use_container_width=True):
+        ok, reason = _send_help_request(msg)
+        if ok:
+            st.session_state["_help_request_sent"] = True
+            st.rerun()
+        else:
+            st.warning(
+                f"Hups, viestin lähetys ei mennyt läpi ({reason}). "
+                "Yritä uudelleen hetken päästä."
+            )
 
 
 # ---------------------------------------------------------------------------
