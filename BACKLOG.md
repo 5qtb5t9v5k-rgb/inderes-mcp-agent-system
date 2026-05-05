@@ -170,13 +170,72 @@ ennen omaa päätöstään.
 - **Source provenance per claim**: Jokainen claim synteesissä → eksplisiittinen
   inline-viittaus (`(get-fundamentals/Sampo, 2025)`). PR #29 toi klikattavat
   linkit Lähteet-osioon, mut väitteen kanssa rinnakkain olevat tarkat
-  citations vielä puuttuvat.
+  citations vielä puuttuvat. *(Suora osuma vs. observed hallusinaatiot —
+  ks. `evals/known-failure-cases.md` Case 001.)*
 - **Web search -työkalu RESEARCHille**: Pull recent news context (esim. Reuters/Bloomberg)
 - **PDF-raportit**: "Vie tämä kysely PDF:ksi" → matplotlib-charts + tableat + analyysi
+- **Plotly-chartit QUANTille**: Time-series, bar, scatter — `st.plotly_chart` natiivi.
+  Suositeltu prioriteettivertailussa Inderesin Noraan; user-visible big win.
 - **Historiallinen backtest**: "Mitä olisit suositellut 3kk sitten Sammosta?" — agentti
   rajaa kontekstinsa siihen päivämäärään ja katsoo nyt miten ennuste osui
 - **Streaming output**: Token-by-token vastauksen renderöinti chat-bubblessa
-- **Feedback loop**: 👍/👎 jokaisen vastauksen alla, kerätään dataa promptien parantamiseksi
+- **Feedback loop**: 👍/👎 jokaisen vastauksen alla, kerätään dataa promptien parantamiseksi.
+  *Tämän toteutus on portti evals-pohjaan — ks. alempi "Evals-rakentaminen".*
 - **Konfliktinratkaisu kun MCP-data puuttuu**: Tällä hetkellä joskus QUANT raportoi "data
   ei saatavilla" mutta LEAD ei tiedä että puuttuu. Eksplisiittinen "missing data"-flag
   subagent-vastauksissa, LEAD ottaa huomioon synteesissä.
+
+---
+
+## Tool-result-rehellisyys (uusia, tämän keskustelun nostamia)
+
+Konkreettiset bugit jotka ovat ajaneet näihin: ks. `evals/known-failure-cases.md`.
+
+- **Tool-result entity validation post-processor** *(koodi-taso)*. Per
+  subagent-vastaus: ekstraktoi yhtiönimet tool-tuloksesta (`companyName`
+  -kentästä), ekstraktoi vastauksen mainitsemat yhtiöt (regex tai NER),
+  ja diffaa: jos vastauksessa nimi jota ei tool-tuloksessa → flag → retry
+  lisätyllä kontekstilla ("älä keksi"). **Korjaisi Case 001:n
+  automaattisesti.**
+- **Result-completeness check** *(koodi-taso)*. Jos tool palauttaa N
+  itemiä ja agent listaa M < N kun käyttäjä kysyi listausta → pakota
+  agentti joko (a) listaamaan kaikki tai (b) eksplisiittisesti sanomaan
+  "N tapahtumaa, näytän tärkeimmät Y koska...". **Korjaisi Case 002:n.**
+- **Default-region inference**. Suomenkielinen kysely kontekstissa
+  joka ei eksplisiittisesti mainitse muuta maata → defaulttaa
+  `regions=[FINLAND]`. Voi olla joko prompt-rivi tai koodi-taso wrapper.
+- **Smarter model for synthesis (parked Pro toggle)**. Flash Lite tekee
+  havaittuja virheitä joita Pro-luokan malli tekisi todennäköisesti
+  vähemmän — judgment-issuet (regions-filter), faithful summarization,
+  rule-following. LEAD on luonteva paikka mihin laittaa parempi malli,
+  koska se on yksi kutsu per kysely. Branch on parked
+  `feat/lead-pro-toggle`-haarassa MAF-yhteensopivuusongelman takia.
+
+---
+
+## Evals-rakentaminen — ennen muiden featureiden lisäämistä
+
+Tämän vaatimattaman lopun tarkoitus on dokumentoida miksi nykyinen
+*kehitysjärjestys on prioriteettijärjestys*: ilman mittaria emme tiedä
+parantavatko tai pahentavatko featuremuutokset systeemiä.
+
+Toisen Claude-session kanssa keskusteltu 4-tasoinen polku:
+
+1. **👍👎 user feedback in UI** *(yksi ilta)* — `feedback.json` per run,
+   ei pakota kommenttia. Kerää oikeaa-käyttöä-koskevaa palautetta.
+2. **Smoke test** *(yksi ilta)* — pytest-fixture jossa 5-10 known-good
+   queryä. Routing pitää olla oikea, vähintään yksi oikea tool-call,
+   vastaus ei tyhjä, tunnetut avainsanat löytyvät.
+3. **`evals/golden.yaml` + `scripts/replay.py`** *(yksi ilta)* —
+   kuratoidut run_id:t referensseinä, replay diffaa rakennetta (router,
+   tool-calls, key entities) raw-tekstiä unohtaen.
+4. **Production monitoring** *(jatkuva)* — aggregointiskripti joka
+   näyttää viikon thumbs-up/down -suhteen, kategorisoi virhetyypit.
+
+`evals/known-failure-cases.md` on jo aloitettu — jokainen sieltä löytyvä
+tapaus on potentiaalinen golden-rivi. Case 001 + Case 002 ovat selkeät
+ensimmäiset.
+
+**Kunnes evals-pohja on rakennettu, AI-kyvykkyysfeaturet (kohdat
+"Tool-result-rehellisyys" yllä) eivät kannata investoida — emme tiedä
+toimivatko korjaukset.**
