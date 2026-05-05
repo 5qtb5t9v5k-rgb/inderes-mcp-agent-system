@@ -120,8 +120,15 @@ from components import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="inderes-mcp-agent-system",
-    page_icon="📊",
+    # Tab title — kept tight (full repo name was too long and visually
+    # clashed with the deployment URL which deliberately starts with
+    # "not-inderes-..."). 'Inderes//Agent' matches the brand mark used
+    # throughout the UI and decks.
+    page_title="Inderes//Agent",
+    # Favicon — speech bubble matches LEAD's amber **💭 Perustelut:**
+    # callout, the most distinctive visual element of the synthesis
+    # output. Cohesive with the chat-assistant avatar 🔶.
+    page_icon="💭",
     layout="wide",
 )
 
