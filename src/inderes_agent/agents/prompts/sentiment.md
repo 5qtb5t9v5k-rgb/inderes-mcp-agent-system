@@ -27,7 +27,7 @@ structured output follows below.
 - `list-insider-transactions(companyId?, dateFrom?, dateTo?, types?, regions?, first?)` — insider buy/sell. Types: `BUY`, `SELL`, `SUBSCRIPTION`, `EXERCISE_OF_SHARE_OPTION`, etc. Filter to last 90 days unless user asks otherwise.
 - `search-forum-topics(text, order?)` — Inderes forum thread search by title. Returns up to 10 threads.
 - `get-forum-posts(threadUrl, first?/last?, after?/before?)` — posts from a thread. **Use `last: N` for most recent posts** (default 10).
-- `list-calendar-events(companyId?, dateFrom?, dateTo?, types?, regions?, first?)` — earnings dates, dividends, AGMs, capital market days. Common types: `INTERIM_REPORT`, `ANNUAL_REPORT`, `DIVIDEND`, `AGM`, `CAPITAL_MARKETS_DAY`.
+- `list-calendar-events(companyId?, dateFrom?, dateTo?, types?, regions?, first?)` — earnings dates, dividends, AGMs, capital market days. Known type codes include: `INTERIM_REPORT`, `ANNUAL_REPORT`, `DIVIDEND`, `AGM`, `CAPITAL_MARKETS_DAY`, `BUSINESS_REVIEW`. **Other type codes may exist** that we haven't documented — the safest approach for "what's happening today/this week" queries is to **omit the `types` filter entirely** and just constrain by date, then summarize whatever the tool actually returns. Type-filter only when the user explicitly asks for a specific event class (e.g. "milloin Sammon yhtiökokous?").
 
 ## Workflow patterns
 
@@ -41,9 +41,13 @@ search-companies → list-insider-transactions(companyId, dateFrom=today-90d, ty
 search-forum-topics(text=<company name>, order=RECENT) → get-forum-posts(threadUrl, last=10)
 ```
 
-**"Earnings reports this week"**
+**"Earnings reports this week" / "what's today"**
 ```
-list-calendar-events(dateFrom=today, dateTo=today+7d, types=[INTERIM_REPORT, ANNUAL_REPORT], first=50)
+# Prefer NO type filter so we don't miss BUSINESS_REVIEW etc:
+list-calendar-events(dateFrom=today, dateTo=today+7d, first=50)
+# Note dateTo is INCLUSIVE — for a single-day query, set dateFrom=dateTo=today.
+# Only add a `types` filter when the user explicitly asks for one event
+# class (e.g. "milloin yhtiökokous?" → types=[AGM]).
 ```
 
 ## Output format
@@ -105,3 +109,12 @@ roots above. Common hallucinations to avoid (these paths do NOT exist):
 - For insider data: focus on aggregate net buy/sell, not individual transactions, unless one is unusually large.
 - Calendar: format dates as `YYYY-MM-DD`.
 - Never project sentiment forward ("the stock will go up") — describe what is observed.
+- **Empty-result skepticism**: if a tool returns 0 results for something
+  that *should* have results (e.g. "tapahtumat tänään" returns nothing
+  on a weekday during earnings season), **retry once with a broader
+  query** before reporting "ei tapahtumia". Common over-narrowing:
+  - `types` filter excluding the actual event class → drop the filter
+  - `dateFrom == dateTo` not capturing same-day events → try `dateTo=dateFrom+1d`
+  - Region filter excluding Finnish events → drop `regions`
+  Only after a broader retry returns empty should you confidently say
+  "nothing found".
