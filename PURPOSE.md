@@ -50,8 +50,9 @@ direction emerged from those failing first. See `LESSONS.md` →
 
 ## What "production-tested" means here
 
-**Not** "deployed as SaaS to thousands of users". This is and stays a
-single-user personal tool.
+**Not** "deployed as SaaS to thousands of users". This is, **for now**,
+a single-user personal tool — where the road leads is open, but the
+current scope is the author's own desk.
 
 **Production-tested** here means the system:
 
@@ -100,9 +101,13 @@ load-bearing; the Inderes specifics are not.
 
 These exclusions are deliberate and worth stating explicitly:
 
-- **Not a commercial product.** Single user, personal Premium
-  subscription, open source under permissive terms, no monetization,
-  no scale path planned.
+- **Not a commercial product (currently).** Single user, personal
+  Premium subscription, open source under permissive terms, no
+  monetization in place, no scale path actively planned. Where the
+  road leads from here is genuinely open — this section reflects
+  current scope and intent, not a permanent constraint. If the
+  project grows past single-user use someday, this document will be
+  the first thing to update.
 - **Not investment advice.** The system surfaces Inderes' own
   recommendations, target prices, insider activity, and analyst views;
   it does not generate buy/sell calls of its own opinion. The user
