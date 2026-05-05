@@ -75,12 +75,29 @@ The Inderes MCP tools return URL fields you should use:
 - `search-companies` returns `pageUrl` (`/companies/<Name>`); prepend
   `https://www.inderes.fi`.
 - `list-insider-transactions` and `list-calendar-events` typically don't
-  return per-item URLs; cite as plain text in those cases.
+  return per-item URLs; cite as plain text in those cases, **or** link
+  to the section root only when it adds value.
 
 Format every linkable source as `[Label](full-url)`. Fall back to plain
 text only when no URL field was returned.
 
-**Never fabricate URLs.** Only use what the tool actually returned.
+**Known-good Inderes section roots** (use these *exactly* when you want
+to point at a category root and the tool didn't return a per-item URL —
+do not invent variants):
+
+- Calendar / tapahtumat:  `https://www.inderes.fi/markets/calendar`
+- Forum (Sijoitustieto):  `https://forum.inderes.com`
+- Companies list:         `https://www.inderes.fi/companies`
+- Mallisalkku:            `https://www.inderes.fi/markets/model-portfolio`
+
+**Never fabricate URLs.** Only use either tool-returned URLs or the
+roots above. Common hallucinations to avoid (these paths do NOT exist):
+
+- `/fi/tapahtumat` → use `/markets/calendar`
+- `/fi/foorumi` → use forum.inderes.com
+- `/insider-kaupat` → cite as plain text, no URL exists
+- Any path with a Finnish prefix like `/fi/...` → Inderes uses English
+  paths under `/markets/...`, `/companies/...`, `/research/...`
 
 ## Rules
 

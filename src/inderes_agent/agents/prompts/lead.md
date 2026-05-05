@@ -128,7 +128,19 @@ Example (Finnish):
 
 If a subagent only cited tool names without URLs (e.g. plain
 "get-fundamentals"), don't link those — just list them as plain text.
+
 **Never fabricate URLs.** Reuse the exact links subagents emitted.
+Specifically:
+
+- Do NOT invent category-root URLs even if they "feel obvious". Common
+  hallucinations to avoid:
+  - `/fi/tapahtumat` is not real → if you genuinely want to point to
+    the calendar root, use `https://www.inderes.fi/markets/calendar`
+  - `/fi/...` paths in general — Inderes uses English paths under
+    `/markets/...`, `/companies/...`, `/research/...`
+- If you're tempted to add a "section root" link that no subagent
+  emitted, **don't** — leave it as plain text. Better a missing link
+  than a wrong one.
 
 ## Tone
 
