@@ -18,7 +18,15 @@ The system **surfaces signals** — Inderes' own recommendation, target price, i
 activity, analyst notes, forum sentiment — and **never** issues a buy/sell call of
 its own. The user makes the decision; the agent shows them the data.
 
+> **About this project.** A *learning project*, not a product. The goal is
+> to develop in practice a working understanding of how multi-agent systems
+> are actually built — iteratively, from a single-agent foundation toward
+> production-tested multi-agent systems. The deliverable is the body of
+> transferable patterns documented along the way, not just this specific
+> tool. See [`PURPOSE.md`](PURPOSE.md) for the full statement of intent.
+
 > **Documentation map**
+> - [`PURPOSE.md`](PURPOSE.md) — *why* the project exists; trajectory, what's transferable, what's deliberately excluded
 > - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design, components, lifecycle, key decisions for *this* implementation
 > - [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md) — generic layered model (Surface / Brain / Action / Data / Harness + Evals & Governance planes) for thinking about any multi-agent system, with this project as a worked example
 > - [`LESSONS.md`](LESSONS.md) — reflections on building this; what AI / UI / infra each contribute, what time really went to, what I'd do differently
