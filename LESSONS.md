@@ -207,7 +207,7 @@ the connection-time `initialize` call. Since the 401 happens during
 None of this is "AI work". All of it was required to make the agents able
 to call any tool at all.
 
-### Cloud deployment kills you with idle timeouts
+### Cloud deployment kills you with idle timeouts (and that's not the only cap)
 
 Local development was fine: tokens cached on disk, refresh token used
 silently on subsequent runs, OAuth happens once a week if you're lucky.
@@ -216,17 +216,39 @@ loses the local cache between restarts) **and** in a non-obvious way: an
 idle Keycloak SSO session eventually invalidates the refresh token chain,
 even with a valid refresh token in hand.
 
-Two fixes were needed, both infra-only, neither AI:
+Three fixes were needed, all infra-only, none AI:
 
 - **Gist mirror** (PRs #16, #17, #27): refreshed tokens get pushed to a
   private GitHub gist; cold start pulls from the gist. Survives container
   restarts.
 - **GitHub Actions cron** (PR #25): runs every 15 min, refreshes tokens
-  via the gist. Keeps the SSO session warm even when no user is querying.
+  via the gist. Keeps the SSO session warm in principle.
+- **cron-job.org as actual scheduler** (final fix): GitHub Actions
+  free-tier scheduling turned out to be unreliable in practice — observed
+  gaps of 1-4 hours between scheduled runs even with `*/5` cadence
+  configured. Switched to cron-job.org, which fires the same workflow
+  via GitHub's `workflow_dispatch` API every 5 minutes reliably. Idle
+  timeout problem solved.
 
 The cron is conceptually a heartbeat for an absent user. The lesson: if
 your auth provider has session timeouts, you can't rely on user activity
-to keep them alive. You need an authenticated heartbeat.
+to keep them alive. You need an authenticated heartbeat — and you need to
+verify the heartbeat actually fires at the cadence you configured.
+
+**But:** even with reliable keepalive, the IdP can have a wall-clock
+**Session Max** that no amount of pinging can extend. We measured this
+empirically against Inderes' Keycloak: SSO Session Max = exactly 10
+hours from login, regardless of activity. Cron-job.org-driven token
+rotation succeeded ~120 times in a row over those 10 hours, then failed
+with `invalid_grant: Token is not active` on minute 601. There is no
+client-side fix for this — it requires either the IdP team to extend the
+cap, or accepting a daily re-auth cadence.
+
+The deeper lesson: with third-party identity, **you don't control session
+lifetime**. The infrastructure layer can hide *some* of the user-visible
+pain (gist mirror across container restarts, keepalive across idle
+timeouts), but the absolute cap is set by someone else. Plan operational
+runbooks accordingly.
 
 ### "Free tier" has hidden cliffs
 

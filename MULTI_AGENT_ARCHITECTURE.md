@@ -334,6 +334,18 @@ abstractions only when adding the second source forces them.
   different consistency, retention, and privacy requirements. A
   watchlist (state) needs persistence; a market price (external)
   doesn't. Don't store one in the same place as the other.
+- **Assuming session lifetime is something you control**. With
+  third-party OAuth, the identity provider sets the SSO session
+  max-lifetime server-side. No amount of refresh-token rotation,
+  keepalive pinging, or clever client work can extend it past that
+  cap. *Empirical example from this project*: the upstream Inderes
+  Keycloak SSO Session Max is exactly 10 hours wall-clock from login,
+  measured by holding a session alive with a 5-minute cron-job.org
+  -triggered token rotation that succeeded ~120 times in a row before
+  the 10-hour mark, then failed with `invalid_grant: Token is not
+  active` regardless of activity. The fix is not client-side; it
+  requires either the IdP team to extend the cap, or accepting a
+  predictable re-auth cadence in your operational runbook.
 
 ---
 

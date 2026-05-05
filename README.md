@@ -19,7 +19,8 @@ activity, analyst notes, forum sentiment — and **never** issues a buy/sell cal
 its own. The user makes the decision; the agent shows them the data.
 
 > **Documentation map**
-> - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design, components, lifecycle, key decisions
+> - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design, components, lifecycle, key decisions for *this* implementation
+> - [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md) — generic layered model (Surface / Brain / Action / Data / Harness + Evals & Governance planes) for thinking about any multi-agent system, with this project as a worked example
 > - [`LESSONS.md`](LESSONS.md) — reflections on building this; what AI / UI / infra each contribute, what time really went to, what I'd do differently
 > - [`AGENT_FRAMEWORK.md`](AGENT_FRAMEWORK.md) — Microsoft Agent Framework primer + which features we use
 > - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — every error encountered, with fix
@@ -403,9 +404,12 @@ Some of what I learned in the process:
   Pro-tier zero allocation). Plan for them up front rather than getting
   surprised.
 
-For a longer write-up — the AI / UI / infra breakdown, lessons per pillar,
-cross-cutting themes, things I'd do differently next time, and the open
-questions I haven't resolved — see [`LESSONS.md`](LESSONS.md).
+For a longer reflective write-up — the AI / UI / infra breakdown, lessons
+per pillar, cross-cutting themes, things I'd do differently next time, and
+the open questions I haven't resolved — see [`LESSONS.md`](LESSONS.md).
+For a generic primer on multi-agent system architecture (the layered model
+this project ended up illustrating), see
+[`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md).
 
 ---
 

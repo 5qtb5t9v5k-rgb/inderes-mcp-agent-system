@@ -4,10 +4,114 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com); the project does not yet follow
 [SemVer](https://semver.org) strictly.
 
-## [unreleased] — 2026-05-02 / 2026-05-03
+## [unreleased] — 2026-05-02 → 2026-05-05
 
-A heavy iteration on the Streamlit UI plus operational improvements to the
-agent layer. No breaking changes.
+A heavy iteration on the Streamlit UI plus substantial operational
+improvements to the agent layer and OAuth/cloud infrastructure. No
+breaking changes.
+
+### Added — public-safe error UI on auth-expired card
+
+- **Embedded demo video** on the auth-expired card so first-time visitors
+  past the password gate can still see what the tool does even when it
+  can't run live.
+- **"📧 Pyydä yhteyden korjaamista" button** that increments a recovery
+  counter persisted in the same gist mirror used for tokens. Operator
+  sees the counter on the card after a session death and knows people
+  are waiting; visitor sees they're not the first to hit the wall.
+- **Public-safe error masking**: `HeadlessAuthError` (and any exception
+  whose message hints at auth/session problems) is rendered as a clean
+  "Järjestelmä alhaalla — yhteys täytyy autentikoida uudelleen" card
+  rather than a raw traceback that exposed local paths and recovery
+  scripts.
+- **Theme-matching chat avatars** (👤 user, 🔶 assistant) replacing
+  Streamlit's default cartoon icons.
+- **Absolute Helsinki-time timestamps** on the recovery counter
+  ("Viimeisin: 04.05.2026 klo 20.34") instead of relative phrases that
+  re-render inconsistently across day boundaries.
+
+### Added — infrastructure (durable session keepalive)
+
+- **`scripts/relogin.sh`** — one-shot recovery script that wraps the
+  full flow: stash old tokens, run agent (browser opens for fresh
+  login), sync to gist, trigger cron to verify, print a clear
+  ✅/⚠ verdict.
+- **`scripts/sync_local_tokens_to_gist.py`** — pushes local
+  `~/.inderes_agent/tokens.json` to the gist via `gh` CLI (no
+  GH_TOKEN needed in `.env`). Runs in `relogin.sh` and stand-alone.
+- **MCP keepalive in cron worker** — after each successful Keycloak
+  refresh, the cron also makes one authenticated MCP `initialize`
+  call. Diagnostic test for whether Keycloak's idle timer treats
+  /token vs MCP API activity differently (verdict: it doesn't —
+  but the test confirmed the assumption).
+- **Cron cadence `*/15` → `*/5`** with a documented caveat that
+  GitHub Actions free-tier scheduling is best-effort and may skip
+  runs under load. *Real* reliable scheduling moved to an external
+  service (cron-job.org) that hits the same workflow via the
+  GitHub API.
+- **Smart cron notification** — exit 1 only on the ok→failed
+  transition (tracked via `_last_refresh_status` field in the gist),
+  exit 0 while ongoing-failed. Result: GitHub emails the maintainer
+  exactly *once* when a session dies, not every 5 minutes.
+- **Cross-cron-cloud rotation race recovery** in `oauth.py` — when
+  cloud's in-memory refresh_token is invalidated by cron rotation,
+  cloud now force-pulls the gist and retries with the fresh token
+  before raising `HeadlessAuthError`.
+
+### Added — empirical Inderes Session Max measurement
+
+- **Confirmed: Inderes Keycloak SSO Session Max = exactly 10 hours
+  wall-clock from login.** Measured by holding a fresh session alive
+  with cron-job.org-driven token rotation every 5 minutes. Rotation
+  succeeded ~120 times in a row, then failed with `invalid_grant:
+  Token is not active` at minute 601. Documented in
+  `LESSONS.md` and `MULTI_AGENT_ARCHITECTURE.md` as a worked
+  example of "session lifetime is set by the IdP, not by you."
+
+### Added — documentation
+
+- **`MULTI_AGENT_ARCHITECTURE.md`** — generic layered-model primer
+  for multi-agent systems. Five layers (Surface / Brain / Action /
+  Data / Harness) plus two cross-cutting planes (Evals & Observability,
+  Governance) plus memory tiers, with this project as a worked
+  example throughout. Companion to `ARCHITECTURE.md` (which covers
+  the concrete current implementation file by file).
+
+### Fixed
+
+- **URL hallucination** in source-link rendering. Agents had been
+  generating `/fi/tapahtumat`-style fabricated category-root URLs
+  when a tool didn't return a per-item URL. Tightened both
+  `sentiment.md` and `lead.md` prompts with an explicit known-good
+  section-roots block (calendar, forum, companies, mallisalkku) and
+  a "common hallucinations to avoid" list.
+- **Empty-result blindness** on calendar queries. Agents called
+  `list-calendar-events` with `types=[INTERIM_REPORT, BUSINESS_REVIEW]`,
+  got 0 results because the type filter was over-narrow, and
+  reported "ei tapahtumia" even though the calendar visibly had 5+
+  earnings reports. Fix: prompt now recommends omitting `types`
+  filter for "what's today" -style queries, plus a new "empty-result
+  skepticism" rule under sentiment.md `## Rules` mandating one
+  broader retry before reporting nothing.
+- **`TokenSet.from_dict` rejecting unknown fields**. The smart cron
+  notification (above) added `_last_refresh_status` and
+  `_last_refresh_at` to the gist's tokens.json, which made the
+  cloud's `TokenSet.from_dict()` raise `unexpected keyword argument`
+  on parse. Fixed by filtering to the dataclass's known fields
+  before construction — forward-compatible to future bookkeeping
+  fields.
+- **CachedWidgetWarning on auth-expired card**. The `_bootstrap()`
+  function was decorated with `@st.cache_resource` and called
+  `_render_auth_expired()` (containing widgets) inside its except
+  branch. Streamlit cache prevents widgets from re-rendering on
+  cache hits. Refactored: bootstrap-auth step is cached, the
+  auth-expired UI rendering happens outside the cache.
+- **Chat avatars rendered as broken file paths**. First attempt
+  used `❯` and `◆` (Unicode dingbats), which Streamlit doesn't
+  detect as emoji and falls through to file-path interpretation,
+  crashing with `FileNotFoundError`. Replaced with proper emoji.
+
+### Added — Streamlit UI ("Trading Desk" visual layer)
 
 ### Added — UI polish (recommendation, followups, sources, status)
 
