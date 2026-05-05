@@ -125,10 +125,11 @@ st.set_page_config(
     # "not-inderes-..."). 'Inderes//Agent' matches the brand mark used
     # throughout the UI and decks.
     page_title="Inderes//Agent",
-    # Favicon — speech bubble matches LEAD's amber **💭 Perustelut:**
-    # callout, the most distinctive visual element of the synthesis
-    # output. Cohesive with the chat-assistant avatar 🔶.
-    page_icon="💭",
+    # Favicon — orange diamond, same glyph as the chat-assistant
+    # avatar. The diamond is LEAD's persona mark used throughout
+    # the UI and decks; using it as the favicon ties the browser-tab
+    # identity to the brand mark.
+    page_icon="🔶",
     layout="wide",
 )
 
