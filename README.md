@@ -30,6 +30,7 @@ its own. The user makes the decision; the agent shows them the data.
 > - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design, components, lifecycle, key decisions for *this* implementation
 > - [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md) — generic layered model (Surface / Brain / Action / Data / Harness + Evals & Governance planes) for thinking about any multi-agent system, with this project as a worked example
 > - [`LESSONS.md`](LESSONS.md) — reflections on building this; what AI / UI / infra each contribute, what time really went to, what I'd do differently
+> - [`AI_BRIEFING_PROMPT.md`](AI_BRIEFING_PROMPT.md) — copy-pasteable prompt for AI coding assistants to read this repo in a structured way and produce a briefing for someone applying its patterns to a multi-agent project of their own
 > - [`AGENT_FRAMEWORK.md`](AGENT_FRAMEWORK.md) — Microsoft Agent Framework primer + which features we use
 > - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — every error encountered, with fix
 > - [`CHANGELOG.md`](CHANGELOG.md) — version history and design rationale
