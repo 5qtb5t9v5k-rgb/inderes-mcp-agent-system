@@ -171,7 +171,7 @@ ennen omaa päätöstään.
   inline-viittaus (`(get-fundamentals/Sampo, 2025)`). PR #29 toi klikattavat
   linkit Lähteet-osioon, mut väitteen kanssa rinnakkain olevat tarkat
   citations vielä puuttuvat. *(Suora osuma vs. observed hallusinaatiot —
-  ks. `evals/known-failure-cases.md` Case 001.)*
+  ks. `evals/known-cases.md` Case 001.)*
 - **Web search -työkalu RESEARCHille**: Pull recent news context (esim. Reuters/Bloomberg)
 - **PDF-raportit**: "Vie tämä kysely PDF:ksi" → matplotlib-charts + tableat + analyysi
 - **Plotly-chartit QUANTille**: Time-series, bar, scatter — `st.plotly_chart` natiivi.
@@ -189,7 +189,7 @@ ennen omaa päätöstään.
 
 ## Tool-result-rehellisyys (uusia, tämän keskustelun nostamia)
 
-Konkreettiset bugit jotka ovat ajaneet näihin: ks. `evals/known-failure-cases.md`.
+Konkreettiset bugit jotka ovat ajaneet näihin: ks. `evals/known-cases.md`.
 
 - **Tool-result entity validation post-processor** *(koodi-taso)*. Per
   subagent-vastaus: ekstraktoi yhtiönimet tool-tuloksesta (`companyName`
@@ -232,7 +232,7 @@ Toisen Claude-session kanssa keskusteltu 4-tasoinen polku:
 4. **Production monitoring** *(jatkuva)* — aggregointiskripti joka
    näyttää viikon thumbs-up/down -suhteen, kategorisoi virhetyypit.
 
-`evals/known-failure-cases.md` on jo aloitettu — jokainen sieltä löytyvä
+`evals/known-cases.md` on jo aloitettu — jokainen sieltä löytyvä
 tapaus on potentiaalinen golden-rivi. Case 001 + Case 002 ovat selkeät
 ensimmäiset.
 

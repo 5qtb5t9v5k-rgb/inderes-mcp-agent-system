@@ -92,13 +92,17 @@ READING ORDER (with specific extraction targets per file)
    Note the explicit build-order argument: evals foundation
    before AI-capability features.
 
-7. **evals/known-failure-cases.md** — extract: Case 001
-   (hallucination from training memory) and Case 002 (cherry-pick
-   without region filter). These are concrete documented model
-   failures with tool-result comparison data. Note especially that
-   they are **two different failure modes** producing the same
-   surface bug, and what that implies about prompt-engineering
-   ceilings.
+7. **evals/known-cases.md** — extract: Case 001 (hallucination from
+   training memory), Case 002 (cherry-pick without region filter),
+   and Case 003 (multi-subagent fan-out emergently filtering one
+   subagent's hallucination via implicit consensus). Note especially
+   that 001 and 002 are **two different failure modes** producing the
+   same surface bug, and what that implies about prompt-engineering
+   ceilings; while Case 003 demonstrates that **multi-subagent
+   redundancy provides emergent self-correction** — but only
+   statistically, not algorithmically. Case 002 (single-subagent
+   query) is the failure mode of having no second opinion to
+   contrast with.
 
 8. **CHANGELOG.md** — extract: trajectory v0.1 → v0.2, with focus
    on the proportion of UI vs prompt vs infrastructure changes.
@@ -148,7 +152,7 @@ measured Inderes Keycloak SSO Session Max = 10h hard cap and the
 GitHub Actions free-tier scheduler unreliability.
 
 **E. Unresolved hard problems** — specifically the AI capability
-gaps documented in `evals/known-failure-cases.md`. Explain why
+gaps documented in `evals/known-cases.md`. Explain why
 prompt-engineering alone has hit a ceiling against these and
 what the project's BACKLOG identifies as the structural fixes
 (reflection + retry, tool-result entity validation,
@@ -201,7 +205,7 @@ If this prompt is updated, also consider whether:
   reading order shows up in two places; they should match)
 - **Newly added top-level docs** should be inserted into the prompt's
   reading order
-- **`evals/known-failure-cases.md` has new cases** beyond Case 001
+- **`evals/known-cases.md` has new cases** beyond Case 001
   and Case 002 — if so, mention them by ID in the prompt so the AI
   knows to extract them all
 

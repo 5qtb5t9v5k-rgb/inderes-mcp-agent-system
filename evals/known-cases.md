@@ -1,23 +1,33 @@
-# Known failure cases
+# Known cases
 
-A growing list of concrete observed failure cases on real queries. Each
-case documents the query, the expected behavior, the actual behavior,
-and the inferred root cause. Used as:
+A growing list of concrete observed cases on real queries. Each case
+documents the query, the expected behavior, the actual behavior, and
+the inferred root cause. **Both failures and successes are
+documented** — successes that reveal *how* the system works are as
+valuable as failures that reveal *why* it doesn't. Used as:
 
 - **Source material** for the golden eval dataset (each case → one
   golden run with expected output)
 - **Regression check** when changing prompts or models — replay each
-  case, verify the failure mode no longer reproduces
+  case, verify the behavior is preserved (failures stay fixed,
+  successes stay passing)
 - **Argument for prioritizing** specific BACKLOG items — each case
-  links to the BACKLOG features that would fix it
+  links to the BACKLOG features that would fix or strengthen it
 
 This file is curated by hand; it's not a complete record of every
-failure (that's in `~/.inderes_agent/runs/<ts>/`). It's the cases
-worth treating as evals.
+run (that's in `~/.inderes_agent/runs/<ts>/`). It's the cases worth
+treating as evals.
+
+Each case is labeled with one of:
+
+- 🔴 **Failure** — system produced a wrong/misleading answer
+- 🟢 **Success worth understanding** — system worked, and *how* it
+  worked is informative beyond the surface result
+- 🟡 **Partial / mixed** — some right, some wrong
 
 ---
 
-## Case 001 — Calendar today, fabricated companies
+## 🔴 Case 001 — Calendar today, fabricated companies
 
 **Date observed:** 2026-05-05
 **Query:** *"kellä tänään tulosjulkistus?"*
@@ -89,7 +99,7 @@ case 002 for the next failure mode that emerged.
 
 ---
 
-## Case 002 — Calendar tomorrow, partial Nordic instead of Finnish
+## 🔴 Case 002 — Calendar tomorrow, partial Nordic instead of Finnish
 
 **Date observed:** 2026-05-05 (asking about 2026-05-06)
 **Query:** *"kellä huomenna osarit?"*
@@ -175,6 +185,134 @@ post-processing rather than prompt-only fixes.
 
 ---
 
+## 🟢 Case 003 — Multi-subagent fan-out filters a hallucination
+
+**Date observed:** 2026-05-06
+**Query:** *"Tee kattava ja ajantasainen analyysi Puuilosta toukokuun
+2026 tilanteessa. Vertaa sitä samassa toimialassa toimiviin yhtiöihin
+(esim. Tokmanni ja Kesko)..."*
+**Routing decision:** `domains=[QUANT, RESEARCH, SENTIMENT, PORTFOLIO]`,
+`is_comparison=true`, three companies (Puuilo, Tokmanni, Kesko) →
+**10 subagents** running in parallel.
+
+### What happened
+
+One of the QUANT subagents (the one analyzing Tokmanni in the
+context of the Puuilo question) produced a single sentence that was
+factually wrong:
+
+> *"Mallisalkku: Puuilo on ollut pitkään Inderesin mallisalkun
+> vakionimi, mikä kertoo luottamuksesta yhtiön laatuun."*
+
+This was a hallucination. Puuilo is **not** in Inderes' model
+portfolio in May 2026.
+
+The other subagents working on the same query handled it correctly:
+
+- RESEARCH (Puuilo): *"Puuilo ei ole Inderesin mallisalkussa
+  toukokuussa 2026."* ✓
+- SENTIMENT (Puuilo): *"Inderesin mallisalkun tiedot ovat
+  tarkistettavissa heidän virallisista lähteistään."* (neutral
+  hedge)
+- SENTIMENT (Tokmanni): *"MALLISALKUN ASEMA: Puuilo ei ole Inderesin
+  mallisalkussa."* ✓
+- SENTIMENT (Kesko): *"Puuilo ei tällä hetkellä ole Inderesin
+  mallisalkun yhtiöiden listalla."* ✓
+- PORTFOLIO: *"Mallisalkku-status: Puuilo ei ole Inderesin
+  mallisalkun tämänhetkisessä sisällössä (tarkistettu 6.5.2026)."* ✓
+
+So among the 10 subagent outputs, **4 explicitly correct, 1 explicit
+hallucination, 5 didn't address it**.
+
+LEAD's final synthesis stated:
+
+> *"Mallisalkku: Puuilo ei ole toukokuussa 2026 Inderesin
+> mallisalkussa."*
+
+LEAD picked the correct claim despite one subagent contradicting it.
+
+### Why this is interesting
+
+This is the **first documented case** of the multi-agent system
+correcting an internal contradiction emergently. There is no
+explicit voting code, no consensus algorithm, no truth-check —
+LEAD is just one Gemini Flash Lite call given all 10 subagent
+outputs as text in its prompt. Yet it filtered the hallucination.
+
+The mechanism is statistical, not logical:
+
+1. **Repetition signals truth in training data.** When the LLM
+   sees four sources agreeing and one disagreeing, training-data
+   priors favor the consensus.
+2. **Specificity wins.** PORTFOLIO's claim was tool-grounded
+   ("tarkistettu 6.5.2026"); QUANT's hallucination was a vague
+   narrative claim ("on ollut pitkään vakionimi").
+3. **Role appropriateness.** Mallisalkku-claims are PORTFOLIO's
+   domain; QUANT's prompt explicitly scopes it to numbers. The
+   LLM picks up role mismatches as a credibility hint.
+4. **Internal consistency during generation.** Once LEAD has
+   committed to "ei mallisalkussa" early in the synthesis, it
+   resists later contradiction because that would create
+   text-level inconsistency.
+
+### Why this is fragile
+
+The 4-vs-1 ratio is a comfortable margin. The mechanism would not
+be reliable at:
+
+- 1-vs-1 (single-domain query, only two opinions)
+- 2-vs-2 with equally specific claims
+- All hallucinations of equal vagueness/confidence
+- Cases where the user's query language hints favor the wrong claim
+
+Case 002 is the cautionary counter-example: with only one subagent
+on the question, there was no second opinion to contrast with, and
+the wrong filter slipped through.
+
+### Why we don't have a "reasoning trace"
+
+The forensic logs (`~/.inderes_agent/runs/<ts>/`) contain:
+
+- ✓ Each subagent's full output (`subagent-NN-*.json`)
+- ✓ LEAD's final synthesis (`synthesis.txt`)
+- ✗ **No record of how LEAD weighted the conflicting claims**
+
+The implicit weighting happens inside the LLM forward pass — there
+is no externalized reasoning. We see what LEAD received and what it
+produced, but not how it chose. This is a fundamental property of
+LLM-based synthesis, not a logging gap.
+
+### What would make this stronger
+
+| Fix | Effect |
+|---|---|
+| Mandatory conflict-trace in `lead.md` | LEAD must list disagreements + how it resolved them in the **💭 Perustelut:** callout. Makes implicit consensus explicit and loggable. |
+| Pre-synthesis conflict detection (BACKLOG #1 plan-then-execute) | Separate LLM call before synthesis: parse subagent outputs, output structured `conflicts.json`. Synthesis sees explicit conflict list. |
+| Per-claim source provenance | Every synthesis claim cites which subagent(s) backed it. User can see "Mallisalkku: ei [PORTFOLIO, RESEARCH-1, SENTIMENT-2, SENTIMENT-3]". |
+| Reflektio + retry (BACKLOG #2) | Code-level entity validation post-synthesis: did LEAD use any claim no subagent made? Did it ignore claims many subagents made? |
+
+These are not "fix this case" — Case 003 is a success — but
+"make the success mechanism reliable instead of statistical".
+
+### Notes on the broader principle
+
+Multi-subagent fan-out (rather than single-agent ReAct) gives
+**redundancy as a free side-effect**. The system shown here uses
+that redundancy as its only defense against hallucination. That is
+both impressive (no extra code) and dangerous (statistical
+guarantee, not algorithmic). For any non-trivial multi-agent
+system, expect to either:
+
+- Engineer the redundancy explicitly (per-claim citations,
+  conflict traces, reflection)
+- Or accept that the system fails on single-domain queries with
+  no second opinion
+
+Case 002 is the failure mode of accepting it; Case 003 is the
+success mode when conditions cooperate.
+
+---
+
 ## How to use this file
 
 ### When triaging a new failure
@@ -195,7 +333,7 @@ on):
 
 ```yaml
 - id: calendar-today-finnish
-  source_case: known-failure-cases.md#case-001
+  source_case: known-cases.md#case-001
   query: "kellä tänään tulosjulkistus?"
   expected_routing: { domains: [sentiment], region: FINLAND }
   expected_tools: [list-calendar-events]
