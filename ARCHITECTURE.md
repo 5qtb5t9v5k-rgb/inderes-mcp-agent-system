@@ -28,8 +28,11 @@ A user asks a natural-language question about a Nordic stock. A **router** class
 it. A **fan-out workflow** spawns 1–4 **specialized subagents** in parallel, each
 with its own focused subset of Inderes MCP tools. Each subagent runs an LLM
 tool-calling loop, gathers data from Inderes, and returns a structured text block.
-A **lead** synthesizes those blocks into one final answer. Everything that happened
-gets recorded to disk as a forensic record and a human-readable narrative.
+A **conflict-detector** then reads all subagent outputs and emits a structured map
+of where they agree, disagree, and which claims only one subagent made.
+Finally, a **lead** synthesizes the subagent outputs *and* the conflict report
+into one final answer. Everything that happened gets recorded to disk as a
+forensic record and a human-readable narrative.
 
 ```
 User question
@@ -44,6 +47,10 @@ Workflow (asyncio.gather + semaphore on MAX_CONCURRENT_AGENTS)
     ├──→ aino-research  ─┤  each: own chat client, own filtered MCP tool set,
     ├──→ aino-sentiment ─┤        own AFC tool-calling loop, own structured output
     └──→ aino-portfolio ─┘
+                         │
+                         ▼
+              aino-conflict-detector (Gemini, no tools, strict JSON)
+              → agreements / conflicts / isolated_claims
                          │
                          ▼
               Lead synthesis (Gemini, no tools)

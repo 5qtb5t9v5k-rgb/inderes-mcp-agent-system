@@ -4,7 +4,42 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com); the project does not yet follow
 [SemVer](https://semver.org) strictly.
 
-## [unreleased] — 2026-05-02 → 2026-05-05
+## [unreleased] — 2026-05-06
+
+### Added — pre-synthesis conflict detection
+
+A new LLM step runs between subagent execution and lead synthesis. The
+detector reads all subagent outputs and emits strict JSON with three
+buckets: **agreements** (claims 2+ subagents support), **conflicts**
+(claims subagents disagree on, with positions per side), and
+**isolated_claims** (single-source factual claims that, if hallucinated,
+would mislead). The lead synthesis prompt now receives this structured
+report alongside the raw subagent outputs and explicit instructions on
+how to use it. Persisted as `conflicts.json` in every run dir.
+
+This is the BACKLOG #1 plan-then-execute extension — it turns the
+emergent multi-subagent self-correction observed in
+`evals/known-cases.md` Case 003 into something *explicit and loggable*
+rather than implicit in the lead's training-data priors.
+
+Empirically observed on a 10-subagent Puuilo-vs-Tokmanni-vs-Kesko run:
+the detector caught a real disagreement between two `sentiment` branches
+(one saw the Joller insider trade, the other did not) and the lead
+resolved it explicitly in the synthesis preamble. Without the explicit
+conflict map, that disambiguation would happen quietly via priors, if
+at all.
+
+### Fixed — Streamlit Cloud installer regression
+
+The previous commit (d8186d2) accidentally checked `uv.lock` into the
+repo via `git add -A`. Streamlit Cloud's installer-selection heuristic
+prefers `uv-sync uv.lock` over `requirements.txt` when both exist, and
+uv-sync skipped the `[ui]` extra — so streamlit got uninstalled from
+the cloud venv, breaking the app with `streamlit: command not found`.
+Removed `uv.lock` from the repo and gitignored it; `requirements.txt`
+stays the documented source of truth.
+
+## [previous batch] — 2026-05-02 → 2026-05-05
 
 A heavy iteration on the Streamlit UI plus substantial operational
 improvements to the agent layer and OAuth/cloud infrastructure. No

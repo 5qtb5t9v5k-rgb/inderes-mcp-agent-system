@@ -225,27 +225,47 @@ system trustworthy.
 
 - `orchestration/router.py` — Gemini structured-output call returns
   `QueryClassification(domains, companies, is_comparison, reasoning)`
-- `orchestration/synthesis.py` — LEAD agent reads subagent outputs,
-  produces final answer
-- LEAD also generates `**💭 Perustelut**` callout — the brain showing
-  *why* it synthesized the way it did
+- `orchestration/synthesis.py` — two-step:
+  - **`detect_conflicts()`** runs a separate LLM call (the
+    `aino-conflict-detector` agent) over all subagent outputs and
+    emits strict JSON: `agreements / conflicts / isolated_claims`.
+    Skipped when only one non-error subagent ran.
+  - **`synthesize()`** runs LEAD over both the raw subagent outputs
+    and the structured conflict report, with explicit instructions on
+    how to use it (don't silently pick a conflict side, treat
+    isolated single-source claims as risky, treat agreements as
+    load-bearing).
+- LEAD also generates the `**💭 Perustelut**` callout — the brain
+  showing *why* it synthesized the way it did, now able to cite the
+  conflict report explicitly (observed: *"Ratkaisin ristiriidat
+  insider-tiedoissa luottamalla maaliskuun 2026 vahvistettuun
+  pörssitiedotteeseen"*).
+- `conflicts.json` is persisted in every run dir alongside
+  `synthesis.txt` and `subagent-NN-*.json`, making the
+  previously-implicit consensus mechanism (Case 003) explicit and
+  loggable.
 
-The router and synthesis are both "brain" but separated by the
-action layer (the actual execution). This is a deliberate choice —
-the brain runs at the start (routing/planning) and end (synthesis),
-not throughout.
+The router, conflict-detector, and synthesis are all "brain" but
+separated by the action layer (the actual execution). This is a
+deliberate choice — the brain runs at the start (routing/planning),
+between execution and synthesis (conflict detection), and at the end
+(synthesis), not throughout.
 
 ### Future direction
 
-- **Plan-then-execute** (BACKLOG #1) — between routing and execution,
-  LEAD writes a structured plan that's user-visible before subagents
-  fire. Editable plans become a UX improvement.
+- **Plan-then-execute pre-execute side** (BACKLOG #1, *post-execute
+  side already implemented as the conflict-detector*) — between
+  routing and execution, LEAD writes a structured plan that's
+  user-visible before subagents fire. Editable plans become a UX
+  improvement.
 - **Reflection** (BACKLOG #2) — between execution and synthesis,
   brain checks for red flags (empty output, anomalous numbers) and
   retries before synthesizing.
-- **Disagreement surfacing** (BACKLOG #6) — brain explicitly compares
-  subagent outputs against known anchors (e.g., Inderes' published
-  estimates) and raises conflicts to the user.
+- **Visible reasoning + uncertainty calibration** (BACKLOG #9) — make
+  LEAD's `**💭 Perustelut**` callout articulate confidence levels and
+  doubts the way Claude / o3 / Grok do (currently more
+  executive-summary in tone). Likely needs a heavier model in the
+  LEAD slot rather than Gemini Flash Lite.
 
 ### Critical pitfalls
 
@@ -546,8 +566,8 @@ It needs hooks into:
 ### Current state in this project
 
 - ✅ Forensic logging — `~/.inderes_agent/runs/<ts>/` with `query.txt`,
-  `routing.json`, `subagent-NN-*.json`, `synthesis.txt`, `meta.json`,
-  `console.log`, `narrative.md`
+  `routing.json`, `subagent-NN-*.json`, `conflicts.json`,
+  `synthesis.txt`, `meta.json`, `console.log`, `narrative.md`
 - ❌ User feedback — not yet
 - ❌ Smoke tests — not yet (unit tests exist but don't cover end-to-end
   behavior)

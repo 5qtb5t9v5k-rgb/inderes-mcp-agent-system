@@ -287,7 +287,7 @@ LLM-based synthesis, not a logging gap.
 | Fix | Effect |
 |---|---|
 | Mandatory conflict-trace in `lead.md` | LEAD must list disagreements + how it resolved them in the **💭 Perustelut:** callout. Makes implicit consensus explicit and loggable. |
-| Pre-synthesis conflict detection (BACKLOG #1 plan-then-execute) | Separate LLM call before synthesis: parse subagent outputs, output structured `conflicts.json`. Synthesis sees explicit conflict list. |
+| ✅ Pre-synthesis conflict detection (BACKLOG #1 plan-then-execute) — *implemented in commit 842fd92* | Separate LLM call before synthesis: parses subagent outputs, emits structured `conflicts.json` with `agreements / conflicts / isolated_claims`. Synthesis sees explicit conflict list. Empirically caught a real `sentiment` disagreement on the Joller insider trade in a 10-subagent Puuilo run; lead resolved it explicitly in the preamble. Statistical → structural shift. |
 | Per-claim source provenance | Every synthesis claim cites which subagent(s) backed it. User can see "Mallisalkku: ei [PORTFOLIO, RESEARCH-1, SENTIMENT-2, SENTIMENT-3]". |
 | Reflektio + retry (BACKLOG #2) | Code-level entity validation post-synthesis: did LEAD use any claim no subagent made? Did it ignore claims many subagents made? |
 

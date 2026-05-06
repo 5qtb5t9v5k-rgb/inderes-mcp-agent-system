@@ -11,11 +11,23 @@ Kiinnostavin = "miksi siirtyä reaktiivisesta proaktiiviseen". Suurin oppimisarv
 - ✅ Lähteet klikattavina linkkeinä Inderes.fi:hin — PR #29
 - ✅ Persona-värinen live-status box — PR #23
 - ✅ GitHub Actions -cron joka 15 min token-rotaatioon — PR #25
+- ✅ **#1 plan-then-execute (post-execute variant): pre-synthesis conflict detection** —
+  commit 842fd92. Erillinen LLM-kutsu subagenttien ja LEAD-synteesin välissä;
+  emittoi `conflicts.json` (agreements / conflicts / isolated_claims). LEAD näkee
+  rakenteellisen ristiriitakartan ja ratkaisee konfliktit eksplisiittisesti
+  perusteluissa. Toteutti samalla osan #6 *Disagreement surfacing*:sta. Kattaa
+  Case 003:n "make emergent filtering explicit" -fix-kandidaatin.
 - ⏸ **Parked**: LEAD Pro-malli togglellä — `feat/lead-pro-toggle` branchilla. Blokattu MAF/Gemini-yhteensopivuusongelmaan: Pro hylkää `Function calling config is set without function_declarations` vaikka LEAD:llä ei ole työkaluja. Vaatii MAF:n internal config-rakentamisen tutkimista.
 
 ---
 
-## #1 Plan-then-execute LEADilla  *(keskisuuri)*
+## #1 Plan-then-execute LEADilla  *(keskisuuri — osittain toteutettu)*
+
+> ✅ **Post-execute -puoli toteutettu** commitissa 842fd92 (pre-synthesis
+> conflict detection — ks. ylempi Toteutetut-lista). Alla kuvattu
+> *pre-execute* -suunnitteluvaihe (LEAD kirjoittaa strukturoidun
+> suunnitelman ennen subagenttien dispatchia) on yhä kiinnostava ja tekemättä.
+
 
 LEAD ei tällä hetkellä todellisuudessa "ajattele" suunnittelu-tasolla — se vain reitittää
 classify_query:n kautta ja synteseuraa. Lisää välivaihe ennen subagenttien dispatchia:
@@ -103,7 +115,16 @@ muistettuihin insighteihin.
 
 ---
 
-## #6 Disagreement surfacing  *(keskisuuri)*
+## #6 Disagreement surfacing  *(keskisuuri — pääosin toteutettu eri muodossa)*
+
+> ✅ **Toteutettu 842fd92:ssä rakenteellisempana versiona**: erillinen
+> conflict-detector-LLM-kutsu emittoi `conflicts.json` ennen synteesiä;
+> LEAD näkee `agreements / conflicts / isolated_claims` -kartan ja
+> ratkaisee konfliktit perusteluissa (Puuilo-ajossa eksplisiittisesti
+> Joller-insider-kaupan disambiguointi). Alla oleva alkuperäinen kuvaus
+> kuvaa kevyemmän prompt-only-version — säilytetty referenssiksi siitä
+> *minkä haastetta yritettiin ratkoa*.
+
 
 Kun QUANTin numerot ja Inderesin estimaatit ovat ristiriidassa (esim. P/E 12x vs analyytikon 18x),
 älä piilota sitä — **nostaa esiin** synteesissä omana osionaan **🚨 Ristiriidat**.
@@ -161,6 +182,53 @@ Toteutus:
 
 **Miksi arvokas:** Lisää intellectual rigor. Käyttäjä näkee oikeasti molemmat puolet
 ennen omaa päätöstään.
+
+---
+
+## #9 LEAD-syntheesin näkyvä ajattelu — visible reasoning + uncertainty calibration  *(keskisuuri)*
+
+Nyt LEAD:n `**💭 Perustelut:**` -lohko on tyyliltään *"Yhdistin X:n ja Y:n,
+painotin Z:tä koska..."* — toimiva *executive summary* mutta ei näytä
+ajattelua. Vertaa Claude/OpenAI o3/Grok -mallien ajatusketjuun:
+
+- **Visible reasoning**: *"Yksi sentiment-haara väitti ettei
+  insider-kauppoja ole, kun toinen kaksi viittasivat Jollerin
+  maaliskuun ostoon. Kysyin itseltäni: miksi yhden näkemys eroaa?
+  Todennäköisin selitys on hakuparametri tai työkalun tilainen ongelma,
+  ei se että kauppoja ei olisi tapahtunut — pörssitiedote vahvistaa
+  Jollerin transaktion. Jätän siis 'ei kauppoja' -tiedon huomiotta."*
+- **Itse-kritiikki ja epävarmuuskalibrointi**: *"Olen melko varma tästä,
+  mutta merkille pantavaa: en tarkistanut Jollerin transaktion
+  alkuperäistä Inderes-tiedotetta itse — luotan kahden subagentin
+  vahvistukseen. Jos lukijalle on tärkeä exact-summa, varmistakaa
+  pörssitiedotteesta."*
+- **Hierarkkinen jäsennys**: separointi *varma → todennäköinen →
+  epävarma* -liukumaan, jotta käyttäjä näkee mitkä claimit ovat
+  load-bearing ja mitkä reunamerkintöjä.
+
+**Riippuvuus**: Conflict-detector (toteutettu 842fd92:ssä) syöttää
+LEAD:lle jo strukturoidun ristiriitakartan — pohjana tämän reasoningin
+päälle. Pelkkä prompt-tarkennus voi viedä pitkälle, mutta varsinainen
+laatuhyppy vaatii todennäköisesti **isomman / "ajattelevamman" mallin
+LEAD-rooliin** (esim. Claude tai o3 / GPT-4o-thinking — Gemini Flash
+Lite kallistuu rakenteellisesti executive-summary-tyyliin).
+
+**Toteutusmuotoja**:
+1. *Pelkkä prompt* — `lead.md`-uudelleenkirjoitus jotta `**💭
+   Perustelut:**` sisältää eksplisiittisesti *"olin epävarma X:stä,
+   ratkaisin..."* + varmuusasteet. Halpaa, voi nostaa 30%.
+2. *Mallin vaihto LEAD-roolissa* — esim. Claude-Sonnet pelkkään
+   syntheesivaiheeseen, subagentit jäävät Geminille. Vaatii
+   `agent_framework`-mallin Anthropic-clientin (jo riippuvuuksissa
+   `agent-framework-anthropic`) plumbingin.
+3. *Side-by-side dual LEAD* — Gemini ja Claude tekevät rinnakkaisen
+   syntheesin, käyttäjä näkee molemmat välilehtinä. Kallista mutta
+   erinomainen evals-aineisto.
+
+**Riskit**: ajatusketjun rivit voivat paisuttaa vastauksen pituutta
+liiaksi. Kannattaa pitää `**💭 Perustelut:**` -callout enintään ~6
+rivin mittaisena, raskaampi reasoning vaatii ehkä erillisen
+`<details>`-laatikon (UI-puolella expandable).
 
 ---
 
