@@ -5,6 +5,7 @@ Every query produces a directory at ~/.inderes_agent/runs/<ISO-timestamp>/ conta
   routing.json       — router classification (domains, companies, comparison flag, reasoning)
   subagent-N.json    — each subagent's domain, company, model used, full output text, error
   synthesis.txt      — final lead answer
+  conflicts.json     — pre-synthesis conflict-detector output (agreements / conflicts / isolated_claims)
   meta.json          — timing, fallback events, lead model used
   console.log        — stderr capture (HTTP requests, MCP function calls, fallback events)
 
@@ -19,6 +20,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
+from ..orchestration.synthesis import ConflictReport
 from ..orchestration.workflows import WorkflowResult
 
 RUNS_ROOT = Path.home() / ".inderes_agent" / "runs"
@@ -54,6 +56,7 @@ def write_run(
     answer: str,
     lead_model: str,
     duration_s: float,
+    conflict_report: ConflictReport | None = None,
 ) -> None:
     (run_dir / "query.txt").write_text(query + "\n", encoding="utf-8")
 
@@ -92,10 +95,19 @@ def write_run(
 
     (run_dir / "synthesis.txt").write_text(answer + "\n", encoding="utf-8")
 
+    if conflict_report is not None:
+        (run_dir / "conflicts.json").write_text(
+            json.dumps(conflict_report.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     (run_dir / "meta.json").write_text(
         json.dumps(
             {
                 "lead_model": lead_model,
+                "conflict_detector_model": (
+                    conflict_report.model_used if conflict_report else None
+                ),
                 "duration_seconds": round(duration_s, 3),
                 "fallback_events": workflow.fallback_events,
                 "subagent_count": len(workflow.subagent_results),

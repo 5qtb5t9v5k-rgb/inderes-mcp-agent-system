@@ -82,8 +82,16 @@ async def handle_query(query: str, state: ConversationState) -> None:
 
         console.print(f"[dim]·[/dim] [cyan]lead syntesoi vastauksen…[/cyan]")
         t = time.time()
-        answer, lead_model = await synthesize(query, workflow_result)
+        answer, lead_model, conflict_report = await synthesize(query, workflow_result)
         console.print(f"[dim]· synthesis valmis ({time.time()-t:.1f}s, malli={lead_model})[/dim]")
+        if conflict_report.has_signal:
+            parsed = conflict_report.parsed or {}
+            console.print(
+                f"[dim]·   conflict-detector: "
+                f"{len(parsed.get('agreements', []))} agreements, "
+                f"{len(parsed.get('conflicts', []))} conflicts, "
+                f"{len(parsed.get('isolated_claims', []))} isolated claims[/dim]"
+            )
         console.print()
 
         render.render_answer(answer)
@@ -95,6 +103,7 @@ async def handle_query(query: str, state: ConversationState) -> None:
             answer=answer,
             lead_model=lead_model,
             duration_s=time.time() - t0,
+            conflict_report=conflict_report,
         )
 
         state.last_workflow = workflow_result

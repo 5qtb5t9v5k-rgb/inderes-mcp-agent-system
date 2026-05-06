@@ -777,7 +777,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             f"{_persona_chip('lead')} yhdistää tulokset synteesiksi…",
             html=True,
         )
-        answer, lead_model = await synthesize(query, workflow_result)
+        answer, lead_model, conflict_report = await synthesize(query, workflow_result)
 
         write_run(
             run_dir=run_dir,
@@ -786,6 +786,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             answer=answer,
             lead_model=lead_model,
             duration_s=time.time() - t0,
+            conflict_report=conflict_report,
         )
         write_narrative(run_dir)
 
