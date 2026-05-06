@@ -8,6 +8,11 @@
 # venv / Python build artifacts
 .venv/
 venv/
+# uv.lock — intentionally ignored. Streamlit Cloud prefers uv-sync uv.lock when
+# present, but our deploy uses requirements.txt (which has the [ui] extra deps
+# like streamlit inlined). Committing uv.lock causes Streamlit Cloud to switch
+# installers and drop streamlit. Keep requirements.txt as the source of truth.
+uv.lock
 __pycache__/
 *.py[cod]
 *$py.class
