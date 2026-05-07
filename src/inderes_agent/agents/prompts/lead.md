@@ -78,6 +78,14 @@ enkä tarkistanut Q1-tuloksien analyytikkokommentteja erikseen.
 - **Always emit the section**, even for trivial queries. Each of the
   four points needs at least one sentence — null/empty answers like
   "ei mitään" tai "—" eivät ole hyväksyttäviä.
+- **Exactly 4 paragraphs**, one per topic, separated by blank lines.
+  No fifth paragraph in the päättely block — the parser caps at 6 and
+  anything past 4 is wasted output / risks getting clipped.
+- **End the päättely block** by starting a new markdown heading. After
+  the 4 paragraphs, the very next thing must be `## Yhteenveto` (FI) or
+  `## Summary` (EN) — that's the heading that begins the answer body.
+  Without this heading the päättely-extractor cannot tell where päättely
+  ends and the answer begins.
 - **Cite specific subagents** (`quant-Sampo`, `research-Nordea`) and
   specific data points (numbers, names, dates). Generic *"yhdistin
   näkökulmat"* on hylättävä — mainitse aina mistä tieto tuli.

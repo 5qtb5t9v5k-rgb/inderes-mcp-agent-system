@@ -195,15 +195,16 @@ class SynthesisTrace:
 # We try (a) first because it gives the UI more structure; fall back to (b)
 # capturing everything until the next markdown heading or another bold marker
 # (📖 Lähteet / 💡 Voisit kysyä myös) or end of text.
+# Marker can be **🧠 Päättely**, ## 🧠 Päättely, ### 🧠 Päättely, or just
+# 🧠 Päättely on its own line — Flash Lite picks any of these. We anchor
+# on a line-start to avoid matching inside other markdown bullets/text.
 _PAATTELY_JSON_RE = re.compile(
-    # Marker can be **🧠 Päättely**, ## 🧠 Päättely, ### 🧠 Päättely, or
-    # bare 🧠 Päättely on its own line — Flash Lite picks any of these.
-    r"(?:\*\*|#{1,3})\s*🧠\s*(?:Päättely|Reasoning)\s*(?:\*\*|:)?\s*\n+"
+    r"(?:^|\n)\s*(?:\*\*|#{1,3})?\s*🧠\s*(?:Päättely|Reasoning)\s*(?:\*\*|:)?\s*\n+"
     r"\s*```(?:json)?\s*\n(?P<body>\{.*?\})\s*\n```",
     re.DOTALL | re.IGNORECASE,
 )
 _PAATTELY_PROSE_RE = re.compile(
-    r"(?:\*\*|#{1,3})\s*🧠\s*(?:Päättely|Reasoning)\s*(?:\*\*|:)?\s*\n+"
+    r"(?:^|\n)\s*(?:\*\*|#{1,3})?\s*🧠\s*(?:Päättely|Reasoning)\s*(?:\*\*|:)?\s*\n+"
     r"(?P<body>.+?)"
     r"(?=\n\s*#{1,3}\s|\n\s*\*\*\s*(?:📖|💡)|\Z)",
     re.DOTALL | re.IGNORECASE,
@@ -250,10 +251,32 @@ def _extract_paattely(text: str) -> tuple[str, str | None, dict[str, Any] | None
 
     raw_full = m2.group(0)
     body = m2.group("body").strip()
-    cleaned = (text[: m2.start()] + text[m2.end() :]).rstrip() + "\n"
     if not body:
-        return cleaned, raw_full, None, "päättely block was empty"
-    return cleaned, raw_full, {"prose": body}, None
+        cleaned_empty = (text[: m2.start()] + text[m2.end() :]).rstrip() + "\n"
+        return cleaned_empty, raw_full, None, "päättely block was empty"
+
+    # Defensive cap: take at most the first 4 double-newline-separated
+    # paragraphs from the captured body. The prompt asks for exactly 4
+    # paragraphs (one per slot: erimielisyys / ratkaisu / epävarma /
+    # jätin tekemättä). When LEAD forgets to start the answer body with
+    # `## Yhteenveto` heading, the prose regex would otherwise suck the
+    # whole answer into päättely. Strict cap at 4 keeps päättely focused
+    # and pushes the rest back to the answer body.
+    paragraphs = re.split(r"\n\s*\n", body)
+    capped_body = "\n\n".join(p.strip() for p in paragraphs[:4] if p.strip())
+
+    # Compute what we actually consumed from the original text — only the
+    # capped portion, not the entire greedy match. The rest of the greedy
+    # match goes back to the answer body so render_lead_answer renders it.
+    if capped_body == body:
+        consumed_end = m2.end()
+    else:
+        # Find where the capped body ends in the original text.
+        body_start_in_text = m2.start() + (m2.group(0).find(body))
+        consumed_end = body_start_in_text + len(capped_body)
+
+    cleaned = (text[: m2.start()] + text[consumed_end:]).rstrip() + "\n"
+    return cleaned, raw_full, {"prose": capped_body}, None
 
 
 async def synthesize(
