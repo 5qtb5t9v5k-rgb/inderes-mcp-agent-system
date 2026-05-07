@@ -645,7 +645,7 @@ def _externalize_links(html: str) -> str:
     )
 
 
-def render_activity_panel(run_dir: Path, lang: str = "fi") -> None:
+def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "summary") -> None:
     """Render the right-side activity panel as a position:fixed overlay.
 
     Translates ui/redesign-handoff/parts.jsx :: ActivityPanel. Reads from
@@ -655,10 +655,13 @@ def render_activity_panel(run_dir: Path, lang: str = "fi") -> None:
     pushed left by a `:has()` selector in CSS — the redesigned layout
     needs no Python-side column gymnastics.
 
-    Tabs (Yhteenveto / Agentit / Työkalut / Konfliktit) are visual only in
-    this first pass — clicking them does not switch sub-views yet. The
-    Yhteenveto view (metric cards + stage bars + per-agent cards) is what
-    renders for now.
+    Tabs (`active_tab`):
+      - "summary" (default): metric cards + stage bars + per-agent cards
+      - "agents":  per-agent cards only
+      - "tools":   flat list of every tool call across all subagents
+      - "conflicts": conflict-detector report
+    Clicking a tab navigates with `?panel_tab=NNN` so the rerun shows the
+    filtered view.
     """
     meta_path = run_dir / "meta.json"
     if not meta_path.exists():
@@ -725,14 +728,22 @@ def render_activity_panel(run_dir: Path, lang: str = "fi") -> None:
     def t(key: str) -> str:
         return L[key][0] if fi else L[key][1]
 
-    # Tabs row
+    # Tabs row — each tab is an <a> with ?panel_tab= query param. Clicking
+    # reloads the page with the new param; app.py reads it and passes it
+    # back to active_tab here so the corresponding content renders.
+    def tab_html(slug: str, label: str, count: int | None = None) -> str:
+        is_active = slug == active_tab
+        cls = "tab is-active" if is_active else "tab"
+        n_html = f' <span class="n">{count}</span>' if count is not None else ""
+        return f'<a class="{cls}" href="?panel=open&panel_tab={slug}">{label}{n_html}</a>'
+
     tabs_html = (
         f'<div class="ia-panel-tabs">'
-        f'<span class="tab is-active">{t("yhteenveto")}</span>'
-        f'<span class="tab">{t("agentit")} <span class="n">{sub_count}</span></span>'
-        f'<span class="tab">{t("tyokalut")} <span class="n">{tool_call_count}</span></span>'
-        f'<span class="tab">{t("konfliktit")} <span class="n">{conflict_count}</span></span>'
-        f"</div>"
+        f'{tab_html("summary", t("yhteenveto"))}'
+        f'{tab_html("agents", t("agentit"), sub_count)}'
+        f'{tab_html("tools", t("tyokalut"), tool_call_count)}'
+        f'{tab_html("conflicts", t("konfliktit"), conflict_count)}'
+        f'</div>'
     )
 
     # 2×2 metric cards
@@ -854,14 +865,86 @@ def render_activity_panel(run_dir: Path, lang: str = "fi") -> None:
             f'</div>'
         )
 
+    # Build body content per active tab. Each tab is a focused view of the
+    # same underlying data, not a different data source — so user can switch
+    # tabs without losing context, and the URL ?panel_tab= keeps the choice
+    # across reruns.
+    if active_tab == "agents":
+        body_html = "".join(agent_cards) or '<div style="color:var(--ink-3)">—</div>'
+    elif active_tab == "tools":
+        # Flat list of every tool call across all subagents, persona-colored.
+        tool_rows: list[str] = []
+        for blob in sub_blobs:
+            persona_code = (blob.get("domain") or "").upper()
+            company = blob.get("company")
+            p = PERSONAS.get(persona_code, {"glyph": "•", "color": "#888"})
+            origin = persona_code + (f"/{company}" if company else "")
+            for tc in (blob.get("tool_calls") or []):
+                tname = tc.get("name") or "?"
+                args = tc.get("arguments")
+                args_str = json.dumps(args, ensure_ascii=False) if args else "{}"
+                if len(args_str) > 120:
+                    args_str = args_str[:120] + "…"
+                count = tc.get("item_count")
+                names = tc.get("item_names") or []
+                preview = ", ".join(names[:5])
+                if len(names) > 5:
+                    preview += "…"
+                count_str = f"{count} items" if count is not None else "—"
+                tool_rows.append(
+                    f'<div class="ia-panel-toolrow">'
+                    f'<div class="origin"><span class="glyph" style="color:{p["color"]}">{p["glyph"]}</span> '
+                    f'<span style="color:{p["color"]}">{origin}</span></div>'
+                    f'<div class="tool" style="color:{p["color"]}">{tname}</div>'
+                    f'<div class="args">{args_str}</div>'
+                    f'<div class="ret">→ {count_str}{(" · " + preview) if preview else ""}</div>'
+                    f'</div>'
+                )
+        body_html = "".join(tool_rows) or '<div style="color:var(--ink-3)">—</div>'
+    elif active_tab == "conflicts":
+        # Conflict-detector report (raw + parsed structure)
+        if conflict_count == 0:
+            body_html = (
+                '<div style="color:var(--ink-2); padding: 16px 0;">'
+                + ("Ei ristiriitoja tässä ajossa." if fi else "No conflicts in this run.")
+                + '</div>'
+            )
+        else:
+            try:
+                cblob = json.loads(conflicts_path.read_text(encoding="utf-8"))
+                parsed = (cblob or {}).get("parsed") or {}
+            except (OSError, json.JSONDecodeError):
+                parsed = {}
+            rows: list[str] = []
+            for c in (parsed.get("conflicts") or []):
+                topic = c.get("topic") or ""
+                rows.append(f'<div class="ia-conflict-topic" style="color:var(--ink-1)">— {topic}</div>')
+                for pos in (c.get("positions") or []):
+                    claim = pos.get("claim") or ""
+                    sup = pos.get("supported_by") or []
+                    bare = sup[0].split("—")[0].strip().upper() if sup else ""
+                    p = PERSONAS.get(bare, {"glyph": "•", "color": "#888"})
+                    who = sup[0] if sup else "?"
+                    rows.append(
+                        f'<div class="ia-conflict-row">'
+                        f'<span class="ia-conflict-who" style="color:{p["color"]}">{p["glyph"]} {who}</span>'
+                        f'<span class="claim">{claim}</span></div>'
+                    )
+            body_html = '<div class="ia-conflict" style="border:0; background:none; margin:0; padding:0">' + "".join(rows) + '</div>'
+    else:
+        # "summary" — default: metric cards + stage bars + agent cards
+        body_html = (
+            f'{metrics_html}'
+            f'{"".join(stages_html_parts)}'
+            f'{"".join(agent_cards)}'
+        )
+
     panel_html = (
         '<aside class="ia-panel">'
         f'<div class="ia-panel-head"><span>🔍</span><b>{t("head")}</b></div>'
         f'{tabs_html}'
         f'<div class="ia-panel-body">'
-        f'{metrics_html}'
-        f'{"".join(stages_html_parts)}'
-        f'{"".join(agent_cards)}'
+        f'{body_html}'
         '</div>'
         '</aside>'
     )
