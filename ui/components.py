@@ -1431,18 +1431,22 @@ def render_followup_chips(text: str | None, run_dir_name: str = "live") -> None:
         f'<div class="ia-followup-label">{label}</div>',
         unsafe_allow_html=True,
     )
-    cols = st.columns(len(followups))
-    for i, question in enumerate(followups):
-        with cols[i]:
-            key = f"sugg_{run_dir_name}_{i}"
-            if st.button(
-                question,
-                key=key,
-                use_container_width=True,
-                type="secondary",
-            ):
-                st.session_state["pending_query"] = question
-                st.rerun()
+    # Wrap the chip cluster in a keyed container so .st-key-followups_<runid>
+    # is a stable CSS hook (replaces the old .ia-followup-label ~ div sibling
+    # combinator, which was fragile across Streamlit DOM-shape updates).
+    with st.container(key=f"followups_{run_dir_name}"):
+        cols = st.columns(len(followups))
+        for i, question in enumerate(followups):
+            with cols[i]:
+                key = f"sugg_{run_dir_name}_{i}"
+                if st.button(
+                    question,
+                    key=key,
+                    use_container_width=True,
+                    type="secondary",
+                ):
+                    st.session_state["pending_query"] = question
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -1452,21 +1456,21 @@ def render_followup_chips(text: str | None, run_dir_name: str = "live") -> None:
 # Maps recommendation labels to a persona color from theme.css.
 _RECOMMENDATION_COLORS = {
     # bullish
-    "BUY":         "var(--ia-green)",
-    "OSTA":        "var(--ia-green)",
-    "ACCUMULATE":  "var(--ia-green)",
-    "LISÄÄ":       "var(--ia-green)",
-    "OVERWEIGHT":  "var(--ia-green)",
+    "BUY":         "var(--p-quant)",
+    "OSTA":        "var(--p-quant)",
+    "ACCUMULATE":  "var(--p-quant)",
+    "LISÄÄ":       "var(--p-quant)",
+    "OVERWEIGHT":  "var(--p-quant)",
     # neutral
-    "HOLD":        "var(--ia-amber)",
-    "PIDÄ":        "var(--ia-amber)",
-    "NEUTRAL":     "var(--ia-amber)",
+    "HOLD":        "var(--p-lead)",
+    "PIDÄ":        "var(--p-lead)",
+    "NEUTRAL":     "var(--p-lead)",
     # bearish
-    "REDUCE":      "var(--ia-red)",
-    "VÄHENNÄ":     "var(--ia-red)",
-    "SELL":        "var(--ia-red)",
-    "MYY":         "var(--ia-red)",
-    "UNDERWEIGHT": "var(--ia-red)",
+    "REDUCE":      "var(--err)",
+    "VÄHENNÄ":     "var(--err)",
+    "SELL":        "var(--err)",
+    "MYY":         "var(--err)",
+    "UNDERWEIGHT": "var(--err)",
 }
 
 
@@ -1545,7 +1549,7 @@ def render_recommendation_badge(run_dir: Path, lang: str = "fi") -> None:
         return
 
     company = sa.get("company") or ""
-    color = _RECOMMENDATION_COLORS.get(view["recommendation"], "var(--ia-text)")
+    color = _RECOMMENDATION_COLORS.get(view["recommendation"], "var(--ink-0)")
     label = "INDERESIN NÄKEMYS" if lang == "fi" else "INDERES VIEW"
     if company:
         label = f"{label} · {company.upper()}"

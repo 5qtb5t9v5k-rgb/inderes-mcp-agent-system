@@ -848,7 +848,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
 
         domains_html = " + ".join(_persona_chip(d.value) for d in classification.domains)
         companies_html = (
-            f'<span style="color:var(--ia-amber)">{", ".join(classification.companies)}</span>'
+            f'<span style="color:var(--p-lead)">{", ".join(classification.companies)}</span>'
             if classification.companies else "—"
         )
         status.write(
@@ -901,7 +901,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             else:
                 status.write(
                     f"  {chip}{company} ✓ valmis "
-                    f'<span style="color:var(--ia-faint); font-size:10px">'
+                    f'<span style="color:var(--ink-3); font-size:10px">'
                     f'({sr.model_used})</span>',
                     html=True,
                 )
