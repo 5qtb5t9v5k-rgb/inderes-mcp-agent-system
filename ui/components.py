@@ -1033,6 +1033,7 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
         btn_label,
         key=f"open_panel_{run_dir.name}",
         use_container_width=True,
+        type="secondary",   # subtle (CSS overrides further to match Päättely)
     ):
         st.session_state.activity_panel_open = True
         st.session_state["_panel_tab"] = "summary"

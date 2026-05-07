@@ -1053,7 +1053,10 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
      no-op. */
   min-height: 0;
 }
-.ia-panel * { min-height: 0; }   /* let inner flex children shrink + scroll */
+/* min-height:0 only on the panel + body — applying to ALL descendants
+   broke the metric grid (children collapsed, sub-labels bled into the
+   stages section). */
+.ia-panel-body { min-height: 0; }
 
 /* When the activity panel is in the DOM, push main content left to avoid
    overlap. Modern browsers (2023+) support :has(). */
@@ -1121,6 +1124,11 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-panel-metrics .metric {
   border: 1px solid var(--line); border-radius: 4px;
   padding: 10px 12px; background: var(--bg-1);
+  overflow: hidden;     /* keep sub-label inside the card */
+  min-width: 0;          /* let grid item shrink without bleed */
+}
+.ia-panel-stages, .ia-panel-agcard {
+  flex-shrink: 0;        /* don't squeeze sections into each other */
 }
 .ia-panel-metrics .metric .lab {
   font-size: 10px; letter-spacing: 0.12em;
@@ -1312,3 +1320,27 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   color: var(--ink-0); font-style: normal;
 }
 
+
+/* "Avaa loki" button (Aikajana strip's action) — tone it down to match
+   the Päättely <details> aesthetic. Streamlit's default primary button
+   is too aggressive (full amber bar). Target the specific button we
+   render right after .ia-timeline-info. */
+.ia-timeline-info + div [data-testid="stButton"] button,
+[data-testid="stButton"] button[kind="secondary"] {
+  background: var(--bg-1) !important;
+  color: var(--ink-2) !important;
+  border: 1px solid var(--line) !important;
+  font-family: var(--ia-mono) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+  padding: 6px 12px !important;
+  height: auto !important;
+  min-height: 32px !important;
+  font-weight: 500 !important;
+}
+.ia-timeline-info + div [data-testid="stButton"] button:hover,
+[data-testid="stButton"] button[kind="secondary"]:hover {
+  border-color: var(--p-lead) !important;
+  color: var(--ink-0) !important;
+  background: var(--bg-2) !important;
+}
