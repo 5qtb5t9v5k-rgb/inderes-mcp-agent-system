@@ -735,7 +735,10 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
         is_active = slug == active_tab
         cls = "tab is-active" if is_active else "tab"
         n_html = f' <span class="n">{count}</span>' if count is not None else ""
-        return f'<a class="{cls}" href="?panel=open&panel_tab={slug}">{label}{n_html}</a>'
+        # target="_top" so the click navigates the parent window — without
+        # it, st.html()'s iframe handles the click locally and the parent
+        # never sees the new query params.
+        return f'<a class="{cls}" href="?panel=open&panel_tab={slug}" target="_top">{label}{n_html}</a>'
 
     tabs_html = (
         f'<div class="ia-panel-tabs">'
@@ -1006,8 +1009,11 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
         )
 
     open_lab = "avaa loki ›" if lang == "fi" else "open log ›"
+    # target="_top" forces the link to navigate the parent window, not just
+    # the iframe that st.html() renders into. Without it, the URL change
+    # never reaches the Streamlit script and query_params stay empty.
     html = (
-        '<a class="ia-timeline" href="?panel=open&panel_tab=summary">'
+        '<a class="ia-timeline" href="?panel=open&panel_tab=summary" target="_top">'
         f'<span class="lab">{lab}</span> '
         f'<span class="v">{duration:.1f}s</span> '
         f'<span class="lab">·</span> '
