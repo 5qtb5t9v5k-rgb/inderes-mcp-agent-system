@@ -1002,11 +1002,30 @@ if prompt:
             )
             _increment_query_count()
             status.update(label="Valmis", state="complete", expanded=False)
-            # Order: Inderes recommendation badge (if QUANT surfaced one),
-            # then LEAD synthesis, then followup-chip buttons, then the
-            # agent activity log behind a collapsed expander.
+            # Render order matches the chat-history loop (redesign 2026-05-07):
+            # badge → Aikajana strip → conflict callout → 🧠 Päättely (top) →
+            # 💭 Perustelut (own box) → answer body → followups → trace.
+            _lang_live = st.session_state.get("ui_lang", "fi")
             render_recommendation_badge(run_dir)
-            render_lead_answer(answer)
+            render_timeline_strip(run_dir, lang=_lang_live)
+            render_conflict_callout(run_dir, lang=_lang_live)
+
+            _cleaned_live, _perustelut_live = extract_perustelut(answer)
+
+            # 🧠 Päättely (top — deeper reasoning before meta-summary)
+            _paattely_live_path = run_dir / "paattely.json"
+            if _paattely_live_path.exists():
+                try:
+                    _paattely_live_blob = json.loads(_paattely_live_path.read_text(encoding="utf-8"))
+                    render_paattely_b(_paattely_live_blob.get("parsed"), lang=_lang_live)
+                except (OSError, json.JSONDecodeError):
+                    pass
+
+            # 💭 Perustelut box
+            render_perustelut_box(_perustelut_live, lang=_lang_live)
+
+            # Answer body (Perustelut already extracted out)
+            render_lead_answer(_cleaned_live)
             render_followup_chips(answer, run_dir_name=run_dir.name)
             render_trace_expander(run_dir)
             st.session_state.history.append(
