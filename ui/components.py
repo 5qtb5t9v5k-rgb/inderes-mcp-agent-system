@@ -1009,7 +1009,7 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
         )
 
     # Two-row layout per user feedback (2026-05-07): visual strip with
-    # persona-color glyphs on row 1, slim "📊 Avaa loki ›" button on row 2.
+    # persona-color glyphs on row 1, slim "Avaa loki ›" button on row 2.
     # Both stay minimal terminal-DNA; the strip carries the rich color
     # information that the button can't (Streamlit button labels = plain
     # text only).
@@ -1025,7 +1025,7 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
     )
     st.markdown(html, unsafe_allow_html=True)
 
-    btn_label = "📊 Avaa loki ›" if lang == "fi" else "📊 Open log ›"
+    btn_label = "Avaa loki ›" if lang == "fi" else "Open log ›"
     if st.button(
         btn_label,
         key=f"open_panel_{run_dir.name}",
@@ -1173,12 +1173,7 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
     if not paattely or not isinstance(paattely, dict):
         return
 
-    header_label_outer = "Päättely" if lang == "fi" else "Reasoning"
-    open_label = (
-        "avaa nähdäksesi ajatusketju"
-        if lang == "fi"
-        else "open to see reasoning"
-    )
+    summary_label = "Avaa päättely ›" if lang == "fi" else "Open reasoning ›"
 
     # Prose form: simpler shell, just the prose text inside the expander.
     if "prose" in paattely:
@@ -1195,10 +1190,7 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
             body_html = "<p>" + _esc(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
         html = (
             '<details class="ia-paattely-b ia-paattely-prose">'
-            f'<summary class="ia-paattely-head">'
-            f'<span>🧠</span><b>{header_label_outer}</b>'
-            f'<span class="meta">{open_label}</span>'
-            f'</summary>'
+            f'<summary class="ia-paattely-head">{summary_label}</summary>'
             f'<div class="ia-paattely-prose-body">{body_html}</div>'
             "</details>"
         )
@@ -1237,21 +1229,11 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
     if not rendered_slots:
         return
 
-    header_label = "Päättely" if lang == "fi" else "Reasoning"
-    meta = (
-        f"{len(rendered_slots)} / 4 slottia · LEAD"
-        if lang == "fi"
-        else f"{len(rendered_slots)} / 4 slots · LEAD"
-    )
-
     # 2×2 grid wrapped in <details> expander. Default closed so the answer
     # stays scannable; user clicks to open the structured reasoning view.
     html = (
         '<details class="ia-paattely-b">'
-        f'<summary class="ia-paattely-head">'
-        f'<span>🧠</span><b>{header_label}</b>'
-        f'<span class="meta">{meta} · {open_label}</span>'
-        f'</summary>'
+        f'<summary class="ia-paattely-head">{summary_label}</summary>'
         f'<div class="ia-paattely-grid">{"".join(rendered_slots)}</div>'
         "</details>"
     )

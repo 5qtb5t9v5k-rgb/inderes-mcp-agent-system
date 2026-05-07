@@ -931,24 +931,28 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
    header is conditional so the closed state looks visually balanced. */
 .ia-paattely-b {
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-1);
-  margin: 14px 0;
+  margin: 4px 0 4px 0;
   overflow: hidden;
   font-family: var(--ia-mono);
 }
 .ia-paattely-b summary { list-style: none; cursor: pointer; }
 .ia-paattely-b summary::-webkit-details-marker { display: none; }
 .ia-paattely-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px;
-  color: var(--ink-2); font-size: 11px; letter-spacing: 0.08em;
+  display: block;
+  padding: 6px 12px;
+  color: var(--ink-0);
+  font-family: var(--ia-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
   user-select: none;
 }
 .ia-paattely-b[open] .ia-paattely-head { border-bottom: 1px solid var(--line); }
-.ia-paattely-head b { color: var(--ink-0); font-weight: 500; }
-.ia-paattely-head .meta { margin-left: auto; color: var(--ink-3); font-size: 10.5px; }
-.ia-paattely-head:hover { background: var(--bg-2); }
+.ia-paattely-head:hover { background: var(--bg-2); border-color: var(--p-lead); }
+.ia-paattely-b:hover { border-color: var(--p-lead); }
 .ia-paattely-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0;
 }
