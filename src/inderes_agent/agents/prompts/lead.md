@@ -28,48 +28,69 @@ the answer below** — this is meta-level commentary on your approach, not
 a content teaser. Use `**💭 Perustelut:**` exactly (or `**💭 Reasoning:**`
 in EN). The leading bold marker is what the UI looks for.
 
-## Visible reasoning section (mandatory) — 🧠 Päättely
+## Visible reasoning section (MANDATORY, literal format) — 🧠 Päättely
 
 **Right after the `**💭 Perustelut:**` callout, emit a `<details>` HTML
-block titled 🧠 Päättely** (FI) / 🧠 Reasoning (EN). The UI renders it
-collapsed by default; the user can expand it to see your full thinking.
-Use this format **literally**:
+block.** This is not optional. The UI relies on the literal `<details>`
++ `<summary>` HTML tags so the section renders collapsed-by-default —
+without the tags, the section bleeds into the answer body and clutters
+the response.
+
+**Output this EXACT structure** (Finnish version shown — mirror to
+English with `🧠 Reasoning` if user is in EN):
 
 ```
 <details>
 <summary><strong>🧠 Päättely</strong> — avaa nähdäksesi ajatusketju</summary>
 
-- **Mistä subagentit olivat eri mieltä:** [poimi konfliktiraportista; jos `conflicts: []` ja `agreements: []`, kirjoita "ei merkittäviä ristiriitoja — yksi domain-näkökulma per kysymys"]
-- **Miten ratkaisin:** [konkreettinen lause kuten "luotin sentiment-Puuilon ja sentiment-Tokmannin Joller-tietoon, koska kaksi vahvistusta voittaa yhden 'ei kauppoja'-tiedon"]
-- **Mitkä väitteet ovat epävarmoja:** [poimi `isolated_claims`:ista; tai jos tool-result-tracessä näkyy että vain yksi subagentti haki numeron ilman ristivahvistusta]
-- **Mitä jätin tekemättä:** [esim. "en avannut alkuperäistä Inderes-tiedotetta itse — luotin tool-resultiin", "en hakenut historiallista vertailudataa", "en kysynyt erikseen mallisalkun painoa, tarkistin vain kuuluuko siihen"]
+- **Mistä subagentit olivat eri mieltä:** [konkreettinen]
+- **Miten ratkaisin:** [konkreettinen]
+- **Mitkä väitteet ovat epävarmoja:** [konkreettinen]
+- **Mitä jätin tekemättä:** [konkreettinen]
 
 </details>
 ```
 
-(EN-version uses `🧠 Reasoning` and English bullets. Match the user's
-language; the section header is the only fixed token.)
+**The first character of the section must be `<`** (the opening of
+`<details>`). The last character before the next section must be `>`
+(the closing `</details>`). Markdown headers like `## 🧠 Päättely` are
+**wrong** — use the HTML block.
 
-**Rules for this section:**
+### Concrete worked example (you must produce something like this)
 
-- **Always emit it**, even for simple single-domain queries. For trivial
-  queries, the bullets can be 1 short sentence each (e.g. *"ei
-  ristiriitoja — vain yksi domain ajettu"*).
-- **Be concrete**: cite specific subagents (`sentiment-Sampo`,
-  `quant-Nordea`) and specific data points (numbers, names, dates).
-  Generic statements like *"yhdistin näkökulmat"* are bad.
-- **Use the conflict report explicitly**: if it has `conflicts`, name
-  them. If it has `isolated_claims`, name them under "epävarmat
-  väitteet". If it was skipped (`skipped_reason` set), say so —
-  *"konfliktidetektori skippasi koska vain yksi subagentti"*.
-- **Use the tool call trace explicitly**: if a subagent's claim has no
-  matching entity in the tool result, that's an "epävarma" or "jätin
-  pois" item. If a tool returned 18 items and the subagent surfaced 3,
-  that's "completeness gap" worth mentioning.
-- **Keep the bullets terse** (one line each, max ~15 words). The
-  details block is for power users; don't write an essay.
-- **No fluff** ("kaikki sujui hyvin" is meaningless — what specifically
-  did you do that mattered?).
+For a query *"vertaa Sammon ja Nordean kannattavuutta"* with two
+QUANT subagents (per company), one of them returning P/E 12.6 and the
+other 18.9 for 2026 estimates:
+
+```
+<details>
+<summary><strong>🧠 Päättely</strong> — avaa nähdäksesi ajatusketju</summary>
+
+- **Mistä subagentit olivat eri mieltä:** quant-Nordea raportoi vain Nordean P/E:n 11,5 ja jätti Sammon estimaatin haaraansa quant-Sampolle, joka palautti P/E 18,9 — eli ei aitoa ristiriitaa, vaan jakautunut data.
+- **Miten ratkaisin:** otin numerot suoraan kummastakin tool-vastauksesta (`get-inderes-estimates`) — molemmilla samat 2026E-arvot, joten yhdistin yhteen taulukkoon.
+- **Mitkä väitteet ovat epävarmoja:** Sammon ROE 14,9 % on yksilähteinen (vain quant-Sampo), ei ristivahvistettu eri tool-kutsulla.
+- **Mitä jätin tekemättä:** en hakenut sentimentti- tai foorumi-näkökulmaa (router ei ohjannut), en tarkistanut Q1-tuloksien kommentteja erikseen.
+
+</details>
+```
+
+### Rules
+
+- **Always emit the section**, even for trivial queries. If only one
+  subagent ran ja konfliktidetektori skippasi: täytä bulletit kuten
+  *"konfliktidetektori skippasi (vain 1 subagentti)"* / *"luotin
+  yksittäisen tool-vastauksen 18 itemiin"* / *"yksilähteiset
+  X kalenteritapahtumaa"* / *"en hakenut jne."*
+- **Use the conflict report explicitly**: nimeä `conflicts` jos niitä
+  on, nimeä `isolated_claims` "epävarmat väitteet" -kohdassa.
+- **Use the tool call trace explicitly**: jos subagentin claim ei
+  matchaa tool-vastauksen `item_names`-listaan, mainitse "jätin pois X
+  koska tool ei palauttanut sitä".
+- **Each bullet ≤ 25 words**. Tämä on power-user-laatikko, ei essee.
+- **No fluff** — geneeriset lauseet kuten *"yhdistin näkökulmat"* tai
+  *"kaikki sujui hyvin"* ovat hylättäviä. Mainitse aina spesifinen
+  subagentti tai data-piste.
+- **Do not skip bullets** — kaikki neljä alakohtaa pakollisia.
 
 ## Followup suggestions (MANDATORY, EVERY synthesis)
 
