@@ -313,6 +313,127 @@ success mode when conditions cooperate.
 
 ---
 
+## 🔴 Case 004 — Same-day calendar pair: hallucination + false-negative
+
+**Date observed:** 2026-05-07 (post-conflict-detector deployment, on cloud)
+**Two queries, same agent (sentiment), single-subagent fan-out, ~10 minutes apart.**
+
+This is one entry covering two related observations because they're
+the same family of failure (agent claim ≠ tool result) seen on the
+same day, on the same MCP tool, by the same subagent. Together they
+demonstrate why **single-subagent calendar queries are the persistent
+weak spot** even after the conflict-detector landed.
+
+### 4a — *"kenellä tänään tulosjulkistus?"* (hallucination)
+
+**Tool truth (verified by direct MCP call):**
+
+`list-calendar-events(dateFrom=2026-05-07, dateTo=2026-05-07, regions=[FINLAND])`
+returned 18 Finnish events including: Stora Enso, Harvia, SRV Group,
+Enersense International, Sanoma, Etteplan, Suominen, Eezy, Oma
+Säästöpankki, Musti Group, Orthex, Raute, Elecster, Kesla, Investors
+House, NoHo Partners.
+
+**Agent output:**
+> *"Tänään torstaina 7. toukokuuta 2026 pörssiyhtiöistä tuloksensa
+> julkistaa Admicom. Muita päivän yhtiötapahtumia ovat Eforen ja
+> Sievi Capitalin yhtiökokoukset."*
+
+**Three claims, zero overlap with tool result.** Admicom, Efore, and
+Sievi Capital are all real Finnish companies that historically
+report around early May — perfect hallucination targets from
+training-data priors. Same shape as Case 001.
+
+### 4b — *"kuka maksaa tänään osingon?"* (false negative)
+
+**Tool truth:**
+`list-calendar-events(dateFrom=2026-05-07, dateTo=2026-05-07,
+types=[ANNUAL_DIVIDEND, ..., TRIANNUAL_DIVIDEND], regions=[FINLAND])`
+returned **one** event: NoHo Partners TRIANNUAL_DIVIDEND, dividend=0.07€/osake,
+**`paymentDate=2026-05-15`**, calendar-event date `2026-05-07`.
+
+**Agent output:**
+> *"Tänään, torstaina 7. toukokuuta 2026, pörssissä ei ole yhtiöitä,
+> joiden osingonmaksupäivä olisi kalenterin mukaan asetettu tälle
+> päivälle."*
+
+The agent silently applied an unstated `paymentDate == today` filter
+and dropped the only result. The Inderes user-facing calendar shows
+this entry under "Tänään 07.05." (the calendar-event date drives the
+listing, not the paymentDate), so the user expected NoHo Partners to
+appear. A faithful response would have been: *"Tänään ei makseta
+osinkoa, mutta NoHo Partnersilla on triannual-osingon kalenterimerkintä
+tänään — varsinainen maksupäivä on 15.5.2026 (0,07€/osake)."*
+
+### Root cause (both 4a and 4b)
+
+Same root: **agent's textual claim does not match tool's structured
+return value**. Different mechanisms:
+
+| Sub-case | Mechanism | Documented earlier as |
+|---|---|---|
+| 4a | hallucination from training memory | Case 001 |
+| 4b | false negative via unstated post-filter | new variant |
+
+### Why the conflict-detector did not help
+
+Both queries routed only to `sentiment` (single domain, single subagent).
+`detect_conflicts()` skips itself when `len(non_error_subagents) < 2`
+(`skipped_reason: "only 1 non-error subagent; nothing to compare"`)
+because there's nothing to compare across. Conflict detection is a
+**multi-subagent redundancy mechanism**; it cannot catch
+agent-vs-tool-result divergence because it doesn't see the tool
+results, only the subagents' summarized outputs.
+
+### What would catch this
+
+The fix is exactly the BACKLOG **"Tool-result entity validation
+post-processor"** (Tool-result-rehellisyys section). For each
+subagent that hit a tool returning structured items
+(`list-calendar-events`, `list-insider-transactions`,
+`search-forum-topics`):
+
+1. Extract entity names from the tool's structured response
+   (`item.companyName` field)
+2. Extract entity names from the subagent's text response (regex,
+   keyword match against the structured set, or NER)
+3. Diff:
+   - **Names in agent's response but not in tool's response → 4a-style
+     hallucination → flag → retry with explicit context** (*"the tool
+     did not return Admicom; do not include companies the tool did
+     not return"*)
+   - **Names in tool's response but not in agent's response, when
+     the user asked for a list → 4b-style false negative → flag →
+     retry with explicit context** (*"you must include all 18
+     companies the tool returned, or explicitly state which subset
+     and why"*)
+
+This is purely code-level (regex over tool response items, regex
+over agent text), no LLM call needed. It is the natural successor to
+the conflict-detector for the single-subagent case.
+
+### Mapping to BACKLOG
+
+| Status | Item |
+|---|---|
+| ⏳ Not yet implemented | **Tool-result entity validation post-processor** — Tool-result-rehellisyys section. *4a + 4b are direct evidence of why this is high-priority.* |
+| ⏳ Not yet implemented | **Result-completeness check** — same section. *Specifically targets 4b's "list under-reporting" shape.* |
+| ✅ Implemented (842fd92) | Pre-synthesis conflict detection. *Does not help here — single subagent.* |
+
+### Notes on scope
+
+Case 004 is observed **after** conflict detection landed, which makes
+it a useful negative example: the conflict-detector solves a real
+class of bugs (multi-subagent claim divergence, see Case 003) but
+does not address the single-subagent class. The system is still
+vulnerable to Case 001-style hallucination on any query that routes
+to exactly one domain, and to 4b-style false negatives whenever a
+subagent applies an unstated post-filter on tool data. Both are
+evidence for treating the **tool-result entity validation** BACKLOG
+item as the next priority after conflict detection.
+
+---
+
 ## How to use this file
 
 ### When triaging a new failure
