@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8" />
+<title>Inderes//Agent · v4 · Tiivistelmä</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+<script src="deck-stage.js"></script>
+<style>
+  :root {
+    --bg: #0a0e0c;
+    --panel: #11161a;
+    --panel-2: #161c20;
+    --border: #2a3540;
+    --text: #e7ecef;
+    --dim: #8a96a3;
+    --faint: #5a6772;
+    --amber: #ffb454;
+    --orange: #ff8a4c;
+    --green: #5fcd8c;
+    --blue: #7aa2f7;
+    --violet: #bb9af7;
+    --pink: #f5a8d8;
+    --red: #ff6b6b;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+    --serif: 'Fraunces', Georgia, serif;
+  }
+
+  html, body { margin: 0; padding: 0; background: #000; color: var(--text); font-family: var(--sans); }
+
+  deck-stage { background: #000; }
+  deck-stage > section { background: var(--bg); position: relative; overflow: hidden; }
+  deck-stage > section.amber-bg { background: var(--amber); color: #0a0e0c; }
+  deck-stage > section.deep { background: #050706; }
+
+  /* Chrome */
+  .titlebar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 18px;
+    padding: 16px 48px;
+    background: linear-gradient(180deg, rgba(255,180,84,0.06), transparent);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 19px; letter-spacing: 0.14em; font-weight: 700;
+    white-space: nowrap;
+  }
+  .titlebar .brand { color: var(--amber); }
+  .titlebar .tag { color: var(--dim); font-weight: 500; letter-spacing: 0.12em; }
+  .titlebar .spacer { flex: 1; }
+  .titlebar .online { color: var(--green); }
+  .titlebar .online::before { content: "● "; color: var(--green); }
+
+  .statusbar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 24px;
+    padding: 14px 48px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    font-family: var(--mono); font-size: 19px; letter-spacing: 0.14em; font-weight: 600; color: var(--dim);
+    white-space: nowrap;
+  }
+  .statusbar .spacer { flex: 1; }
+  .statusbar .hot { color: var(--amber); }
+
+  .frame { position: absolute; inset: 64px 64px 64px 64px; display: flex; flex-direction: column; }
+
+  /* Type system */
+  .eyebrow {
+    font-family: var(--mono); font-size: 22px; color: var(--amber);
+    letter-spacing: 0.22em; font-weight: 700; text-transform: uppercase;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .eyebrow .dot { width: 10px; height: 10px; background: var(--amber); display: inline-block; }
+
+  .label {
+    font-family: var(--mono); font-size: 17px; color: var(--dim);
+    letter-spacing: 0.18em; font-weight: 700; text-transform: uppercase;
+  }
+
+  .display {
+    font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em;
+    line-height: 1.02; color: var(--text);
+    font-size: 156px; margin: 0;
+  }
+  .display .em { color: var(--amber); font-style: italic; }
+  .display .stack { display: block; }
+
+  .title-md {
+    font-family: var(--serif); font-weight: 500; letter-spacing: -0.01em;
+    line-height: 1.12; color: var(--text);
+    font-size: 64px; margin: 0;
+  }
+  .title-md .em { color: var(--amber); font-style: italic; }
+
+  .body {
+    font-family: var(--sans); font-size: 28px; line-height: 1.45; color: var(--text);
+    text-wrap: pretty; margin: 0;
+  }
+  .body .em { color: var(--amber); }
+
+  .mono { font-family: var(--mono); }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 2px solid var(--amber);
+    padding: 24px 28px;
+  }
+  .panel.green { border-left-color: var(--green); }
+  .panel.blue { border-left-color: var(--blue); }
+  .panel.violet { border-left-color: var(--violet); }
+  .panel.pink { border-left-color: var(--pink); }
+  .panel.orange { border-left-color: var(--orange); }
+
+  .glyph {
+    width: 40px; height: 40px; display: inline-flex;
+    align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 22px; font-weight: 700;
+    border: 1px solid currentColor;
+    flex-shrink: 0;
+  }
+  .glyph.lead { color: var(--amber); }
+  .glyph.quant { color: var(--green); }
+  .glyph.research { color: var(--blue); }
+  .glyph.sentiment { color: var(--pink); }
+  .glyph.portfolio { color: var(--violet); }
+
+  /* Code blocks */
+  .codeblock {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-left: 2px solid var(--blue);
+    padding: 20px 24px;
+    font-family: var(--mono); font-size: 20px; line-height: 1.55;
+    color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+    overflow: hidden;
+  }
+  .codeblock .kw { color: var(--violet); }
+  .codeblock .str { color: var(--green); }
+  .codeblock .num { color: var(--orange); }
+  .codeblock .com { color: var(--faint); font-style: italic; }
+  .codeblock .fn { color: var(--blue); }
+  .codeblock .em { color: var(--amber); font-weight: 700; }
+
+  .output-block {
+    background: rgba(95,205,140,0.04); border: 1px solid var(--border);
+    border-left: 2px solid var(--green);
+    padding: 18px 22px;
+    font-family: var(--mono); font-size: 20px; line-height: 1.55;
+    color: var(--green);
+    white-space: pre-wrap;
+  }
+
+  /* Ticker (cold-open chrome) */
+  .ticker {
+    overflow: hidden; white-space: nowrap;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .ticker-track {
+    display: inline-block; padding: 12px 0;
+    animation: tickerScroll 60s linear infinite;
+    font-family: var(--mono); font-size: 20px; letter-spacing: 0.1em; font-weight: 600;
+  }
+  .ticker .pos { color: var(--green); }
+  .ticker .neg { color: var(--red); }
+  .ticker .sym { color: var(--text); margin-right: 10px; }
+  .ticker .price { color: var(--dim); margin-right: 10px; }
+  .ticker .sep { color: var(--faint); margin: 0 18px; }
+  @keyframes tickerScroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  /* Page numbers */
+  .pagenum { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080" data-screen-label-prefix="">
+
+<!-- ============================================================ -->
+<!-- 01  COLD OPEN — IDEA                                          -->
+<!-- ============================================================ -->
+<section data-label="01 Idea" class="deep">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">DESK</span>
+    <span class="tag">v0.2 · 2026-05-04</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+
+  <!-- Ticker tape -->
+  <div class="ticker" style="position: absolute; top: 56px; left: 0; right: 0;">
+    <div class="ticker-track">
+      <span class="sym">SAMPO</span><span class="price">59,84 €</span><span class="pos">▲ 1,2 %</span><span class="sep">·</span>
+      <span class="sym">KNEBV</span><span class="price">43,20 €</span><span class="neg">▼ 0,4 %</span><span class="sep">·</span>
+      <span class="sym">NESTE</span><span class="price">10,12 €</span><span class="pos">▲ 0,8 %</span><span class="sep">·</span>
+      <span class="sym">UPM</span><span class="price">26,48 €</span><span class="neg">▼ 0,3 %</span><span class="sep">·</span>
+      <span class="sym">STERV</span><span class="price">8,64 €</span><span class="pos">▲ 2,1 %</span><span class="sep">·</span>
+      <span class="sym">METSO</span><span class="price">11,90 €</span><span class="pos">▲ 0,5 %</span><span class="sep">·</span>
+      <span class="sym">FORTUM</span><span class="price">14,72 €</span><span class="neg">▼ 0,1 %</span><span class="sep">·</span>
+      <span class="sym">NDA-FI</span><span class="price">12,18 €</span><span class="pos">▲ 0,9 %</span><span class="sep">·</span>
+      <span class="sym">SAMPO</span><span class="price">59,84 €</span><span class="pos">▲ 1,2 %</span><span class="sep">·</span>
+      <span class="sym">KNEBV</span><span class="price">43,20 €</span><span class="neg">▼ 0,4 %</span><span class="sep">·</span>
+      <span class="sym">NESTE</span><span class="price">10,12 €</span><span class="pos">▲ 0,8 %</span><span class="sep">·</span>
+      <span class="sym">UPM</span><span class="price">26,48 €</span><span class="neg">▼ 0,3 %</span><span class="sep">·</span>
+      <span class="sym">STERV</span><span class="price">8,64 €</span><span class="pos">▲ 2,1 %</span><span class="sep">·</span>
+      <span class="sym">METSO</span><span class="price">11,90 €</span><span class="pos">▲ 0,5 %</span><span class="sep">·</span>
+      <span class="sym">FORTUM</span><span class="price">14,72 €</span><span class="neg">▼ 0,1 %</span><span class="sep">·</span>
+      <span class="sym">NDA-FI</span><span class="price">12,18 €</span><span class="pos">▲ 0,9 %</span><span class="sep">·</span>
+    </div>
+  </div>
+
+  <div class="frame" style="top: 160px; bottom: 64px;">
+    <div class="eyebrow"><span class="dot"></span>HENKILÖKOHTAINEN TUTKIMUSPROJEKTI · EI INDERES OYJ</div>
+
+    <div style="margin-top: 56px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 64px; align-items: start; flex: 1;">
+      <!-- Title stack -->
+      <div>
+        <h1 class="display">
+          <span class="stack">Inderes</span>
+          <span class="stack"><span class="em">+ MCP</span></span>
+          <span class="stack">+ agentit.</span>
+        </h1>
+        <div style="margin-top: 36px; font-family: var(--mono); font-size: 26px; color: var(--dim); line-height: 1.5; max-width: 700px;">
+          Multi-agent-keskustelusysteemi pohjoismaisten osakkeiden tutkimukseen. Reititin → 4 erikoisagenttia rinnan → LEAD-synteesi.
+        </div>
+      </div>
+
+      <!-- Persona roster -->
+      <div style="display: flex; flex-direction: column; gap: 14px; padding-top: 18px;">
+        <div class="label" style="color: var(--amber);">RYHMÄ · 5 AGENTTIA</div>
+        <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 12px; font-family: var(--mono); font-size: 22px;">
+          <div style="display: flex; align-items: center; gap: 14px;"><div class="glyph lead">◆</div><div><span style="color: var(--amber); font-weight: 700;">aino-lead</span> <span style="color: var(--dim);">· synteesi</span></div></div>
+          <div style="display: flex; align-items: center; gap: 14px;"><div class="glyph quant">▲</div><div><span style="color: var(--green); font-weight: 700;">aino-quant</span> <span style="color: var(--dim);">· P/E · ROE</span></div></div>
+          <div style="display: flex; align-items: center; gap: 14px;"><div class="glyph research">■</div><div><span style="color: var(--blue); font-weight: 700;">aino-research</span> <span style="color: var(--dim);">· analyysit</span></div></div>
+          <div style="display: flex; align-items: center; gap: 14px;"><div class="glyph sentiment">●</div><div><span style="color: var(--pink); font-weight: 700;">aino-sentiment</span> <span style="color: var(--dim);">· insider · foorumi</span></div></div>
+          <div style="display: flex; align-items: center; gap: 14px;"><div class="glyph portfolio">✦</div><div><span style="color: var(--violet); font-weight: 700;">aino-portfolio</span> <span style="color: var(--dim);">· mallisalkku</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: auto; padding-top: 32px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: 22px; color: var(--faint); letter-spacing: 0.14em;">
+      <span>github.com/5qtb5t9v5k-rgb/inderes-mcp-agent</span>
+      <span style="color: var(--green);">● JÄRJESTELMÄ TOIMII</span>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="hot">● 16 MCP-TYÖKALUA · 5 AGENTTIA · 1 LEAD</span>
+    <span class="spacer"></span>
+    <span class="pagenum">01 / 05</span>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- 02  WHAT IS AN AGENT — REACT LOOP                              -->
+<!-- ============================================================ -->
+<section data-label="02 Mikä on agentti">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">AGENTTISUUS</span>
+    <span class="tag">ReAct · Yao et al. 2022</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+
+  <div class="frame">
+    <div class="eyebrow"><span class="dot"></span>EI VAIN PROMPTI · OSAA TOIMIA</div>
+    <h2 style="margin: 24px 0 0 0;" class="title-md">Agentti <span class="em">havaitsee, päättelee, toimii</span> — ja oppii silmukassa.</h2>
+
+    <div style="margin-top: 48px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; flex: 1;">
+
+      <!-- LEFT: definition + loop -->
+      <div style="display: flex; flex-direction: column; gap: 28px;">
+        <div style="font-family: var(--serif); font-size: 30px; line-height: 1.45; color: var(--text); border-left: 2px solid var(--amber); padding-left: 22px; font-style: italic;">
+          “An agent is anything that can be viewed as <span style="color: var(--amber); font-style: normal; font-weight: 600;">perceiving</span> its environment through sensors and <span style="color: var(--amber); font-style: normal; font-weight: 600;">acting</span> upon that environment through actuators.”
+          <div style="margin-top: 10px; font-family: var(--mono); font-size: 18px; color: var(--dim); font-style: normal; letter-spacing: 0.12em;">— Russell &amp; Norvig, AIMA</div>
+        </div>
+
+        <!-- ReAct loop diagram -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 14px; font-family: var(--mono); font-size: 22px;">
+          <div style="display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center;">
+            <div style="color: var(--violet); letter-spacing: 0.14em; font-weight: 700;">THOUGHT</div>
+            <div style="color: var(--text);">"Tarvitsen P/E:n ja tavoitehinnan."</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center;">
+            <div style="color: var(--blue); letter-spacing: 0.14em; font-weight: 700;">ACTION</div>
+            <div style="color: var(--text);"><span style="color: var(--blue);">get-fundamentals</span>(<span style="color: var(--green);">"SAMPO"</span>)</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center;">
+            <div style="color: var(--green); letter-spacing: 0.14em; font-weight: 700;">OBSERVE</div>
+            <div style="color: var(--text);"><span style="color: var(--orange);">P/E 12,53</span> · ROE 14,8 %</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center;">
+            <div style="color: var(--violet); letter-spacing: 0.14em; font-weight: 700;">THOUGHT</div>
+            <div style="color: var(--text);">"Vielä Inderesin näkemys puuttuu."</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center;">
+            <div style="color: var(--blue); letter-spacing: 0.14em; font-weight: 700;">ACTION</div>
+            <div style="color: var(--text);"><span style="color: var(--blue);">get-inderes-estimates</span>(<span style="color: var(--green);">"SAMPO"</span>)</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center;">
+            <div style="color: var(--amber); letter-spacing: 0.14em; font-weight: 700;">ANSWER</div>
+            <div style="color: var(--amber); font-weight: 700;">LISÄÄ · tavoitehinta 10,00 €</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: 4 capabilities -->
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="panel violet">
+          <div class="label" style="color: var(--violet);">01 · HAVAITSEE</div>
+          <div class="body" style="font-size: 23px; margin-top: 10px;">Lukee MCP-vastaukset, transcriptit, foorumin — pohjoismaisen markkinan tilan reaaliajassa.</div>
+        </div>
+        <div class="panel blue">
+          <div class="label" style="color: var(--blue);">02 · PÄÄTTELEE</div>
+          <div class="body" style="font-size: 23px; margin-top: 10px;">Pakollinen <span class="mono" style="color: var(--violet);">**Ajatus:**</span> -rivi: työkaluvalinnan järki näkyy ennen toimintaa.</div>
+        </div>
+        <div class="panel green">
+          <div class="label" style="color: var(--green);">03 · TOIMII</div>
+          <div class="body" style="font-size: 23px; margin-top: 10px;">Kutsuu 16 MCP-työkalua kohdistetusti — ei kaikkia kerralla, vaan oikeat tilanteen mukaan.</div>
+        </div>
+        <div class="panel orange">
+          <div class="label" style="color: var(--orange);">04 · ITEROI</div>
+          <div class="body" style="font-size: 23px; margin-top: 10px;">Silmukka jatkuu kunnes vastaus on kasassa. Tyypillisesti 3–8 kierrosta per kysymys.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span>AGENTTI = HAVAITA + PÄÄTELLÄ + TOIMIA + ITEROIDA</span>
+    <span class="spacer"></span>
+    <span class="pagenum">02 / 05</span>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- 03  EXAMPLE — PYTHON IN THE LOOP (ROE)                         -->
+<!-- ============================================================ -->
+<section data-label="03 Esimerkki · Python">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">DEMO · 01</span>
+    <span class="tag">aino-quant</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+
+  <div class="frame">
+    <div class="eyebrow" style="color: var(--green);"><span class="dot" style="background: var(--green);"></span>AGENTTI KIRJOITTI PYTHONIN ITSE · AJOI · TULKITSI</div>
+    <h2 style="margin: 20px 0 0 0;" class="title-md">"Listaa <span class="em">korkean ROE:n</span> yhtiöt teknologiasta."</h2>
+
+    <div style="margin-top: 36px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; flex: 1;">
+      <!-- LEFT: thought + code -->
+      <div style="display: flex; flex-direction: column; gap: 16px; min-height: 0;">
+        <div style="font-family: var(--mono); font-size: 21px; color: var(--violet); font-style: italic; border-left: 2px solid var(--violet); padding-left: 16px; line-height: 1.5;">
+          <span style="color: var(--violet); font-weight: 700; font-style: normal;">▲ aino-quant · Ajatus:</span> Haen fundamentit teknologiayhtiöiltä, lasken ROE:t Pythonilla, lajittelen.
+        </div>
+
+        <div class="codeblock">
+<span class="com"># 1) hae fundamentit MCP:llä</span>
+<span class="kw">data</span> = <span class="fn">get_fundamentals</span>(sector=<span class="str">"Tech"</span>)
+
+<span class="com"># 2) laske ROE = NetIncome / Equity</span>
+<span class="kw">df</span> = pd.DataFrame(data)
+df[<span class="str">"ROE"</span>] = df.<span class="fn">net_income</span> / df.<span class="fn">equity</span>
+
+<span class="com"># 3) lajittele top-5</span>
+top = df.<span class="fn">nlargest</span>(<span class="num">5</span>, <span class="str">"ROE"</span>)
+<span class="fn">print</span>(top[[<span class="str">"ticker"</span>, <span class="str">"ROE"</span>]])
+        </div>
+
+        <div class="output-block">
+ticker      ROE
+QTCOM    0.342
+TIETO    0.281
+F-SECURE 0.244
+BASW     0.219
+ADMCM    0.198
+        </div>
+      </div>
+
+      <!-- RIGHT: insight panel -->
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="panel orange">
+          <div class="label" style="color: var(--orange);">MIKSI TÄMÄ ON ISO?</div>
+          <div class="body" style="font-size: 23px; margin-top: 12px;">Agentti ei vain hakenut dataa — se <span class="em" style="color: var(--orange);">päätti laskennasta itse</span>. ROE ei ole MCP-työkalu; agentti johti sen kaavasta.</div>
+        </div>
+
+        <div class="panel green">
+          <div class="label" style="color: var(--green);">SANDBOX-PYTHON</div>
+          <div class="body" style="font-size: 23px; margin-top: 12px;">Eristetty Python-suoritin: agentti voi <span class="em" style="color: var(--green);">kirjoittaa, ajaa, tulkita</span> tuloksen samalla kierroksella. <span class="mono" style="color: var(--green);">stdout</span> palautuu agentille kontekstiksi.</div>
+        </div>
+
+        <div style="background: var(--panel-2); border: 1px solid var(--border); padding: 18px 22px; border-left: 2px solid var(--amber);">
+          <div class="label" style="color: var(--amber);">YLEISTYS</div>
+          <div class="body" style="font-size: 22px; margin-top: 10px;">"Kerro top-5 osinkotuotolla" · "Korreloi P/E ja kasvu" · "Riskimitat 5 v" — ei yhtä työkalua per kysymys, vaan <span class="em" style="color: var(--amber);">työkalupakki + päätely</span>.</div>
+        </div>
+
+        <div style="font-family: var(--mono); font-size: 19px; color: var(--dim); display: flex; gap: 24px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--border);">
+          <span style="color: var(--green);">✓ 1 reititys</span>
+          <span style="color: var(--green);">✓ 1 subagentti</span>
+          <span style="color: var(--green);">✓ 4 työkalukutsua</span>
+          <span style="color: var(--green);">✓ ~12 s</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="hot">● PYTHON SANDBOX · DATAFRAME · NLARGEST</span>
+    <span class="spacer"></span>
+    <span class="pagenum">03 / 05</span>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- 04  EXAMPLE — SECTOR FAN-OUT                                   -->
+<!-- ============================================================ -->
+<section data-label="04 Esimerkki · Vertailu">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">DEMO · 02</span>
+    <span class="tag">FAN-OUT · 6 SUBAGENTTIA</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+
+  <div class="frame">
+    <div class="eyebrow" style="color: var(--blue);"><span class="dot" style="background: var(--blue);"></span>YKSI KYSYMYS · 6 RINNAKKAISTA SUBAGENTTIA · 27 TYÖKALUKUTSUA</div>
+    <h2 style="margin: 20px 0 0 0;" class="title-md">"Vertaile <span class="em">UPM, Stora Enso, Metsä Board</span> — kannattavuus &amp; näkemys."</h2>
+
+    <div style="margin-top: 36px; display: grid; grid-template-columns: 1fr 1.2fr; gap: 32px; flex: 1;">
+      <!-- LEFT: routing diagram -->
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="label" style="color: var(--amber);">REITITYSPÄÄTÖS</div>
+        <div style="background: var(--panel-2); border: 1px solid var(--border); border-left: 2px solid var(--orange); padding: 18px 22px; font-family: var(--mono); font-size: 19px; line-height: 1.55;">
+<span style="color: var(--violet);">"is_comparison"</span>: <span style="color: var(--orange);">true</span>,
+<span style="color: var(--violet);">"companies"</span>: [<span style="color: var(--green);">"UPM"</span>, <span style="color: var(--green);">"STERV"</span>, <span style="color: var(--green);">"METSB"</span>],
+<span style="color: var(--violet);">"domains"</span>: [<span style="color: var(--green);">"quant"</span>, <span style="color: var(--green);">"research"</span>]
+        </div>
+
+        <!-- Fan-out grid -->
+        <div style="margin-top: 8px; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 10px; font-family: var(--mono); font-size: 18px;">
+          <div></div>
+          <div style="color: var(--green); text-align: center; letter-spacing: 0.14em; font-weight: 700;">▲ QUANT</div>
+          <div style="color: var(--blue); text-align: center; letter-spacing: 0.14em; font-weight: 700;">■ RESEARCH</div>
+
+          <div style="color: var(--text); font-weight: 700; align-self: center;">UPM</div>
+          <div style="background: rgba(95,205,140,0.1); border: 1px solid rgba(95,205,140,0.3); padding: 8px; text-align: center; color: var(--green);">P/E · ROCE · margin</div>
+          <div style="background: rgba(122,162,247,0.1); border: 1px solid rgba(122,162,247,0.3); padding: 8px; text-align: center; color: var(--blue);">analyysi · transcript</div>
+
+          <div style="color: var(--text); font-weight: 700; align-self: center;">STERV</div>
+          <div style="background: rgba(95,205,140,0.1); border: 1px solid rgba(95,205,140,0.3); padding: 8px; text-align: center; color: var(--green);">P/E · ROCE · margin</div>
+          <div style="background: rgba(122,162,247,0.1); border: 1px solid rgba(122,162,247,0.3); padding: 8px; text-align: center; color: var(--blue);">analyysi · transcript</div>
+
+          <div style="color: var(--text); font-weight: 700; align-self: center;">METSB</div>
+          <div style="background: rgba(95,205,140,0.1); border: 1px solid rgba(95,205,140,0.3); padding: 8px; text-align: center; color: var(--green);">P/E · ROCE · margin</div>
+          <div style="background: rgba(122,162,247,0.1); border: 1px solid rgba(122,162,247,0.3); padding: 8px; text-align: center; color: var(--blue);">analyysi · transcript</div>
+        </div>
+
+        <div style="margin-top: 12px; font-family: var(--mono); font-size: 18px; color: var(--dim); line-height: 1.55; padding: 14px 18px; border: 1px solid var(--border); border-left: 2px solid var(--amber); background: var(--panel);">
+          <span style="color: var(--amber); font-weight: 700;">asyncio.gather</span> + <span style="color: var(--amber); font-weight: 700;">Semaphore(2)</span> — runtime-fan-out, kvootti-katto.
+        </div>
+      </div>
+
+      <!-- RIGHT: synthesized comparison -->
+      <div style="background: var(--panel); border: 1px solid var(--border); padding: 24px 28px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="glyph lead">◆</div>
+          <div class="label" style="color: var(--amber);">aino-lead · synteesi</div>
+        </div>
+
+        <div style="font-family: var(--mono); font-size: 18px; color: var(--violet); font-style: italic; border-left: 2px solid var(--violet); padding-left: 14px;">
+          💭 Perustelut: yhdistän per-yhtiö-quantin ja researchin yhdeksi vertailutaulukoksi.
+        </div>
+
+        <!-- comparison table -->
+        <div style="font-family: var(--mono); font-size: 19px;">
+          <div style="display: grid; grid-template-columns: 110px 1fr 1fr 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: 700; letter-spacing: 0.1em;">
+            <div></div><div style="text-align: right;">UPM</div><div style="text-align: right;">STERV</div><div style="text-align: right;">METSB</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 110px 1fr 1fr 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text);">
+            <div style="color: var(--dim);">P/E (25e)</div><div style="text-align: right;">12,4</div><div style="text-align: right;">10,8</div><div style="text-align: right;">9,6</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 110px 1fr 1fr 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text);">
+            <div style="color: var(--dim);">ROCE</div><div style="text-align: right; color: var(--green);">8,2 %</div><div style="text-align: right;">6,1 %</div><div style="text-align: right;">5,4 %</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 110px 1fr 1fr 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text);">
+            <div style="color: var(--dim);">EBIT-%</div><div style="text-align: right; color: var(--green);">11,8</div><div style="text-align: right;">8,9</div><div style="text-align: right;">7,2</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 110px 1fr 1fr 1fr; gap: 8px; padding: 10px 0; color: var(--text);">
+            <div style="color: var(--dim);">Inderes</div><div style="text-align: right; color: var(--green); font-weight: 700;">LISÄÄ</div><div style="text-align: right; color: var(--amber); font-weight: 700;">PIDÄ</div><div style="text-align: right; color: var(--amber); font-weight: 700;">PIDÄ</div>
+          </div>
+        </div>
+
+        <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); display: flex; gap: 18px; font-family: var(--mono); font-size: 18px; color: var(--dim);">
+          <span style="color: var(--green);">✓ 6 subagenttia</span>
+          <span style="color: var(--green);">✓ 27 työkalukutsua</span>
+          <span style="color: var(--green);">✓ ~22 s</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="hot">● PER-YHTIÖ-FAN-OUT · LEAD SYNTETISOI</span>
+    <span class="spacer"></span>
+    <span class="pagenum">04 / 05</span>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- 05  ARCHITECTURE + REFLECTION                                  -->
+<!-- ============================================================ -->
+<section data-label="05 Arkkitehtuuri ja oppi" class="deep">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">ARKKITEHTUURI &amp; OPPI</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+
+  <div class="frame">
+    <div class="eyebrow"><span class="dot"></span>~3 VIIKKOA · MAF + GEMINI + INDERES MCP</div>
+
+    <div style="margin-top: 24px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; flex: 1;">
+
+      <!-- LEFT: architecture flow -->
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <h2 class="title-md" style="font-size: 48px; margin: 0;">Reititin → 4 rinnan → <span class="em">LEAD-synteesi.</span></h2>
+
+        <div style="margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 0;">
+          <div style="font-family: var(--mono); font-size: 20px; color: var(--text); padding: 10px 22px; background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--amber);">user.question</div>
+          <div style="width: 2px; height: 18px; background: var(--border);"></div>
+          <div style="font-family: var(--mono); font-size: 20px; color: var(--orange); padding: 10px 22px; background: var(--panel); border: 1px solid var(--orange); white-space: nowrap; font-weight: 700; letter-spacing: 0.06em;">ROUTER · structured-output</div>
+          <div style="width: 2px; height: 18px; background: var(--border);"></div>
+
+          <!-- fan-out lines -->
+          <div style="position: relative; width: 100%; height: 18px;">
+            <div style="position: absolute; top: 0; left: 50%; width: 84%; height: 2px; background: var(--border); transform: translateX(-50%);"></div>
+            <div style="position: absolute; top: 0; left: 8%; width: 2px; height: 18px; background: var(--border);"></div>
+            <div style="position: absolute; top: 0; left: 36%; width: 2px; height: 18px; background: var(--border);"></div>
+            <div style="position: absolute; top: 0; left: 64%; width: 2px; height: 18px; background: var(--border);"></div>
+            <div style="position: absolute; top: 0; left: 92%; width: 2px; height: 18px; background: var(--border);"></div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; font-family: var(--mono); font-size: 18px;">
+            <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 10px 12px; text-align: center; color: var(--green); font-weight: 700; white-space: nowrap;">▲ quant</div>
+            <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--blue); padding: 10px 12px; text-align: center; color: var(--blue); font-weight: 700; white-space: nowrap;">■ research</div>
+            <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--pink); padding: 10px 12px; text-align: center; color: var(--pink); font-weight: 700; white-space: nowrap;">● sentiment</div>
+            <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--violet); padding: 10px 12px; text-align: center; color: var(--violet); font-weight: 700; white-space: nowrap;">✦ portfolio</div>
+          </div>
+
+          <div style="width: 2px; height: 16px; background: var(--border); margin-top: 4px;"></div>
+          <div style="font-family: var(--mono); font-size: 18px; color: var(--dim); padding: 8px 18px; background: var(--panel-2); border: 1px solid var(--border); white-space: nowrap;">inderes mcp · 16 työkalua, partitioitu</div>
+          <div style="width: 2px; height: 16px; background: var(--border);"></div>
+
+          <div style="font-family: var(--mono); font-size: 20px; color: var(--amber); padding: 10px 22px; background: var(--panel); border: 1px solid var(--amber); white-space: nowrap; font-weight: 700; letter-spacing: 0.06em; display: flex; align-items: center; gap: 12px;">
+            <span>◆</span> AINO-LEAD · synteesi (no tools)
+          </div>
+        </div>
+
+        <div style="margin-top: 12px; font-family: var(--mono); font-size: 18px; color: var(--faint); line-height: 1.5; letter-spacing: 0.04em;">
+          <span style="color: var(--amber);">Microsoft Agent Framework 1.0+</span> · Gemini Flash Lite + Flash fallback · OAuth 2.0 PKCE · gist-mirror + 15 min cron
+        </div>
+      </div>
+
+      <!-- RIGHT: three pillars -->
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="label" style="color: var(--amber);">OPPI · MIHIN AIKA OIKEASTI MENI</div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+          <div style="background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--green); padding: 16px 14px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-family: var(--mono); font-size: 18px; color: var(--green); font-weight: 700; letter-spacing: 0.12em;">AI</div>
+            <div style="font-family: var(--mono); font-size: 42px; color: var(--green); font-weight: 700; line-height: 1;">~30%</div>
+            <div style="font-family: var(--mono); font-size: 14px; color: var(--faint); letter-spacing: 0.1em;">koodista</div>
+            <div class="body" style="font-size: 18px; color: var(--text); margin-top: 6px; line-height: 1.4;">100% <span style="color: var(--green);">vastauksen laadusta</span></div>
+          </div>
+          <div style="background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--amber); padding: 16px 14px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-family: var(--mono); font-size: 18px; color: var(--amber); font-weight: 700; letter-spacing: 0.12em;">UI</div>
+            <div style="font-family: var(--mono); font-size: 42px; color: var(--amber); font-weight: 700; line-height: 1;">~20%</div>
+            <div style="font-family: var(--mono); font-size: 14px; color: var(--faint); letter-spacing: 0.1em;">koodista</div>
+            <div class="body" style="font-size: 18px; color: var(--text); margin-top: 6px; line-height: 1.4;">80% <span style="color: var(--amber);">luottamuksesta</span></div>
+          </div>
+          <div style="background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--orange); padding: 16px 14px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-family: var(--mono); font-size: 18px; color: var(--orange); font-weight: 700; letter-spacing: 0.12em;">INFRA</div>
+            <div style="font-family: var(--mono); font-size: 42px; color: var(--orange); font-weight: 700; line-height: 1;">~50%</div>
+            <div style="font-family: var(--mono); font-size: 14px; color: var(--faint); letter-spacing: 0.1em;">koodista</div>
+            <div class="body" style="font-size: 18px; color: var(--text); margin-top: 6px; line-height: 1.4;">100% <span style="color: var(--orange);">elossapysymisestä</span></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 12px;">
+          <div class="panel green" style="padding: 14px 18px;">
+            <div class="body" style="font-size: 21px; line-height: 1.4;"><span style="color: var(--green); font-weight: 700;">AI:</span> per-agentti-työkalujako voitti monoliitin. <span class="mono" style="color: var(--green);">"Prompts are code."</span></div>
+          </div>
+          <div class="panel" style="padding: 14px 18px; border-left-color: var(--amber);">
+            <div class="body" style="font-size: 21px; line-height: 1.4;"><span style="color: var(--amber); font-weight: 700;">UI:</span> suositusbadge + lähde­linkit + chipit + persona­glyfit = <span style="color: var(--amber);">epistemic infrastructure</span>.</div>
+          </div>
+          <div class="panel orange" style="padding: 14px 18px;">
+            <div class="body" style="font-size: 21px; line-height: 1.4;"><span style="color: var(--orange); font-weight: 700;">INFRA:</span> OAuth-syke (gist + 15 min cron) pitää SSO-session lämpimänä. Puolet koodista.</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 10px; font-family: var(--mono); font-size: 18px; color: var(--dim); line-height: 1.5; border-top: 1px solid var(--border); padding-top: 12px;">
+          Yksi pilari heikkona → muut eivät kompensoi. <span style="color: var(--amber);">Forensic per-run -loki</span> on ainoa työkalu joka leikkaa kaikkien läpi.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span>github.com/5qtb5t9v5k-rgb/inderes-mcp-agent · v0.2 · 2026-05-04</span>
+    <span class="spacer"></span>
+    <span class="pagenum">05 / 05</span>
+  </div>
+</section>
+
+</deck-stage>
+
+</body>
+</html>

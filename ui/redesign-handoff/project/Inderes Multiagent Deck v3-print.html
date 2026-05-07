@@ -1,0 +1,1703 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8" />
+<title>Inderes Multiagent Deck v2 · Trading Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* lifted from ui/theme.css */
+    --bg: #0a0e0c;
+    --panel: #0f1512;
+    --panel-2: #131a16;
+    --border: #1f2a23;
+    --text: #c9d4cc;
+    --dim: #6b7a72;
+    --faint: #3a4640;
+    --green: #4ade80;
+    --amber: #ffd24a;
+    --orange: #fb923c;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --pink: #f472b6;
+    --violet: #a78bfa;
+    --mono: "JetBrains Mono", "Menlo", monospace;
+    --sans: "Inter", "Helvetica Neue", sans-serif;
+  }
+
+  html, body { margin: 0; padding: 0; background: #050706; color: var(--text); font-family: var(--mono); }
+
+  deck-stage > section {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    overflow: hidden;
+    position: relative;
+  }
+  deck-stage > section.panel-bg { background: var(--panel); }
+  deck-stage > section.amber-bg { background: var(--amber); color: #0a0e0c; }
+  deck-stage > section.deep-bg { background: #050706; }
+
+  /* Slide chrome — ticker top + statusbar bottom (mimics Trading Desk) */
+  .frame {
+    position: absolute;
+    inset: 0;
+    padding: 88px 100px 80px 100px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* TITLEBAR (top of slide) */
+  .titlebar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 20px;
+    background: #050706;
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    font-family: var(--mono);
+    font-size: 19px;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .titlebar > span { white-space: nowrap; }
+  .titlebar .brand { color: var(--amber); font-weight: 700; letter-spacing: 0.22em; }
+  .titlebar .tag { padding: 0 14px; border-right: 1px solid var(--border); }
+  .titlebar .spacer { flex: 1; }
+  .titlebar .online { color: var(--green); }
+  .titlebar .online::before { content: "● "; }
+
+  /* STATUSBAR (bottom of slide) */
+  .statusbar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: #050706;
+    border-top: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex; align-items: center; gap: 22px;
+    font-family: var(--mono);
+    font-size: 19px;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .statusbar > span { white-space: nowrap; }
+  .statusbar .hot { color: var(--green); }
+  .statusbar .warn { color: var(--amber); }
+  .statusbar .spacer { flex: 1; }
+
+  /* TYPE */
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 14px;
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 22px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .eyebrow .dot { width: 10px; height: 10px; background: var(--amber); display: inline-block; }
+
+  .title {
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--text);
+    font-size: 132px;
+    line-height: 1.0;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .title .em { color: var(--amber); }
+  .title .dim { color: var(--dim); font-weight: 300; }
+
+  .title-md {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--text);
+    font-size: 60px;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .title-md .em { color: var(--amber); }
+
+  .title-sm {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--amber);
+    font-size: 36px;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+
+  .body {
+    font-family: var(--sans);
+    font-size: 28px;
+    line-height: 1.45;
+    color: var(--text);
+    text-wrap: pretty;
+  }
+  .body strong { color: var(--amber); font-weight: 600; }
+  .body em { color: var(--violet); font-style: italic; }
+
+  .label {
+    font-family: var(--mono);
+    font-size: 24px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 700;
+  }
+
+  .figure {
+    font-family: var(--mono);
+    font-weight: 700;
+    color: var(--amber);
+    font-size: 196px;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+  }
+  .figure-md {
+    font-family: var(--mono);
+    font-weight: 700;
+    color: var(--amber);
+    font-size: 96px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .mono { font-family: var(--mono); }
+
+  /* PANELS */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--amber);
+    padding: 28px 32px;
+  }
+  .panel.green { border-left-color: var(--green); }
+  .panel.violet { border-left-color: var(--violet); }
+  .panel.orange { border-left-color: var(--orange); }
+  .panel.blue { border-left-color: var(--blue); }
+  .panel.red { border-left-color: var(--red); }
+
+  /* AGENT GLYPH — boxed monogram */
+  .glyph {
+    display: inline-grid; place-items: center;
+    width: 56px; height: 56px;
+    border: 1px solid currentColor;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 30px;
+    flex: none;
+  }
+  .glyph.lead { color: var(--amber); }
+  .glyph.quant { color: var(--green); }
+  .glyph.research { color: var(--blue); }
+  .glyph.sentiment { color: var(--pink); }
+  .glyph.portfolio { color: var(--violet); }
+  .glyph.router { color: var(--orange); }
+
+  /* CODE */
+  .code {
+    background: #050706;
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--blue);
+    padding: 28px 32px;
+    font-family: var(--mono);
+    font-size: 26px;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre;
+    overflow: hidden;
+  }
+  .code.green { border-left-color: var(--green); }
+  .code.amber { border-left-color: var(--amber); }
+  .code .c { color: var(--dim); }       /* comment */
+  .code .k { color: var(--violet); }    /* keyword */
+  .code .s { color: var(--green); }     /* string */
+  .code .n { color: var(--orange); }    /* number */
+  .code .a { color: var(--amber); }     /* accent */
+  .code .b { color: var(--blue); }
+  .code .p { color: var(--pink); }
+
+  /* PILL */
+  .pill {
+    display: inline-flex; align-items: center;
+    padding: 6px 14px;
+    border: 1px solid currentColor;
+    font-family: var(--mono);
+    font-size: 24px;
+    letter-spacing: 0.1em;
+    line-height: 1;
+  }
+  .pill.solid { background: currentColor; }
+  .pill.solid > span { color: var(--bg); font-weight: 700; }
+
+  /* KV table */
+  .kv {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    row-gap: 16px;
+    column-gap: 32px;
+    align-items: baseline;
+  }
+  .kv .k {
+    font-family: var(--mono);
+    font-size: 22px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .kv .v {
+    font-family: var(--sans);
+    font-size: 26px;
+    color: var(--text);
+  }
+
+  /* TICKER */
+  .ticker {
+    position: absolute;
+    top: 56px; left: 0; right: 0;
+    height: 38px;
+    background: #050706;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+  }
+  .ticker-track {
+    display: inline-flex; gap: 48px;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 18px;
+    padding-left: 100%;
+    animation: scroll 90s linear infinite;
+  }
+  .ticker-track .tk { color: var(--dim); margin-right: 8px; }
+  .ticker-track .px { color: var(--text); margin-right: 8px; }
+  .ticker-track .up { color: var(--green); }
+  .ticker-track .dn { color: var(--red); }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-100%); }
+  }
+
+  /* When ticker present, push content down further */
+  .frame.with-ticker { padding-top: 134px; }
+
+  /* AGENT ROW */
+  .agent-row {
+    display: grid;
+    grid-template-columns: 56px 1fr auto auto;
+    gap: 24px;
+    align-items: center;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--green);
+    padding: 18px 24px;
+  }
+  .agent-row .name { font-family: var(--mono); font-weight: 700; font-size: 30px; letter-spacing: 0.04em; }
+  .agent-row .role { font-family: var(--sans); color: var(--dim); font-size: 22px; }
+  .agent-row .model { font-family: var(--mono); color: var(--blue); font-size: 22px; letter-spacing: 0.06em; }
+  .agent-row .status { font-family: var(--mono); color: var(--green); font-size: 22px; letter-spacing: 0.16em; font-weight: 700; }
+
+  /* DOT */
+  .dot-amber { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); display: inline-block; vertical-align: middle; }
+  .dot-green { width: 14px; height: 14px; border-radius: 50%; background: var(--green); display: inline-block; vertical-align: middle; }
+
+  /* HERO equation styling */
+  .equation {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 88px;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+  }
+  .equation .plus { color: var(--faint); font-weight: 400; margin: 0 18px; }
+  .equation .eq { color: var(--faint); font-weight: 400; margin: 0 18px; }
+  .equation .word { color: var(--text); }
+  .equation .result { color: var(--amber); }
+
+  /* Slide counter */
+  deck-stage::part(counter) {
+    color: var(--faint);
+    font-family: var(--mono);
+    font-size: 18px;
+    letter-spacing: 0.18em;
+  }
+</style>
+</head>
+<body>
+
+<deck-stage data-aspect="16:9" data-design-width="1920">
+
+<!-- ============================================================ -->
+<!-- 01  COLD OPEN                                                  -->
+<!-- ============================================================ -->
+<section data-label="01 Cold open">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">DESK</span>
+    <span class="tag">v0.2 · 2026-05-03</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="ticker">
+    <div class="ticker-track">
+      <span class="mono"><span class="tk">SAMPO</span><span class="px">10,12 €</span><span class="dn">▼ 0,4 %</span></span>
+      <span class="mono"><span class="tk">KNEBV</span><span class="px">59,84 €</span><span class="up">▲ 1,2 %</span></span>
+      <span class="mono"><span class="tk">UPM</span><span class="px">26,40 €</span><span class="up">▲ 0,3 %</span></span>
+      <span class="mono"><span class="tk">NDA</span><span class="px">12,55 €</span><span class="dn">▼ 0,1 %</span></span>
+      <span class="mono"><span class="tk">FORTUM</span><span class="px">14,02 €</span><span class="up">▲ 0,8 %</span></span>
+      <span class="mono"><span class="tk">ELISA</span><span class="px">42,18 €</span><span class="dn">▼ 0,2 %</span></span>
+      <span class="mono"><span class="tk">ORION</span><span class="px">52,90 €</span><span class="up">▲ 1,8 %</span></span>
+      <span class="mono"><span class="tk">PUUILO</span><span class="px">7,84 €</span><span class="up">▲ 0,5 %</span></span>
+      <span class="mono"><span class="tk">METSO</span><span class="px">11,30 €</span><span class="dn">▼ 0,3 %</span></span>
+      <span class="mono"><span class="tk">STERV</span><span class="px">9,18 €</span><span class="dn">▼ 0,9 %</span></span>
+    </div>
+  </div>
+
+  <div class="frame with-ticker" style="justify-content: center;">
+    <div class="eyebrow"><span class="dot"></span>RAPORTTI · KEVÄT 2026</div>
+    <div style="margin-top: 56px;">
+      <div class="title"><span class="dim">Inderes</span><br/><span class="em">+ MCP</span><br/><span class="dim">+ agentit.</span></div>
+    </div>
+    <div style="margin-top: 64px; display: flex; gap: 28px; align-items: baseline;">
+      <div class="label" style="color: var(--amber);">VIIDEN AGENTIN MULTIAGENTTISYSTEEMI</div>
+      <div class="label">5 ROOLIA · 16 TYÖKALUA · 1 SYNTEESI</div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span>MCP · mcp.inderes.com</span>
+    <span>MODEL · gemini-3.1-flash-lite-preview</span>
+    <span>FALLBACK · gemini-2.5-flash</span>
+    <span class="spacer"></span>
+    <span class="hot">● HEALTHY</span>
+    <span>01 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 02  THE HEADLINE  —  IT WORKS                                  -->
+<!-- ============================================================ -->
+<section data-label="02 It works">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">DESK</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: center;">
+    <div class="eyebrow"><span class="dot"></span>OTSIKKO</div>
+    <div style="margin-top: 32px;" class="title-md">Se toimii. <span class="em">Wohoo.</span></div>
+    <div style="margin-top: 80px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px;">
+      <div class="panel">
+        <div class="label">AGENTTEJA</div>
+        <div class="figure-md" style="margin-top: 12px;">5</div>
+        <div class="body" style="margin-top: 8px; font-size: 22px; color: var(--dim);">lead + 4 erikoisagenttia</div>
+      </div>
+      <div class="panel green">
+        <div class="label">MCP-TYÖKALUA</div>
+        <div class="figure-md" style="margin-top: 12px; color: var(--green);">16</div>
+        <div class="body" style="margin-top: 8px; font-size: 22px; color: var(--dim);">partitioitu, 3–8 per agentti</div>
+      </div>
+      <div class="panel blue">
+        <div class="label">YKSIKKÖTESTIÄ</div>
+        <div class="figure-md" style="margin-top: 12px; color: var(--blue);">13/13</div>
+        <div class="body" style="margin-top: 8px; font-size: 22px; color: var(--dim);">vihreänä</div>
+      </div>
+      <div class="panel violet">
+        <div class="label">KUSTANNUS / KYSELY</div>
+        <div class="figure-md" style="margin-top: 12px; color: var(--violet);">~¢1</div>
+        <div class="body" style="margin-top: 8px; font-size: 22px; color: var(--dim);">paid Gemini</div>
+      </div>
+    </div>
+    <div style="margin-top: 60px;" class="body" style="font-size: 32px;">
+      Suomeksi tai englanniksi. Pohjoismaiset osakkeet. Inderesin Premium-data.<br/>
+      Lähteet, ajatusjäljet ja koko ajoloki tallessa joka kyselystä.
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="hot">● PRODUCTION READY</span>
+    <span>v0.1.0 · 2026-05-01</span>
+    <span class="warn">UNRELEASED → TRADING DESK UI</span>
+    <span class="spacer"></span>
+    <span>02 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 03  WHAT'S NEW IN v0.2                                         -->
+<!-- ============================================================ -->
+<section data-label="03 What is new">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">CHANGELOG</span>
+    <span class="tag">v0.1.0 → v0.2</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow"><span class="dot"></span>KAKSI VIIKKOA · 09 PR:ÄÄ YHDISTETTY</div>
+    <div style="margin-top: 32px;" class="title-md">Trading Desk -UI · luottamus-UX · ajatusjäljet · kestävä pilvi-OAuth.</div>
+
+    <div style="margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;">
+      <div class="panel">
+        <div class="label" style="color: var(--amber);">+ STREAMLIT TRADING DESK</div>
+        <div class="body" style="margin-top: 14px;">JetBrains Mono · amber-aksentit · agenttiglyfit ◆▲■●✦ · live-vaiheet · aktiivisuusloki per agentti.</div>
+      </div>
+      <div class="panel green">
+        <div class="label" style="color: var(--green);">+ LUOTTAMUS-UX</div>
+        <div class="body" style="margin-top: 14px;">Inderes-suositusbadge synteesin yllä · jatkokysymys-chipit · klikattavat inderes.fi-lähteet · persoonavärinen live-status. <span class="mono" style="color: var(--green);">PR #23, #28, #29</span></div>
+      </div>
+      <div class="panel violet">
+        <div class="label" style="color: var(--violet);">+ AJATUSJÄLJET (#3 BACKLOG)</div>
+        <div class="body" style="margin-top: 14px;">Pakollinen <span class="mono" style="color: var(--violet);">**Ajatus:**</span> jokaisen subagentin vastauksen alussa. LEAD: <span class="mono" style="color: var(--amber);">**💭 Perustelut:**</span>.</div>
+      </div>
+      <div class="panel orange">
+        <div class="label" style="color: var(--orange);">+ KESTÄVÄ PILVI-OAUTH</div>
+        <div class="body" style="margin-top: 14px;">GitHub Gist -peilaus <span class="mono">tokens.json</span>:lle + <span class="mono">refresh-inderes-tokens.yml</span>: cron 15 min välein pitää SSO-session lämpimänä. <span class="mono" style="color: var(--orange);">PR #25, #26, #27</span></div>
+      </div>
+      <div class="panel blue">
+        <div class="label" style="color: var(--blue);">+ PÄIVÄYSTIETOISUUS</div>
+        <div class="body" style="margin-top: 14px;">Joka prompti alkaa <span class="mono">CURRENT DATE</span> -headerilla (ISO + suomalainen viikonpäivä). Korjasi "tänään 14.5.2025" -hallusinaation.</div>
+      </div>
+      <div class="panel">
+        <div class="label" style="color: var(--dim);">+ KAIKENLAISIA HOTFIXEJÄ</div>
+        <div class="body" style="margin-top: 14px;">Material Symbols icon-font · markdown-taulukot · Python-stdout vihreä output · trace-expander scroll bug · Streamlit coral → amber.</div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>v0.2 · 2026-05-02 → 2026-05-03</span>
+    <span class="hot">● UI SHIPPED</span>
+    <span class="spacer"></span>
+    <span>03 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 03b  TRUST UX TRIO                                             -->
+<!-- ============================================================ -->
+<section data-label="03b Trust UX" class="panel-bg">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">UX · LUOTTAMUSKERROS</span>
+    <span class="tag">PR #23 · #28 · #29</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow" style="color: var(--green);"><span class="dot" style="background: var(--green);"></span>EI KOSMETIIKKAA — EPISTEEMISTÄ INFRAA</div>
+    <div style="margin-top: 24px;" class="title-md">Kolme pientä muutosta jotka tekevät vastauksesta <span class="em">läpinäkyvän</span>.</div>
+
+    <div style="margin-top: 36px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; flex: 1;">
+
+      <!-- LEFT: mock synthesis card -->
+      <div style="background: var(--bg); border: 1px solid var(--border); padding: 24px 26px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="font-family: var(--mono); font-size: 16px; color: var(--faint); letter-spacing: 0.18em; font-weight: 700;">SAMMON NÄKYMÄT?</div>
+
+        <!-- recommendation badge -->
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="display: inline-flex; align-items: center; gap: 10px; background: rgba(95,205,140,0.14); border: 1px solid var(--green); color: var(--green); font-family: var(--mono); font-size: 26px; font-weight: 700; padding: 8px 16px; letter-spacing: 0.06em;">▲ LISÄÄ</div>
+          <div style="font-family: var(--mono); color: var(--text); font-size: 26px;">tavoitehinta <span style="color: var(--amber); font-weight: 700;">10,00 €</span></div>
+        </div>
+
+        <!-- LEAD synthesis (truncated) -->
+        <div style="border-left: 2px solid var(--amber); padding-left: 18px;">
+          <div style="font-family: var(--mono); font-size: 15px; color: var(--amber); letter-spacing: 0.14em; font-weight: 700;">◆ AINO-LEAD</div>
+          <div style="font-family: var(--mono); font-size: 16px; color: var(--violet); font-style: italic; margin-top: 6px;">💭 Perustelut: yhdistän quantin P/E:n researchin tavoitehintaan, sentimentin insider-aktiviteetilla.</div>
+          <div class="body" style="font-size: 22px; margin-top: 10px;">P/E 12,53 (2025); ennusteet 14,5–17,9 (2026–2028e). Linjassa pohjoismaisiin verrokkeihin.</div>
+        </div>
+
+        <!-- clickable sources -->
+        <div style="font-family: var(--mono); font-size: 18px; color: var(--dim); line-height: 1.6;">
+          Lähteet: <span style="color: var(--blue); text-decoration: underline; text-decoration-color: rgba(122,162,247,0.5);">inderes.fi/sampo/raportti</span> · <span style="color: var(--blue); text-decoration: underline; text-decoration-color: rgba(122,162,247,0.5);">inderes.fi/sampo/transcript</span> · <span style="color: var(--blue); text-decoration: underline; text-decoration-color: rgba(122,162,247,0.5);">inderes.fi/foorumi/sampo</span>
+        </div>
+
+        <!-- follow-up chips -->
+        <div style="border-top: 1px solid var(--border); padding-top: 14px;">
+          <div style="font-family: var(--mono); font-size: 15px; color: var(--faint); letter-spacing: 0.14em;">💡 VOISIT KYSYÄ MYÖS</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
+            <div style="font-family: var(--mono); font-size: 17px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); padding: 8px 14px;">Sammon osinkoennuste 2026?</div>
+            <div style="font-family: var(--mono); font-size: 17px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); padding: 8px 14px;">Vertaa Nordeaan</div>
+            <div style="font-family: var(--mono); font-size: 17px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); padding: 8px 14px;">Insider-kaupat 6 kk?</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: three trust callouts -->
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="panel green" style="padding: 18px 22px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="font-family: var(--mono); font-size: 22px; color: var(--green); font-weight: 700;">01</div>
+            <div class="label" style="color: var(--green);">SUOSITUSBADGE</div>
+          </div>
+          <div class="body" style="margin-top: 10px; font-size: 22px;">Synteesi luetaan <span class="em" style="color: var(--green);">tunnetun ankkurin</span> kommenttina, ei vapaana väitteenä. Inderesin oma kanta värikoodattuna ennen prouseja.</div>
+        </div>
+        <div class="panel blue" style="padding: 18px 22px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="font-family: var(--mono); font-size: 22px; color: var(--blue); font-weight: 700;">02</div>
+            <div class="label" style="color: var(--blue);">KLIKATTAVAT LÄHTEET</div>
+          </div>
+          <div class="body" style="margin-top: 10px; font-size: 22px;">Työkaluvastausten <span class="mono" style="color: var(--blue);">pageUrl</span>-kentät kudotaan markdownin sisään linkeiksä. <span class="em" style="color: var(--blue);">Yksi klikkaus tarkistaa väitteen.</span></div>
+        </div>
+        <div class="panel" style="padding: 18px 22px; border-left-color: var(--pink);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="font-family: var(--mono); font-size: 22px; color: var(--pink); font-weight: 700;">03</div>
+            <div class="label" style="color: var(--pink);">JATKOKYSYMYS-CHIPIT</div>
+          </div>
+          <div class="body" style="margin-top: 10px; font-size: 22px;">LEAD ehdottaa <span class="em" style="color: var(--pink);">kolme</span> seuraavaa kysymystä. Konversaatio etenee yhdellä klikkauksella, kontekstissa pysytään.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 28px; font-family: var(--mono); font-size: 18px; color: var(--dim); border-top: 1px solid var(--border); padding-top: 14px; line-height: 1.5;">
+      “Multi-agent UX ei ole koristelu. Se on <span style="color: var(--amber);">epistemic infrastructure</span> — ilman sitä käyttäjä ei tiedä onko vastaus aidosti tukirakenteissaan.” — LESSONS.md
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="hot">● 3 PR · 1 LUOTTAMUSKERROS</span>
+    <span class="spacer"></span>
+    <span>04 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 04  HERO SCREENSHOT — TRADING DESK                            -->
+<!-- ============================================================ -->
+<section data-label="04 Trading desk" class="deep-bg">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">UI · TRADING DESK</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="padding: 88px 80px 80px 80px;">
+    <div class="eyebrow"><span class="dot"></span>UI · TRADING DESK</div>
+
+    <div style="margin-top: 28px; flex: 1; display: grid; grid-template-columns: 280px 1fr; gap: 24px; min-height: 0;">
+      <!-- sidebar mock -->
+      <div style="background: var(--panel); border: 1px solid var(--border); padding: 18px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+        <div style="background: rgba(248,113,113,0.06); border: 1px solid var(--red); border-left: 2px solid var(--red); padding: 8px 10px;">
+          <div style="font-family: var(--mono); font-size: 14px; color: var(--red); letter-spacing: 0.18em; font-weight: 700;">VAROITUS</div>
+          <div style="font-family: var(--sans); font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.4;">Ei sijoitusneuvontaa. Henkilökohtainen tutkimusprojekti.</div>
+        </div>
+        <div>
+          <div style="font-family: var(--mono); font-size: 14px; color: var(--amber); letter-spacing: 0.18em; font-weight: 700; padding-bottom: 4px; border-bottom: 1px solid var(--border);">ARKKITEHTUURI</div>
+          <div style="font-family: var(--sans); font-size: 14px; color: var(--text); margin-top: 8px; line-height: 1.5;">LEAD orkestroi. 4 erikoisagenttia rinnakkain. MCP 16 työkalulla.</div>
+          <div style="margin-top: 10px; display: grid; grid-template-columns: 70px 1fr; gap: 4px; font-size: 12px; font-family: var(--mono);">
+            <div style="color: var(--faint); letter-spacing: 0.1em;">STACK</div><div style="color: var(--amber);">MAF + Gemini</div>
+            <div style="color: var(--faint); letter-spacing: 0.1em;">DATA</div><div style="color: var(--text);">Inderes MCP</div>
+            <div style="color: var(--faint); letter-spacing: 0.1em;">LOG</div><div style="color: var(--text);">~/.inderes_agent/runs</div>
+            <div style="color: var(--faint); letter-spacing: 0.1em;">STATUS</div><div style="color: var(--green);">● HEALTHY</div>
+          </div>
+        </div>
+        <a style="display: block; text-align: center; color: var(--amber); text-decoration: none; font-size: 13px; letter-spacing: 0.1em; font-weight: 700; border: 1px solid var(--amber); padding: 7px 10px;">LISÄTIEDOT GITHUBISSA →</a>
+        <div>
+          <div style="font-family: var(--mono); font-size: 14px; color: var(--amber); letter-spacing: 0.18em; font-weight: 700; padding-bottom: 4px; border-bottom: 1px solid var(--border);">AGENTIT</div>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+            <div style="display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;">
+              <div style="width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--amber); color: var(--amber); font-size: 14px; font-weight: 700;">◆</div>
+              <div><div style="color: var(--amber); font-size: 13px; font-weight: 700;">LEAD</div><div style="color: var(--text); font-size: 12px;">Synteesi · ei työkaluja</div></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;">
+              <div style="width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--green); color: var(--green); font-size: 14px; font-weight: 700;">▲</div>
+              <div><div style="color: var(--green); font-size: 13px; font-weight: 700;">QUANT</div><div style="color: var(--text); font-size: 12px;">Numerot, P/E, ROE</div></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;">
+              <div style="width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--blue); color: var(--blue); font-size: 14px; font-weight: 700;">■</div>
+              <div><div style="color: var(--blue); font-size: 13px; font-weight: 700;">RESEARCH</div><div style="color: var(--text); font-size: 12px;">Analyytikkosisältö</div></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;">
+              <div style="width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--pink); color: var(--pink); font-size: 14px; font-weight: 700;">●</div>
+              <div><div style="color: var(--pink); font-size: 13px; font-weight: 700;">SENTIMENT</div><div style="color: var(--text); font-size: 12px;">Insider, foorumi</div></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;">
+              <div style="width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--violet); color: var(--violet); font-size: 14px; font-weight: 700;">✦</div>
+              <div><div style="color: var(--violet); font-size: 13px; font-weight: 700;">PORTFOLIO</div><div style="color: var(--text); font-size: 12px;">Mallisalkku</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- main column mock -->
+      <div style="display: flex; flex-direction: column; gap: 14px; overflow: hidden;">
+        <!-- hero -->
+        <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--amber); padding: 14px 18px;">
+          <div style="font-family: var(--mono); font-size: 12px; color: var(--amber); letter-spacing: 0.18em; font-weight: 700;">INDERES//AGENT · POHJOISMAISTEN OSAKKEIDEN TUTKIMUSAGENTTI</div>
+          <div class="equation" style="font-size: 26px; margin-top: 8px;"><span class="word">INDERES</span><span class="plus">+</span><span class="word">MCP</span><span class="plus">+</span><span class="word">AGENTIT</span><span class="eq">=</span><span class="result">INSIGHTS</span></div>
+        </div>
+        <!-- user message -->
+        <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--amber); padding: 12px 16px; font-family: var(--sans); font-size: 16px; color: var(--text);">
+          Vertaile Sammon ja Nordean kannattavuutta. Insider-aktiivisuus?
+        </div>
+        <!-- routing card -->
+        <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--orange); padding: 12px 16px; display: grid; grid-template-columns: auto 1fr 1fr 2fr; gap: 16px; font-size: 13px;">
+          <div><div style="color: var(--faint); font-size: 10px; letter-spacing: 0.12em;">YHTIÖT</div><div style="color: var(--amber); margin-top: 2px;">Sampo · Nordea</div></div>
+          <div><div style="color: var(--faint); font-size: 10px; letter-spacing: 0.12em;">DOMAINIT</div><div style="margin-top: 2px;"><span style="color: var(--green); border: 1px solid var(--green); padding: 1px 6px; font-size: 11px; margin-right: 4px;">QUANT</span><span style="color: var(--pink); border: 1px solid var(--pink); padding: 1px 6px; font-size: 11px;">SENTIMENT</span></div></div>
+          <div><div style="color: var(--faint); font-size: 10px; letter-spacing: 0.12em;">VERTAILU</div><div style="color: var(--amber); margin-top: 2px;">KYLLÄ</div></div>
+          <div><div style="color: var(--pink); font-size: 10px; letter-spacing: 0.12em;">PERUSTELU</div><div style="color: var(--violet); font-size: 12px; font-style: italic; margin-top: 2px; line-height: 1.35;">Kannattavuus → fundamentit. Insider → SENTIMENT. Kahden yhtiön vertailu → fan-out.</div></div>
+        </div>
+        <!-- agent rows -->
+        <div style="background: var(--panel-2); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 8px 12px; display: grid; grid-template-columns: 28px auto 1fr auto auto; gap: 12px; align-items: center; font-size: 13px;">
+          <div style="width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--green); color: var(--green); font-weight: 700;">▲</div>
+          <div style="color: var(--green); font-weight: 700; letter-spacing: 0.06em;">QUANT · Sampo</div>
+          <div style="color: var(--dim); font-size: 11px;">Numerot, P/E, ROE</div>
+          <div style="color: var(--blue); font-size: 11px;">flash-lite</div>
+          <div style="color: var(--green); font-size: 11px; letter-spacing: 0.16em;">VALMIS</div>
+        </div>
+        <div style="background: var(--panel-2); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 8px 12px; display: grid; grid-template-columns: 28px auto 1fr auto auto; gap: 12px; align-items: center; font-size: 13px;">
+          <div style="width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--green); color: var(--green); font-weight: 700;">▲</div>
+          <div style="color: var(--green); font-weight: 700; letter-spacing: 0.06em;">QUANT · Nordea</div>
+          <div style="color: var(--dim); font-size: 11px;">Numerot, P/E, ROE</div>
+          <div style="color: var(--blue); font-size: 11px;">flash-lite</div>
+          <div style="color: var(--green); font-size: 11px; letter-spacing: 0.16em;">VALMIS</div>
+        </div>
+        <div style="background: var(--panel-2); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 8px 12px; display: grid; grid-template-columns: 28px auto 1fr auto auto; gap: 12px; align-items: center; font-size: 13px;">
+          <div style="width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--pink); color: var(--pink); font-weight: 700;">●</div>
+          <div style="color: var(--pink); font-weight: 700; letter-spacing: 0.06em;">SENTIMENT · molemmat</div>
+          <div style="color: var(--dim); font-size: 11px;">Insider, foorumi</div>
+          <div style="color: var(--blue); font-size: 11px;">flash-lite</div>
+          <div style="color: var(--green); font-size: 11px; letter-spacing: 0.16em;">VALMIS</div>
+        </div>
+        <!-- LEAD answer with amber callout -->
+        <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 14px 18px;">
+          <div style="border-left: 2px solid var(--amber); background: rgba(255,210,74,0.04); padding: 8px 12px; font-family: var(--sans); font-size: 13px; font-style: italic; color: var(--text); margin-bottom: 12px;">
+            <strong style="color: var(--amber); font-style: normal; font-weight: 700; letter-spacing: 0.04em;">💭 Perustelut:</strong> Yhdistin QUANTin oikaistut ROE:t ja SENTIMENTin insider-virrat &mdash; vertailu kannattaa kallistaa Sammoon, koska tuloskunto on vakaampi.
+          </div>
+          <div style="font-family: var(--sans); font-size: 14px; color: var(--text); line-height: 1.55;">
+            <strong style="color: var(--amber);">Sampo</strong> ROE 14,2 % · P/E 12,5 · insider-osto 2 kpl. <strong style="color: var(--amber);">Nordea</strong> ROE 13,7 % · P/E 9,1 · insider-myynti 1 kpl. Sampo on vakaampi, Nordea halvempi.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>MCP · mcp.inderes.com</span>
+    <span>MODEL · gemini-3.1-flash-lite-preview</span>
+    <span class="hot">● 0 ERRORS · 0 FALLBACKS</span>
+    <span class="spacer"></span>
+    <span>04 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 05  THE STORY — JOURNEY                                        -->
+<!-- ============================================================ -->
+<section data-label="05 Story · journey" class="amber-bg">
+  <div class="frame" style="justify-content: space-between;">
+    <div class="label" style="color: rgba(10,14,12,0.6);">OSA I</div>
+    <div>
+      <div class="label" style="color: rgba(10,14,12,0.7);">MATKA TÄHÄN</div>
+      <div style="margin-top: 28px;" class="title" style="color: #0a0e0c;">Idea, kaksi<br/>yritystä,<br/><span style="font-style: italic;">pivot, voitto.</span></div>
+    </div>
+    <div class="label" style="color: rgba(10,14,12,0.6);">3 YRITYSTÄ · 1 PIVOT · 8 H</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 06  THE IDEA                                                   -->
+<!-- ============================================================ -->
+<section data-label="06 Idea">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">OSA I · IDEA</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: center;">
+    <div class="eyebrow"><span class="dot"></span>MISTÄ IDEA LÄHTI</div>
+    <div style="margin-top: 36px;">
+      <div class="equation"><span class="word">INDERES</span><span class="plus">+</span><span class="word">MCP</span><span class="plus">+</span><span class="word">AGENTIT</span><span class="eq">=</span><span class="result">INSIGHTS</span></div>
+    </div>
+    <div style="margin-top: 80px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 56px;">
+      <div>
+        <div class="figure-md">16</div>
+        <div class="label" style="margin-top: 12px;">INDERES MCP</div>
+        <div class="body" style="margin-top: 16px; font-size: 26px;">Premium-tilaajille julkaistu palvelin: yhtiöhaut, fundamentit, estimaatit, raportit, foorumi, sisäpiiri, mallisalkku.</div>
+      </div>
+      <div>
+        <div class="figure-md" style="color: var(--green);">3</div>
+        <div class="label" style="margin-top: 12px;">FRAMEWORKKIA</div>
+        <div class="body" style="margin-top: 16px; font-size: 26px;">Microsoft, Anthropic ja Google työnsivät multi-agent-frameworkkeja eteenpäin yhtä aikaa.</div>
+      </div>
+      <div>
+        <div class="figure-md" style="color: var(--violet);">1</div>
+        <div class="label" style="margin-top: 12px;">KYSYMYS</div>
+        <div class="body" style="margin-top: 16px; font-size: 26px;">Mitä jos antaisi luonnollisen kielen rajapinnan koko Inderes-dataan? Yksi paikka kysyä mitä tahansa.</div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>MOTIVAATIO</span>
+    <span class="spacer"></span>
+    <span>06 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 07  TWO FAILURES                                               -->
+<!-- ============================================================ -->
+<section data-label="07 Failures" class="panel-bg">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">YRITYS 1 &amp; 2</span>
+    <span class="spacer"></span>
+    <span style="color: var(--red);">● EPÄONNISTUI</span>
+  </div>
+  <div class="frame" style="justify-content: center;">
+    <div class="eyebrow" style="color: var(--red);"><span class="dot" style="background: var(--red);"></span>EPÄONNISTUMISET</div>
+    <div style="margin-top: 28px;" class="title-md">Kaksi epäonnistumista, yksi syy: <span style="color: var(--red);">scope.</span></div>
+
+    <div style="margin-top: 64px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+      <div class="panel red">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--red);">Yritys 1</div>
+          <div class="label" style="color: var(--red);">×</div>
+        </div>
+        <div class="label" style="margin-top: 6px; color: var(--dim);">CLAUDE AGENT SDK</div>
+        <div class="body" style="margin-top: 18px; font-size: 26px;">"Tehdään koko juttu" &mdash; oma DCF, peer-vertailut, arvonmääritys.</div>
+        <div style="margin-top: 24px;" class="kv">
+          <div class="k">POLTTO</div><div class="v">20&nbsp;€ / 15 min</div>
+          <div class="k">TULOS</div><div class="v">Ei toimivaa</div>
+          <div class="k">OPETUS</div><div class="v" style="color: var(--amber);">Iteratiivinen korjaus pahensi vain</div>
+        </div>
+      </div>
+      <div class="panel red">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--red);">Yritys 2</div>
+          <div class="label" style="color: var(--red);">×</div>
+        </div>
+        <div class="label" style="margin-top: 6px; color: var(--dim);">CURSOR AGENT MODE</div>
+        <div class="body" style="margin-top: 18px; font-size: 26px;">Sama tavoite, eri työkalu, parempi orkestraatio.</div>
+        <div style="margin-top: 24px;" class="kv">
+          <div class="k">POLTTO</div><div class="v">10M+ tokenia</div>
+          <div class="k">TULOS</div><div class="v">Vajaakuntoinen prototyyppi</div>
+          <div class="k">OPETUS</div><div class="v" style="color: var(--amber);">Työkalu vaihtui &mdash; scope ei</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 56px; padding: 24px 28px; border-left: 2px solid var(--amber); background: rgba(255,210,74,0.04);" class="body">
+      Ongelma ei ollut tooleissa eikä kielessä. Ongelma oli liian iso scope &mdash; agentit yrittivät tehdä sekä tutkimusta <em>että</em> arvonmääritystä yhtaikaa.
+    </div>
+  </div>
+  <div class="statusbar">
+    <span style="color: var(--red);">● 2 EPÄONNISTUMISTA</span>
+    <span class="spacer"></span>
+    <span>07 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 08  PIVOT                                                      -->
+<!-- ============================================================ -->
+<section data-label="08 Pivot">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">PIVOT · SCOPE ALAS</span>
+    <span class="spacer"></span>
+    <span style="color: var(--amber);">● UUSI SUUNTA</span>
+  </div>
+  <div class="frame" style="justify-content: center;">
+    <div class="eyebrow"><span class="dot"></span>PIVOT</div>
+    <div style="margin-top: 28px;" class="title-md">Kapeampi tavoite. <span class="em">Speksi ennen koodia.</span></div>
+
+    <div style="margin-top: 64px;">
+      <div style="display: grid; grid-template-columns: 1fr 80px 1fr; gap: 32px; padding: 24px 0; border-top: 1px solid var(--border); align-items: baseline;">
+        <div class="body" style="color: var(--dim);">Strukturoitu arvonmääritystyökalu</div>
+        <div class="mono" style="font-size: 28px; color: var(--amber); text-align: center;">→</div>
+        <div class="body"><strong>Tutkimuskumppani.</strong> Research conversation.</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 80px 1fr; gap: 32px; padding: 24px 0; border-top: 1px solid var(--border); align-items: baseline;">
+        <div class="body" style="color: var(--dim);">Agentti antaa OSTA / MYY -suosituksen</div>
+        <div class="mono" style="font-size: 28px; color: var(--amber); text-align: center;">→</div>
+        <div class="body"><strong>Surfaa Inderesin signaalit.</strong> Käyttäjä päättää.</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 80px 1fr; gap: 32px; padding: 24px 0; border-top: 1px solid var(--border); align-items: baseline;">
+        <div class="body" style="color: var(--dim);">Yksi iso agentti hoitaa kaiken</div>
+        <div class="mono" style="font-size: 28px; color: var(--amber); text-align: center;">→</div>
+        <div class="body"><strong>5 erikoistunutta agenttia</strong>, kapea rooli kullakin.</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 80px 1fr; gap: 32px; padding: 24px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); align-items: baseline;">
+        <div class="body" style="color: var(--dim);">DCF, multiples, sensitivity</div>
+        <div class="mono" style="font-size: 28px; color: var(--amber); text-align: center;">→</div>
+        <div class="body"><strong>Niitä ei.</strong> Vasta jos perusta toimii.</div>
+      </div>
+    </div>
+    <div style="margin-top: 36px;" class="body" style="font-style: italic; color: var(--dim);">Spec-tiedosto kirjoitettiin uudelleen tällä kapeammalla scopella ennen kuin yhtään riviä koodattiin.</div>
+  </div>
+  <div class="statusbar">
+    <span class="warn">● SCOPE: NARROW</span>
+    <span class="spacer"></span>
+    <span>08 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 09  THE WIN                                                    -->
+<!-- ============================================================ -->
+<section data-label="09 The win">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">YRITYS 3 · CLAUDE CODE</span>
+    <span class="spacer"></span>
+    <span class="online">VOITTO</span>
+  </div>
+  <div class="frame" style="justify-content: center;">
+    <div class="eyebrow" style="color: var(--green);"><span class="dot" style="background: var(--green);"></span>YRITYS 3 &mdash; ONNISTUI</div>
+    <div style="margin-top: 28px;" class="title-md">8 tuntia. <span class="em">Toimiva järjestelmä.</span></div>
+
+    <div style="margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 80px;">
+      <div>
+        <div class="label" style="color: var(--green);">30 MIN — ALKUGENEROINTI</div>
+        <div class="body" style="margin-top: 14px;">5 agenttia, MCP-yhteyskerros, Gemini-fallback, async workflow, REPL + CLI. 13/13 yksikkötestiä vihreänä.</div>
+        <div style="margin-top: 36px;" class="label" style="color: var(--orange);">7,5 H — TODELLISUUS ISKEE</div>
+        <div class="body" style="margin-top: 14px;">ARM Python, OAuth 2.0 + PKCE, <span class="mono" style="color: var(--amber);">load_prompts=False</span>, JSON-Schema-shim, 503-fallback, levy. Joka ongelma → oppi → korjaus.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: grid; grid-template-columns: 280px 1fr; align-items: baseline; gap: 28px; padding-bottom: 14px; border-bottom: 1px solid var(--border);">
+          <div class="figure-md" style="color: var(--green); text-align: right; font-size: 110px;">8&nbsp;h</div>
+          <div class="body">generointi → debug → toimiva</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 280px 1fr; align-items: baseline; gap: 28px; padding-bottom: 14px; border-bottom: 1px solid var(--border);">
+          <div class="figure-md" style="text-align: right; font-size: 110px;">30</div>
+          <div class="body">lähdekooditiedostoa</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 280px 1fr; align-items: baseline; gap: 28px; padding-bottom: 14px; border-bottom: 1px solid var(--border);">
+          <div class="figure-md" style="text-align: right; font-size: 110px;">2 500</div>
+          <div class="body">riviä dokumentaatiota</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 280px 1fr; align-items: baseline; gap: 28px;">
+          <div class="figure-md" style="text-align: right; font-size: 110px; color: var(--violet);">~¢1</div>
+          <div class="body">per kysely</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="hot">● VOITTO · v0.1.0 RELEASED 2026-05-01</span>
+    <span class="spacer"></span>
+    <span>09 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 10  SECTION DIVIDER — ARCHITECTURE                             -->
+<!-- ============================================================ -->
+<section data-label="10 Section · Architecture" class="amber-bg">
+  <div class="frame" style="justify-content: space-between;">
+    <div class="label" style="color: rgba(10,14,12,0.6);">OSA II</div>
+    <div>
+      <div class="label" style="color: rgba(10,14,12,0.7);">ARKKITEHTUURI</div>
+      <div style="margin-top: 28px;" class="title" style="color: #0a0e0c;">Reititin,<br/>fan-out,<br/><span style="font-style: italic;">synteesi.</span></div>
+    </div>
+    <div class="label" style="color: rgba(10,14,12,0.6);">5 AGENTTIA · 16 TYÖKALUA</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 11  ARCHITECTURE DIAGRAM                                       -->
+<!-- ============================================================ -->
+<section data-label="11 Architecture">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">ARKKITEHTUURI</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow"><span class="dot"></span>STAATTINEN FAN-OUT, EI PEER-TO-PEER</div>
+    <div style="margin-top: 24px;" class="title-md">Reititin → 4 rinnakkain → lead-synteesi.</div>
+
+    <!-- diagram -->
+    <div style="margin-top: 48px; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+      <div style="font-family: var(--mono); font-size: 26px; color: var(--text); padding: 14px 28px; background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--amber);">user.question</div>
+      <div style="width: 2px; height: 28px; background: var(--border);"></div>
+      <div style="font-family: var(--mono); font-size: 26px; color: var(--orange); padding: 14px 32px; background: var(--panel); border: 1px solid var(--orange); white-space: nowrap; font-weight: 700; letter-spacing: 0.06em;">ROUTER · gemini structured-output</div>
+      <div style="width: 2px; height: 28px; background: var(--border);"></div>
+
+      <!-- fan-out lines -->
+      <div style="position: relative; width: 1480px; height: 28px;">
+        <div style="position: absolute; top: 0; left: 50%; width: 1280px; height: 2px; background: var(--border); transform: translateX(-50%);"></div>
+        <div style="position: absolute; top: 0; left: 12.5%; width: 2px; height: 28px; background: var(--border);"></div>
+        <div style="position: absolute; top: 0; left: 37.5%; width: 2px; height: 28px; background: var(--border);"></div>
+        <div style="position: absolute; top: 0; left: 62.5%; width: 2px; height: 28px; background: var(--border);"></div>
+        <div style="position: absolute; top: 0; left: 87.5%; width: 2px; height: 28px; background: var(--border);"></div>
+      </div>
+
+      <!-- 4 agents row -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; width: 1480px;">
+        <div class="panel green" style="padding: 18px 20px; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+            <div class="glyph quant" style="width: 32px; height: 32px; font-size: 20px; flex-shrink: 0;">▲</div>
+            <div style="min-width: 0;">
+              <div class="title-sm" style="font-size: 22px; color: var(--green); white-space: nowrap;">aino-quant</div>
+              <div class="body" style="font-size: 17px; color: var(--dim); margin-top: 2px; white-space: nowrap;">numerot · P/E · ROE</div>
+            </div>
+          </div>
+          <div class="mono" style="margin-top: 14px; font-size: 18px; color: var(--dim); line-height: 1.5;">get-fundamentals<br/>get-inderes-estimates</div>
+        </div>
+        <div class="panel blue" style="padding: 18px 20px; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+            <div class="glyph research" style="width: 32px; height: 32px; font-size: 18px; flex-shrink: 0;">■</div>
+            <div style="min-width: 0;">
+              <div class="title-sm" style="font-size: 22px; color: var(--blue); white-space: nowrap;">aino-research</div>
+              <div class="body" style="font-size: 17px; color: var(--dim); margin-top: 2px; white-space: nowrap;">analyytikkosisältö</div>
+            </div>
+          </div>
+          <div class="mono" style="margin-top: 14px; font-size: 18px; color: var(--dim); line-height: 1.5;">list-content · get-content<br/>read-document-sections</div>
+        </div>
+        <div class="panel" style="padding: 18px 20px; border-left-color: var(--pink); min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+            <div class="glyph sentiment" style="width: 32px; height: 32px; font-size: 20px; flex-shrink: 0;">●</div>
+            <div style="min-width: 0;">
+              <div class="title-sm" style="font-size: 22px; color: var(--pink); white-space: nowrap;">aino-sentiment</div>
+              <div class="body" style="font-size: 17px; color: var(--dim); margin-top: 2px; white-space: nowrap;">insider · foorumi</div>
+            </div>
+          </div>
+          <div class="mono" style="margin-top: 14px; font-size: 18px; color: var(--dim); line-height: 1.5;">list-insider-transactions<br/>search-forum-topics</div>
+        </div>
+        <div class="panel violet" style="padding: 18px 20px; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+            <div class="glyph portfolio" style="width: 32px; height: 32px; font-size: 20px; flex-shrink: 0;">✦</div>
+            <div style="min-width: 0;">
+              <div class="title-sm" style="font-size: 22px; color: var(--violet); white-space: nowrap;">aino-portfolio</div>
+              <div class="body" style="font-size: 17px; color: var(--dim); margin-top: 2px; white-space: nowrap;">mallisalkku</div>
+            </div>
+          </div>
+          <div class="mono" style="margin-top: 14px; font-size: 18px; color: var(--dim); line-height: 1.5;">get-model-portfolio-content<br/>get-model-portfolio-price</div>
+        </div>
+      </div>
+
+      <!-- pipe to MCP -->
+      <div style="width: 2px; height: 24px; background: var(--border); margin-top: 4px;"></div>
+      <div style="font-family: var(--mono); font-size: 22px; color: var(--dim); padding: 10px 22px; background: var(--panel-2); border: 1px solid var(--border); white-space: nowrap; letter-spacing: 0.06em;">inderes mcp · 16 työkalua, partitioitu</div>
+      <div style="width: 2px; height: 24px; background: var(--border);"></div>
+
+      <!-- lead -->
+      <div style="font-family: var(--mono); font-size: 26px; color: var(--amber); padding: 14px 32px; background: var(--panel); border: 1px solid var(--amber); white-space: nowrap; font-weight: 700; letter-spacing: 0.06em; display: flex; align-items: center; gap: 14px;">
+        <div class="glyph lead" style="width: 32px; height: 32px; font-size: 20px;">◆</div>
+        AINO-LEAD · synteesi (no tools)
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>5 AGENT SYSTEM</span>
+    <span>16 MCP TOOLS</span>
+    <span>fan-out cap = MAX_CONCURRENT_AGENTS</span>
+    <span class="spacer"></span>
+    <span>11 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 12  ROUTER                                                     -->
+<!-- ============================================================ -->
+<section data-label="12 Router">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">VAIHE 1 · REITITIN</span>
+    <span class="spacer"></span>
+    <span style="color: var(--orange);">● ROUTER</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow" style="color: var(--orange);"><span class="dot" style="background: var(--orange);"></span>VAIHE 1 — REITITIN</div>
+    <div style="margin-top: 28px;" class="title-md">Strukturoitu JSON. <span style="color: var(--orange);">Yksi LLM-kutsu.</span></div>
+
+    <div style="margin-top: 56px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; align-items: start;">
+      <div class="code">
+<span class="c"># router output</span>
+{
+  <span class="a">"domains"</span>:    [<span class="s">"quant"</span>, <span class="s">"research"</span>],
+  <span class="a">"companies"</span>:  [<span class="s">"Sampo Oyj"</span>],
+  <span class="a">"comparison"</span>: <span class="k">false</span>,
+  <span class="a">"reasoning"</span>:  <span class="s">"P/E + näkemys</span>
+                <span class="s">→ fundamentit + raportti."</span>
+}
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <div>
+          <div class="label">MITÄ TEKEE</div>
+          <div class="body" style="margin-top: 14px;">Lukee kysymyksen, palauttaa luokituksen: ketkä subagentit tarvitaan, mitkä yhtiöt, onko vertailu, ja <em>miksi</em> &mdash; perustelu menee suoraan UI:n routing-kortille.</div>
+        </div>
+        <div class="kv">
+          <div class="k">MALLI</div><div class="v">gemini-3.1-flash-lite</div>
+          <div class="k">MUOTO</div><div class="v">structured-output JSON + few-shot</div>
+          <div class="k">FALLBACK</div><div class="v">koodifenssit, prosaleak, plain JSON</div>
+          <div class="k">TESTIT</div><div class="v" style="color: var(--green);">5 / 5 router-yksikkötestiä</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span style="color: var(--orange);">● ROUTING</span>
+    <span class="spacer"></span>
+    <span>12 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 13  AGENT FUNDAMENTALS                                         -->
+<!-- ============================================================ -->
+<section data-label="13 Mikä on agentti">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">FUNDAMENTAALI</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow"><span class="dot"></span>MIKÄ ON AGENTTI</div>
+    <div style="margin-top: 32px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 80px; flex: 1; align-items: start;">
+      <div>
+        <div style="font-family: var(--sans); font-size: 48px; line-height: 1.25; font-weight: 300; color: var(--text); letter-spacing: -0.005em;">
+          <span style="color: var(--amber); font-family: var(--sans); font-size: 96px; line-height: 0; vertical-align: -16px; margin-right: 4px;">&ldquo;</span>An agent is anything that can be viewed as <em style="font-style: italic; color: var(--amber);">perceiving</em> its environment through sensors and <em style="font-style: italic; color: var(--amber);">acting</em> upon that environment through actuators.&rdquo;
+        </div>
+        <div style="margin-top: 28px;" class="label" style="color: var(--dim);">RUSSELL &amp; NORVIG · AI: A MODERN APPROACH</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <div style="padding: 18px 0; border-top: 1px solid var(--border); display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: baseline;">
+          <div class="label" style="color: var(--amber);">PERCEIVE</div>
+          <div class="body" style="font-size: 24px;">LLM lukee käyttäjän kysymyksen, MCP-työkalujen vastaukset, aiemmat askeleet.</div>
+        </div>
+        <div style="padding: 18px 0; border-top: 1px solid var(--border); display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: baseline;">
+          <div class="label" style="color: var(--amber);">REASON</div>
+          <div class="body" style="font-size: 24px;">Mitä tarvitsen seuraavaksi? Mikä työkalu vastaa siihen?</div>
+        </div>
+        <div style="padding: 18px 0; border-top: 1px solid var(--border); display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: baseline;">
+          <div class="label" style="color: var(--amber);">ACT</div>
+          <div class="body" style="font-size: 24px;">Kutsuu työkalun &mdash; MCP-haku, dokumenttiluku, koodin suoritus sandboxissa.</div>
+        </div>
+        <div style="padding: 18px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: baseline;">
+          <div class="label" style="color: var(--amber);">LOOP</div>
+          <div class="body" style="font-size: 24px;">Tulos palaa kontekstiin. Sykli toistuu kunnes vastaus on valmis tai budjetti loppuu.</div>
+        </div>
+        <div style="margin-top: 24px;" class="body" style="font-size: 24px; font-style: italic; color: var(--dim);">Tämä silmukka on <strong style="color: var(--amber); font-style: normal;">ReAct</strong> &mdash; reasoning + acting (Yao&nbsp;et&nbsp;al.&nbsp;2022). Käytännössä jokainen subagentti tässä systeemissä on ReAct-agentti.</div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>RUSSELL &amp; NORVIG · YAO ET AL. 2022</span>
+    <span class="spacer"></span>
+    <span>13 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 14  REACT TRACE                                                -->
+<!-- ============================================================ -->
+<section data-label="14 ReAct trace" class="panel-bg">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">REACT KÄYTÄNNÖSSÄ</span>
+    <span class="spacer"></span>
+    <span style="color: var(--green);">● TRACE</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow"><span class="dot"></span>OIKEA AJOTRACE</div>
+    <div style="margin-top: 24px;" class="title-md">"Listaa yhtiöt joilla ROE&nbsp;&gt;&nbsp;20&nbsp;% kolmena vuotena peräkkäin."</div>
+
+    <div style="margin-top: 36px; flex: 1; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 0 28px; align-items: start;">
+      <div class="mono" style="font-size: 36px; color: var(--amber); padding-top: 4px; font-weight: 700;">1</div>
+      <div style="border-top: 1px solid var(--text); padding: 14px 0;">
+        <div class="label" style="color: var(--violet);">THOUGHT</div>
+        <div class="body" style="margin-top: 8px; font-style: italic; color: var(--dim); font-size: 24px;">"Tarvitsen ROE-tietoja kaikista katetuista yhtiöistä."</div>
+      </div>
+      <div style="border-top: 1px solid var(--text); padding: 14px 0;">
+        <div class="label" style="color: var(--green);">ACTION</div>
+        <div class="mono" style="margin-top: 8px; font-size: 24px; color: var(--text);">get-inderes-estimates()</div>
+        <div class="body" style="margin-top: 6px; font-size: 22px; color: var(--dim);">→ ei historiaformaattia, vain estimaatit</div>
+      </div>
+
+      <div class="mono" style="font-size: 36px; color: var(--amber); padding-top: 4px; font-weight: 700;">2</div>
+      <div style="border-top: 1px solid var(--border); padding: 14px 0;">
+        <div class="label" style="color: var(--violet);">THOUGHT</div>
+        <div class="body" style="margin-top: 8px; font-style: italic; color: var(--dim); font-size: 24px;">"Pitää käyttää get-fundamentals historialliseen dataan."</div>
+      </div>
+      <div style="border-top: 1px solid var(--border); padding: 14px 0;">
+        <div class="label" style="color: var(--green);">ACTION</div>
+        <div class="mono" style="margin-top: 8px; font-size: 24px; color: var(--text);">get-fundamentals(...)</div>
+        <div class="body" style="margin-top: 6px; font-size: 22px; color: var(--dim);">→ ROE 2023&ndash;2025, kaikki yhtiöt</div>
+      </div>
+
+      <div class="mono" style="font-size: 36px; color: var(--amber); padding-top: 4px; font-weight: 700;">3</div>
+      <div style="border-top: 1px solid var(--border); padding: 14px 0;">
+        <div class="label" style="color: var(--violet);">THOUGHT</div>
+        <div class="body" style="margin-top: 8px; font-style: italic; color: var(--dim); font-size: 24px;">"Suodata ne joilla ROE&nbsp;&gt;&nbsp;20&nbsp;% joka vuosi."</div>
+      </div>
+      <div style="border-top: 1px solid var(--border); padding: 14px 0;">
+        <div class="label" style="color: var(--green);">ACTION</div>
+        <div class="mono" style="margin-top: 8px; font-size: 24px; color: var(--text);">code-execution · pandas-suodatus</div>
+        <div class="body" style="margin-top: 6px; font-size: 22px; color: var(--dim);">→ 16 yhtiötä täyttää kriteerin</div>
+      </div>
+
+      <div class="mono" style="font-size: 36px; color: var(--amber); padding-top: 4px; font-weight: 700;">→</div>
+      <div style="border-top: 1px solid var(--text); border-bottom: 1px solid var(--text); padding: 18px 0; grid-column: span 2; background: rgba(255,210,74,0.04);">
+        <div class="label" style="color: var(--amber);">FINAL ANSWER</div>
+        <div class="body" style="margin-top: 8px; font-size: 24px;">Markdown-taulukko 16 yhtiöstä &mdash; nimi, ROE 2023, 2024, 2025, 3v keskiarvo. Lähteet ja työkalukutsut talletettu forensiseen lokiin.</div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span style="color: var(--green);">● 3 STEPS · 1 FINAL ANSWER</span>
+    <span class="spacer"></span>
+    <span>14 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 15  THOUGHT TRACES — VISIBLE REASONING                         -->
+<!-- ============================================================ -->
+<section data-label="15 Thought traces">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">UUSI · v0.2</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow"><span class="dot"></span>UUSI · NÄKYVÄ PÄÄTTELY</div>
+    <div style="margin-top: 28px;" class="title-md"><span style="color: var(--violet);">Ajatusjäljet</span> joka subagentilla. <span style="color: var(--amber);">Perustelut</span> LEADilla.</div>
+
+    <div style="margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+      <!-- subagent ajatus -->
+      <div>
+        <div class="label" style="color: var(--violet);">SUBAGENTTI · AJATUS</div>
+        <div style="margin-top: 14px; background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 16px 20px;">
+          <div style="display: grid; grid-template-columns: 28px auto 1fr; gap: 10px; align-items: center;">
+            <div class="glyph quant" style="width: 28px; height: 28px; font-size: 16px;">▲</div>
+            <div style="color: var(--green); font-family: var(--mono); font-weight: 700; font-size: 18px;">QUANT</div>
+            <div style="color: var(--dim); font-family: var(--sans); font-size: 16px;">Numerot, P/E, ROE</div>
+          </div>
+          <div style="margin-top: 14px; border-left: 2px solid var(--violet); background: rgba(167,139,250,0.04); padding: 12px 16px; font-family: var(--sans); font-style: italic; color: var(--dim); font-size: 18px; line-height: 1.5;">
+            <strong style="color: var(--violet); font-style: normal; font-weight: 700;">Ajatus:</strong> Käyttäjä kysyy P/E:tä &mdash; kutsun <span style="font-family: var(--mono); color: var(--violet);">get-fundamentals</span>:n viimeisimmälle kvartaalille ja vertaan Inderesin estimaatteihin 2026&ndash;2028.
+          </div>
+          <div style="margin-top: 12px; font-family: var(--sans); font-size: 18px; color: var(--text); line-height: 1.5;">
+            <strong style="color: var(--amber);">Sammon P/E 2025</strong>: 12,53. Oikaistu P/E 2026e: 17,9 → 2028e: 14,5.
+          </div>
+        </div>
+      </div>
+
+      <!-- LEAD perustelut -->
+      <div>
+        <div class="label" style="color: var(--amber);">LEAD · PERUSTELUT</div>
+        <div style="margin-top: 14px; background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--green); padding: 16px 20px;">
+          <div style="display: grid; grid-template-columns: 28px auto 1fr; gap: 10px; align-items: center;">
+            <div class="glyph lead" style="width: 28px; height: 28px; font-size: 16px;">◆</div>
+            <div style="color: var(--amber); font-family: var(--mono); font-weight: 700; font-size: 18px;">LEAD</div>
+            <div style="color: var(--dim); font-family: var(--sans); font-size: 16px;">Synteesi</div>
+          </div>
+          <div style="margin-top: 14px; border-left: 2px solid var(--amber); background: rgba(255,210,74,0.04); padding: 12px 16px; font-family: var(--sans); font-style: italic; color: var(--text); font-size: 18px; line-height: 1.5;">
+            <strong style="color: var(--amber); font-style: normal; font-weight: 700; letter-spacing: 0.04em;">💭 Perustelut:</strong> QUANT toi nykyhetken P/E:n + ennusteet, RESEARCH analyytikon näkemyksen. Yhdistin nämä &mdash; arvostuskertoimien lasku tukee Inderesin LISÄÄ-suositusta.
+          </div>
+          <div style="margin-top: 12px; font-family: var(--sans); font-size: 18px; color: var(--text); line-height: 1.5;">
+            <strong style="color: var(--amber);">Vastaus:</strong> Sampo on hinnoiteltu linjassa pohjoismaisten verrokkien kanssa &mdash; tuotto-odotus nojaa tuloskasvuun ja ~4 %:n osinkotuottoon.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px; padding: 20px 24px; border-top: 1px solid var(--border);" class="body">
+      Visuaalinen hierarkia: <span style="color: var(--violet); font-weight: 600;">violetti</span> = subagentin sisäinen mietintä, <span style="color: var(--amber); font-weight: 600;">amber</span> = LEADin meta-päättely. Käyttäjä näkee miksi vastaus on tämä.
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="warn">● BACKLOG #3 · TOTEUTETTU</span>
+    <span>PR #18, #20, #21</span>
+    <span class="spacer"></span>
+    <span>15 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 16  WHY PARTITION                                              -->
+<!-- ============================================================ -->
+<section data-label="16 Why partition">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">SUUNNITTELUPÄÄTÖS</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: center;">
+    <div class="eyebrow"><span class="dot"></span>KORKEIMMAN VIPUVAIKUTUKSEN PÄÄTÖS</div>
+    <div style="margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;">
+      <div>
+        <div class="title-md">Yksi agentti 16 työkalulla&nbsp;= huono valinta joka askeleella.</div>
+        <div style="margin-top: 40px;" class="body">Rajaamalla kunkin alaagentin 3&ndash;8 työkaluun pidämme kontekstin tiukkana, järjestelmäkehotteen fokusoituna ja työkalukutsut tarkkoina.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        <div style="display: flex; align-items: baseline; gap: 32px;">
+          <div class="figure-md" style="width: 240px; text-align: right; color: var(--red);">16</div>
+          <div>
+            <div class="label" style="color: var(--red);">MONOLIITTINEN</div>
+            <div class="body" style="margin-top: 6px; font-size: 24px;">Kaikki työkalut samalla. Joka askeleella malli valitsee yhden 16:sta &mdash; virhealtis.</div>
+          </div>
+        </div>
+        <div style="height: 1px; background: var(--border);"></div>
+        <div style="display: flex; align-items: baseline; gap: 32px;">
+          <div class="figure-md" style="width: 240px; text-align: right; color: var(--green);">3&ndash;8</div>
+          <div>
+            <div class="label" style="color: var(--green);">PARTITIOITU</div>
+            <div class="body" style="margin-top: 6px; font-size: 24px;">Erikoisagentin oma alajoukko. Vähemmän vaihtoehtoja per askel, vähemmän hukkaiteraatioita.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>HIGHEST-LEVERAGE DESIGN DECISION</span>
+    <span class="spacer"></span>
+    <span>16 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 17  RELIABILITY: FALLBACK + DATE + GIST                        -->
+<!-- ============================================================ -->
+<section data-label="17 Reliability" class="panel-bg">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">LUOTETTAVUUS</span>
+    <span class="spacer"></span>
+    <span class="online">3 SUOJAUSTA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow"><span class="dot"></span>LUOTETTAVUUS</div>
+    <div style="margin-top: 28px;" class="title-md">Kolme kerrosta jotka pitävät systeemin pystyssä.</div>
+
+    <div style="margin-top: 48px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px;">
+      <!-- fallback -->
+      <div class="panel">
+        <div class="label" style="color: var(--amber);">1 · GEMINI FALLBACK</div>
+        <div class="body" style="margin-top: 16px; font-size: 24px;">Primary <span class="mono" style="color: var(--green);">flash-lite</span> → 503 retry → <span class="mono" style="color: var(--blue);">flash</span> fallback. <strong>QuotaExhaustedError</strong> kun molemmat loppuvat.</div>
+        <div style="margin-top: 24px; font-family: var(--mono); font-size: 18px; color: var(--dim); line-height: 1.6;">
+          <div>1. flash-lite</div>
+          <div>2. ↻ retry @ 1000 ms</div>
+          <div>3. → flash (2 yritystä)</div>
+          <div>4. ❌ QuotaExhaustedError</div>
+        </div>
+      </div>
+      <!-- date awareness -->
+      <div class="panel green">
+        <div class="label" style="color: var(--green);">2 · PÄIVÄYSTIETOISUUS · UUSI</div>
+        <div class="body" style="margin-top: 16px; font-size: 24px;">Joka prompti alkaa <span class="mono" style="color: var(--green);">CURRENT DATE</span>-headerilla. Estää "tänään 14.5.2025"-hallusinaation pitkillä konteksteilla.</div>
+        <div style="margin-top: 24px; padding: 14px 18px; background: #050706; border: 1px solid var(--border); border-left: 2px solid var(--green); font-family: var(--mono); font-size: 18px; line-height: 1.6;">
+          <span style="color: var(--dim);"># CURRENT DATE</span><br/>
+          <span style="color: var(--text);">2026-05-03 (sunnuntai)</span><br/>
+          <br/>
+          <span style="color: var(--dim)"># Käytä tätä</span><br/>
+          <span style="color: var(--dim)"># "tänä vuonna" yms.</span>
+        </div>
+      </div>
+      <!-- gist persistence -->
+      <div class="panel orange">
+        <div class="label" style="color: var(--orange);">3 · OAUTH → GIST · UUSI</div>
+        <div class="body" style="margin-top: 16px; font-size: 24px;">Refresh-token peilataan privaattiin GitHub Gistiin → Streamlit Cloud -kontainerit eivät enää syö tokenia uudelleenkäynnistyksessä.</div>
+        <div style="margin-top: 24px;" class="kv">
+          <div class="k" style="font-size: 18px;">REFRESH</div><div class="v" style="font-size: 20px;">push gistiin</div>
+          <div class="k" style="font-size: 18px;">COLD START</div><div class="v" style="font-size: 20px;">pull gististä</div>
+          <div class="k" style="font-size: 18px;">PAIKALLINEN</div><div class="v" style="font-size: 20px;">~/.inderes_agent/tokens.json</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="hot">● 0 ERRORS PRODUCTION</span>
+    <span>3 LAYERS OF DEFENSE</span>
+    <span class="spacer"></span>
+    <span>17 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 17b  HEARTBEAT — DURABLE CLOUD OAUTH                          -->
+<!-- ============================================================ -->
+<section data-label="17b Heartbeat">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">PILVI · SYKE</span>
+    <span class="tag">PR #25 · #27</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow" style="color: var(--orange);"><span class="dot" style="background: var(--orange);"></span>STREAMLIT CLOUD · IDLE-TIMEOUT · 401</div>
+    <div style="margin-top: 24px;" class="title-md">Kun käyttäjä nukkuu, <span class="em">cron herättää SSO-session.</span></div>
+
+    <div style="margin-top: 36px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; flex: 1;">
+      <!-- LEFT: problem narrative -->
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="panel" style="padding: 18px 22px; border-left-color: var(--red);">
+          <div class="label" style="color: var(--red);">ONGELMA</div>
+          <div class="body" style="margin-top: 10px; font-size: 22px;">Streamlit Cloud -kontaineri menee idleen. Refresh-token-rotaatio katkeaa. Seuraava käyttäjä saa <span class="mono" style="color: var(--red);">401</span>.</div>
+        </div>
+        <div class="panel orange" style="padding: 18px 22px;">
+          <div class="label" style="color: var(--orange);">RATKAISU</div>
+          <div class="body" style="margin-top: 10px; font-size: 22px;">Yksityinen GitHub Gist mirroroi <span class="mono">tokens.json</span>:n. GitHub Actions cron pyöräyttää refreshin <span class="em" style="color: var(--orange);">15 min välein</span> — myös yli yön.</div>
+        </div>
+        <div class="panel" style="padding: 18px 22px;">
+          <div class="label" style="color: var(--faint);">KYLMÄKÄYNNISTYS</div>
+          <div class="body" style="margin-top: 10px; font-size: 22px;">Sovellus pakottaa gist-pullin ensimmäisellä auth-kutsulla — paikallinen <span class="mono">tokens.json</span> ei enää tyrmää rotaatioketjua.</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: cron diagram -->
+      <div style="background: var(--panel); border: 1px solid var(--border); border-left: 2px solid var(--orange); padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="font-family: var(--mono); font-size: 16px; color: var(--orange); letter-spacing: 0.18em; font-weight: 700;">refresh-inderes-tokens.yml</div>
+        <div style="font-family: var(--mono); font-size: 18px; color: var(--text); line-height: 1.6;">
+          <span style="color: var(--violet);">on:</span><br/>
+          &nbsp;&nbsp;<span style="color: var(--blue);">schedule:</span><br/>
+          &nbsp;&nbsp;&nbsp;&nbsp;- <span style="color: var(--blue);">cron:</span> <span style="color: var(--green);">'*/15 * * * *'</span>
+        </div>
+
+        <div style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 6px;"></div>
+
+        <!-- timeline -->
+        <div style="display: flex; flex-direction: column; gap: 14px; font-family: var(--mono); font-size: 17px;">
+          <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: center;">
+            <div style="color: var(--orange); letter-spacing: 0.06em;">+00:00</div>
+            <div style="color: var(--text);">cron → <span style="color: var(--blue);">refresh_inderes_tokens.py</span></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: center;">
+            <div style="color: var(--dim); letter-spacing: 0.06em;">+00:01</div>
+            <div style="color: var(--dim);">pull <span style="color: var(--blue);">gist</span> → keycloak token endpoint</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: center;">
+            <div style="color: var(--dim); letter-spacing: 0.06em;">+00:03</div>
+            <div style="color: var(--dim);">push uudet tokenit → <span style="color: var(--blue);">gist</span></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: center;">
+            <div style="color: var(--green); letter-spacing: 0.06em;">VALMIS</div>
+            <div style="color: var(--green);">SSO-sessio: lämmin</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--border);">
+            <div style="color: var(--amber); letter-spacing: 0.06em;">+15:00</div>
+            <div style="color: var(--amber);">syke jatkuu → ∞</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px; font-family: var(--mono); font-size: 18px; color: var(--dim); border-top: 1px solid var(--border); padding-top: 14px; line-height: 1.5;">
+      “Cron on <span style="color: var(--orange);">syke poissaolevalle käyttäjälle</span>. Jos auth-providerilla on session-timeout, et voi luottaa käyttäjän aktiivisuuteen pitämässä sen elossa.” — LESSONS.md
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="hot">● SSO WARM · 96 SYKETTÄ / VRK</span>
+    <span class="spacer"></span>
+    <span>20 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 18  FORENSIC LOG                                               -->
+<!-- ============================================================ -->
+<section data-label="18 Forensic log">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">OBSERVABILITY</span>
+    <span class="spacer"></span>
+    <span class="online">~/.INDERES_AGENT/RUNS</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow"><span class="dot"></span>FORENSINEN AJOLOKI</div>
+    <div style="margin-top: 28px;" class="title-md">Joka kysely → oma kansio. Toistettavissa.</div>
+
+    <div style="margin-top: 48px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: start; flex: 1;">
+      <div class="code">
+<span class="c"># ~/.inderes_agent/runs/20260503-091245-441/</span>
+├── <span class="b">query.txt</span>             <span class="c"># kysymys</span>
+├── <span class="b">routing.json</span>          <span class="c"># reititin + perustelu</span>
+├── <span class="b">subagent-01-quant.json</span>
+├── <span class="b">subagent-02-research.json</span>
+├── <span class="b">subagent-03-sentiment.json</span>
+├── <span class="b">synthesis.txt</span>         <span class="c"># LEAD-vastaus</span>
+├── <span class="b">meta.json</span>             <span class="c"># kesto · fallbackit</span>
+├── <span class="b">console.log</span>           <span class="c"># raaka HTTP/MCP</span>
+└── <span class="a">narrative.md</span>          <span class="c"># auto-generoitu</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div>
+          <div class="label">MITÄ NARRATIVE.MD SISÄLTÄÄ</div>
+          <div class="body" style="margin-top: 14px; font-size: 24px;">Reititysperustelu, työkalukutsujen aikajana per agentti, jokaisen subagentin koko vastaus, LEADin synteesi, tilastot.</div>
+        </div>
+        <div class="kv">
+          <div class="k">REPL</div><div class="v"><span class="mono" style="color: var(--amber);">/explain</span> · <span class="mono" style="color: var(--amber);">/trace</span> · <span class="mono" style="color: var(--amber);">/runs</span></div>
+          <div class="k">SCRIPT</div><div class="v"><span class="mono">scripts/explain.py 20260503-091245-441</span></div>
+          <div class="k">UI</div><div class="v">expander "🔍 Agenttien toimintaloki"</div>
+          <div class="k">TILASTOT</div><div class="v">agentit · työkalut · 503 retryt · fallbackit · kesto</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>EVERY QUERY IS REPRODUCIBLE</span>
+    <span class="spacer"></span>
+    <span>18 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 19  TECH STACK                                                 -->
+<!-- ============================================================ -->
+<section data-label="19 Tech stack">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">TEKNINEN PINO</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow"><span class="dot"></span>TEKNINEN PINO</div>
+    <div style="margin-top: 28px;" class="title-md">Mitä valittiin, miksi.</div>
+
+    <div style="margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 64px;">
+      <div class="kv" style="grid-template-columns: 280px 1fr; row-gap: 22px;">
+        <div class="k">FRAMEWORK</div><div class="v"><strong style="color: var(--amber);">Microsoft Agent Framework 1.0+</strong> &mdash; deklaratiivinen workflow + MCP first-class</div>
+        <div class="k">LLM</div><div class="v"><strong style="color: var(--green);">Google Gemini</strong> &mdash; 3.1-flash-lite + 2.5-flash fallback</div>
+        <div class="k">DATA</div><div class="v"><strong style="color: var(--blue);">Inderes MCP</strong> &mdash; 16 työkalua, OAuth 2.0 + PKCE</div>
+        <div class="k">UI</div><div class="v"><strong style="color: var(--violet);">Streamlit + custom CSS</strong> &mdash; Trading Desk -teema</div>
+      </div>
+      <div class="kv" style="grid-template-columns: 280px 1fr; row-gap: 22px;">
+        <div class="k">AJOAIKA</div><div class="v">Python 3.11+ (3.13 deviksessä) · uv-managed CPython</div>
+        <div class="k">ASYNC</div><div class="v">asyncio.gather + Semaphore (ei MAFin ConcurrentBuilder)</div>
+        <div class="k">OBSERVABILITY</div><div class="v">OpenTelemetry · ConsoleSpanExporter · narrate.md</div>
+        <div class="k">TESTAUS</div><div class="v"><span style="color: var(--green);">13 / 13 yksikkötestiä</span> + scripts/diag.py</div>
+        <div class="k">DEPLOY</div><div class="v">Local + Streamlit Community Cloud (single-user)</div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>MAF · GEMINI · MCP · STREAMLIT</span>
+    <span class="spacer"></span>
+    <span>19 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 19b  THREE PILLARS  —  AI / UI / INFRA                          -->
+<!-- ============================================================ -->
+<section data-label="19b Three pillars" class="panel-bg">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">REFLEKTIO</span>
+    <span class="tag">LESSONS.md</span>
+    <span class="spacer"></span>
+    <span class="online">VERKOSSA</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow"><span class="dot"></span>~3 VIIKKOA · KOLME PILARIA</div>
+    <div style="margin-top: 24px;" class="title-md">Multi-agent ei ole “AI-projekti”. Se on <span class="em">AI + UI + Infra</span> — jokainen kantaa.</div>
+
+    <div style="margin-top: 44px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; flex: 1;">
+
+      <!-- AI -->
+      <div style="background: var(--bg); border: 1px solid var(--border); border-top: 3px solid var(--green); padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="font-family: var(--mono); font-size: 22px; color: var(--green); font-weight: 700; letter-spacing: 0.12em;">AI</div>
+          <div style="font-family: var(--mono); font-size: 56px; color: var(--green); font-weight: 700; line-height: 1;">~30%</div>
+        </div>
+        <div style="font-family: var(--mono); font-size: 17px; color: var(--faint); letter-spacing: 0.1em;">koodista</div>
+        <div style="border-top: 1px solid var(--border); padding-top: 14px;"></div>
+        <div class="body" style="font-size: 22px; color: var(--text);">100% <span style="color: var(--green);">vastauksen laadusta</span></div>
+        <div class="body" style="font-size: 19px; color: var(--dim); line-height: 1.5;">Agentit · promptit · reititin · synteesi · ajatusjäljet</div>
+        <div style="font-family: var(--mono); font-size: 16px; color: var(--green); border-left: 2px solid var(--green); padding-left: 12px; line-height: 1.5; margin-top: auto;">“Prompts are code.”</div>
+      </div>
+
+      <!-- UI -->
+      <div style="background: var(--bg); border: 1px solid var(--border); border-top: 3px solid var(--amber); padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="font-family: var(--mono); font-size: 22px; color: var(--amber); font-weight: 700; letter-spacing: 0.12em;">UI</div>
+          <div style="font-family: var(--mono); font-size: 56px; color: var(--amber); font-weight: 700; line-height: 1;">~20%</div>
+        </div>
+        <div style="font-family: var(--mono); font-size: 17px; color: var(--faint); letter-spacing: 0.1em;">koodista</div>
+        <div style="border-top: 1px solid var(--border); padding-top: 14px;"></div>
+        <div class="body" style="font-size: 22px; color: var(--text);">80% <span style="color: var(--amber);">käyttäjän luottamuksesta</span></div>
+        <div class="body" style="font-size: 19px; color: var(--dim); line-height: 1.5;">Streamlit · teema · personaglyfit · badge · chipit · lähteet</div>
+        <div style="font-family: var(--mono); font-size: 16px; color: var(--amber); border-left: 2px solid var(--amber); padding-left: 12px; line-height: 1.5; margin-top: auto;">“Epistemic infrastructure, ei koristelua.”</div>
+      </div>
+
+      <!-- INFRA -->
+      <div style="background: var(--bg); border: 1px solid var(--border); border-top: 3px solid var(--orange); padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="font-family: var(--mono); font-size: 22px; color: var(--orange); font-weight: 700; letter-spacing: 0.12em;">INFRA</div>
+          <div style="font-family: var(--mono); font-size: 56px; color: var(--orange); font-weight: 700; line-height: 1;">~50%</div>
+        </div>
+        <div style="font-family: var(--mono); font-size: 17px; color: var(--faint); letter-spacing: 0.1em;">koodista</div>
+        <div style="border-top: 1px solid var(--border); padding-top: 14px;"></div>
+        <div class="body" style="font-size: 22px; color: var(--text);">100% <span style="color: var(--orange);">elossa pysymisestä</span></div>
+        <div class="body" style="font-size: 19px; color: var(--dim); line-height: 1.5;">OAuth · MCP shim · fallback · observability · deploy · cron</div>
+        <div style="font-family: var(--mono); font-size: 16px; color: var(--orange); border-left: 2px solid var(--orange); padding-left: 12px; line-height: 1.5; margin-top: auto;">“Puolet koodista ei ole AI:ta lainkaan.”</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 28px; font-family: var(--mono); font-size: 18px; color: var(--dim); border-top: 1px solid var(--border); padding-top: 14px; line-height: 1.5;">
+      Yksi pilari heikkona → muut eivät kompensoi. <span style="color: var(--amber);">UI-bugit peittävät AI-bugeja</span>. <span style="color: var(--orange);">Infra-vikoja luullaan AI-vioiksi</span>. <span style="color: var(--green);">AI-hallut luulaan infraksi</span>. Trace luetaan top-to-bottom joka kerta.
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>~3 VIIKKOA · ITERAATIO</span>
+    <span class="spacer"></span>
+    <span>22 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 20  ROADMAP — BACKLOG                                          -->
+<!-- ============================================================ -->
+<section data-label="20 Backlog">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">BACKLOG · IDEAT</span>
+    <span class="spacer"></span>
+    <span style="color: var(--violet);">● ROADMAP</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow" style="color: var(--violet);"><span class="dot" style="background: var(--violet);"></span>SEURAAVAKSI</div>
+    <div style="margin-top: 28px;" class="title-md">Reaktiivisesta &nbsp;<span style="color: var(--violet);">→</span>&nbsp; proaktiiviseksi.</div>
+
+    <div style="margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+      <div class="panel violet">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--violet);">#1 Plan-then-execute</div>
+          <div class="label">KESKISUURI</div>
+        </div>
+        <div class="body" style="margin-top: 12px; font-size: 22px;">LEAD kirjoittaa strukturoidun suunnitelman ennen kuin subagentit dispatchataan. UI näyttää 🧠 Suunnitelma -blokin live.</div>
+      </div>
+      <div class="panel violet">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--violet);">#2 Reflektio + retry</div>
+          <div class="label">KESKISUURI</div>
+        </div>
+        <div class="body" style="margin-top: 12px; font-size: 22px;">Outo output → red flag → uusi yritys lisätyllä kontekstilla. UI: <span class="mono" style="color: var(--orange);">REFLEKTOITU</span>-tila.</div>
+      </div>
+      <div class="panel orange">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--orange);">#4 Watchlist + briefing</div>
+          <div class="label">ISO</div>
+        </div>
+        <div class="body" style="margin-top: 12px; font-size: 22px;">"Seuraa Sampoa" → GitHub Action joka aamu → <em>📅 Aamun briefing</em>. Reaktiivisesta proaktiiviseksi.</div>
+      </div>
+      <div class="panel">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm">#5 Insight ledger</div>
+          <div class="label">KESKISUURI</div>
+        </div>
+        <div class="body" style="margin-top: 12px; font-size: 22px;">Pitkäkestoinen muisti &mdash; LEAD destilloi 1&ndash;3 muistettavaa per kysely, lataa relevantit takaisin seuraavaan kontekstiin.</div>
+      </div>
+      <div class="panel red">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--red);">#6 Disagreement surfacing</div>
+          <div class="label">PIKAVOITTO</div>
+        </div>
+        <div class="body" style="margin-top: 12px; font-size: 22px;">QUANT vs Inderes ennusteet ristiriidassa? <span style="color: var(--red);">🚨 Ristiriidat</span> -osio synteesissä.</div>
+      </div>
+      <div class="panel green">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="title-sm" style="color: var(--green);">#8 Bull vs Bear -debate</div>
+          <div class="label">ISO</div>
+        </div>
+        <div class="body" style="margin-top: 12px; font-size: 22px;">Päätöksentekokyselyihin: spawnaa kaksi vastakkaista agenttia, judge tasapainottaa.</div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>BACKLOG.md · 8 IDEAA</span>
+    <span class="warn">EI SITOUTUMISTA · OPPIMISARVO ENSIN</span>
+    <span class="spacer"></span>
+    <span>20 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 20b  PARKED  —  THE PRO-TIER TOGGLE                            -->
+<!-- ============================================================ -->
+<section data-label="20b Parked">
+  <div class="titlebar">
+    <span class="brand">INDERES//AGENT</span>
+    <span class="tag">PARKKI</span>
+    <span class="tag">feat/lead-pro-toggle</span>
+    <span class="spacer"></span>
+    <span style="color: var(--amber);">● KESKEN</span>
+  </div>
+  <div class="frame" style="justify-content: flex-start;">
+    <div class="eyebrow" style="color: var(--amber);"><span class="dot" style="background: var(--amber);"></span>REHELLISESTI · EI KAIKKI ONNISTU</div>
+    <div style="margin-top: 24px;" class="title-md">LEAD <span class="mono" style="color: var(--amber);">gemini-2.5-pro</span>:lle? <span class="em">Toistaiseksi ei.</span></div>
+
+    <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; flex: 1;">
+      <!-- LEFT: idea -->
+      <div class="panel violet" style="padding: 22px 26px; display: flex; flex-direction: column; gap: 14px;">
+        <div class="label" style="color: var(--violet);">IDEA</div>
+        <div class="body" style="font-size: 24px;">Vain LEADille parempi malli synteesiä varten. Yksi extra-kutsu per kysely → <span class="em" style="color: var(--violet);">iso laatuhyppäys, pieni kustannus</span>.</div>
+        <div style="font-family: var(--mono); font-size: 18px; color: var(--dim); line-height: 1.6; border-top: 1px solid var(--border); padding-top: 12px;">Subagentit → flash-lite (halpa)<br/>LEAD → <span style="color: var(--amber);">2.5-pro</span> (tarkka)</div>
+      </div>
+
+      <!-- RIGHT: blocker -->
+      <div class="panel" style="padding: 22px 26px; border-left-color: var(--red); display: flex; flex-direction: column; gap: 14px;">
+        <div class="label" style="color: var(--red);">ESTÄJÄ</div>
+        <div style="font-family: var(--mono); font-size: 18px; color: var(--red); background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.3); padding: 12px 14px; line-height: 1.5;">Function calling config is set without function_declarations</div>
+        <div class="body" style="font-size: 22px;">Pro hylkää pyynnön vaikka LEADilla <span class="mono">tools=None</span>. 3 yritystä puhdistaa <span class="mono">tool_config</span> <span class="em">_prepare_config()</span>:ssa — ei avannut.</div>
+        <div style="font-family: var(--mono); font-size: 17px; color: var(--dim); line-height: 1.5; border-top: 1px solid var(--border); padding-top: 12px;">Juurisyy: MAF:n sisäinen config-rakentaminen asettaa <span class="mono" style="color: var(--red);">function_calling_config</span>:n vaikka emme pyydä. Pro on tiukempi kuin Flash.</div>
+      </div>
+    </div>
+
+    <!-- bottom: lesson -->
+    <div style="margin-top: 28px; background: var(--panel-2); border: 1px solid var(--border); border-left: 2px solid var(--amber); padding: 18px 22px;">
+      <div style="font-family: var(--mono); font-size: 17px; color: var(--amber); letter-spacing: 0.14em; font-weight: 700;">LESSON</div>
+      <div class="body" style="font-size: 22px; margin-top: 8px;">AI-tason featuret kuolevat <span class="em" style="color: var(--amber);">infra-tason yhteensopivuusongelmiin</span> jatkuvasti. 30 min Pro-testi alussa olisi flagannut tämän.</div>
+      <div style="margin-top: 10px; font-family: var(--mono); font-size: 17px; color: var(--dim);">Branch: <span style="color: var(--violet);">feat/lead-pro-toggle</span> · debug-hook: <span style="color: var(--blue);">INDERES_DEBUG_GEMINI_CONFIG=1</span></div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span class="warn">● PARKED · ODOTTAA SEURAAVAA TUTKIJAA</span>
+    <span class="spacer"></span>
+    <span>24 / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 21  CLOSER                                                     -->
+<!-- ============================================================ -->
+<section data-label="25 Closer" class="amber-bg">
+  <div class="frame" style="justify-content: space-between;">
+    <div style="font-family: var(--mono); font-size: 20px; letter-spacing: 0.18em; color: rgba(10,14,12,0.7); font-weight: 700;">INDERES//AGENT &middot; v0.2 &middot; 2026-05-03</div>
+    <div>
+      <div class="label" style="color: rgba(10,14,12,0.7);">YHTEENVETO</div>
+      <div style="margin-top: 24px;" class="title" style="color: #0a0e0c; font-size: 116px;">Se toimii.<br/>Ja jatkaa<br/><span style="font-style: italic;">paranemista.</span></div>
+      <div style="margin-top: 56px;" class="body" style="color: #0a0e0c; font-size: 32px; max-width: 1500px;">
+        <strong style="color: #0a0e0c;">5 agenttia.</strong> 16 työkalua. Streamlit Trading Desk -UI. Ajatusjäljet näkyvissä. Päiväystietoisuus. Kestävä OAuth.<br/>
+        Kaikki forensisesti tallessa. Ei sijoitusneuvontaa &mdash; <em>signaalien pinta</em>.
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="font-family: var(--mono); font-size: 18px; letter-spacing: 0.14em; color: rgba(10,14,12,0.6); font-weight: 700;">github.com/5qtb5t9v5k-rgb/inderes-mcp-agent</div>
+      <div style="font-family: var(--mono); font-size: 18px; letter-spacing: 0.18em; color: rgba(10,14,12,0.6); font-weight: 700;">25 / 25</div>
+    </div>
+  </div>
+</section>
+
+</deck-stage>
+
+<script src="deck-stage.js"></script>
+
+<script>
+(async () => {
+  try { await customElements.whenDefined('deck-stage'); } catch (e) {}
+  try { await document.fonts.ready; } catch (e) {}
+  setTimeout(() => { try { window.print(); } catch (e) {} }, 500);
+})();
+</script>
+</body>
+</html>
