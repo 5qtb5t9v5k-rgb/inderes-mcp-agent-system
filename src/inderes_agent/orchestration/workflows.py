@@ -11,6 +11,7 @@ rather than ConcurrentBuilder. Reasons:
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,6 +35,7 @@ class SubagentResult:
     error: str | None = None
     image_paths: list[str] = field(default_factory=list)
     tool_calls: list[ToolCallTrace] = field(default_factory=list)
+    duration_seconds: float = 0.0  # per-subagent wall clock from start to finish
 
 
 @dataclass
@@ -41,6 +43,7 @@ class WorkflowResult:
     classification: QueryClassification
     subagent_results: list[SubagentResult] = field(default_factory=list)
     fallback_events: int = 0
+    fanout_seconds: float = 0.0  # wall clock for the whole asyncio.gather (limited by slowest)
 
 
 _AGENT_BUILDERS = {
@@ -60,6 +63,7 @@ async def _run_one(
 ) -> SubagentResult:
     builder = _AGENT_BUILDERS[domain]
     async with sem:
+        t_start = time.time()
         try:
             async with builder() as agent:
                 # If a specific company was specified for this fan-out branch,
@@ -82,6 +86,7 @@ async def _run_one(
                     model_used=model_used,
                     image_paths=image_paths,
                     tool_calls=tool_calls,
+                    duration_seconds=time.time() - t_start,
                 )
         except Exception as exc:
             return SubagentResult(
@@ -90,6 +95,7 @@ async def _run_one(
                 text="",
                 model_used="error",
                 error=str(exc)[:500],
+                duration_seconds=time.time() - t_start,
             )
 
 
@@ -122,7 +128,9 @@ async def run_workflow(
         else:
             tasks.append(asyncio.create_task(_run_one(domain, query, None, sem, run_dir)))
 
+    t_fanout_start = time.time()
     results = await asyncio.gather(*tasks)
+    fanout_seconds = time.time() - t_fanout_start
 
     fallback_events = sum(
         1 for r in results if r.model_used == settings.FALLBACK_MODEL
@@ -131,5 +139,6 @@ async def run_workflow(
     return WorkflowResult(
         classification=classification,
         subagent_results=list(results),
+        fanout_seconds=fanout_seconds,
         fallback_events=fallback_events,
     )

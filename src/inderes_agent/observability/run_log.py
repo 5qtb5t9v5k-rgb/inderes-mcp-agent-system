@@ -22,7 +22,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from ..orchestration.synthesis import ConflictReport
+from ..orchestration.synthesis import ConflictReport, SynthesisTrace
 from ..orchestration.workflows import WorkflowResult
 
 RUNS_ROOT = Path.home() / ".inderes_agent" / "runs"
@@ -59,6 +59,7 @@ def write_run(
     lead_model: str,
     duration_s: float,
     conflict_report: ConflictReport | None = None,
+    synth_trace: SynthesisTrace | None = None,
 ) -> None:
     (run_dir / "query.txt").write_text(query + "\n", encoding="utf-8")
 
@@ -89,6 +90,7 @@ def write_run(
                     "text": sr.text,
                     "image_paths": sr.image_paths,
                     "tool_calls": [tc.to_dict() for tc in sr.tool_calls],
+                    "duration_seconds": round(sr.duration_seconds, 3),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -104,6 +106,27 @@ def write_run(
             encoding="utf-8",
         )
 
+    # Stage timings make the cost of each phase visible — useful for the UI's
+    # 🧠 Päättely panel and for debugging slow queries. They also let us spot
+    # patterns like "conflict-detector dominates on small fan-outs" or
+    # "fanout time scales with slowest subagent, not subagent count".
+    stage_timings = {
+        "fanout_seconds": round(workflow.fanout_seconds, 3),
+        "conflict_detector_seconds": round(
+            conflict_report.duration_seconds, 3
+        ) if conflict_report else None,
+        "lead_seconds": round(synth_trace.lead_seconds, 3) if synth_trace else None,
+        "per_subagent": [
+            {
+                "index": i,
+                "domain": sr.domain.value,
+                "company": sr.company,
+                "duration_seconds": round(sr.duration_seconds, 3),
+            }
+            for i, sr in enumerate(workflow.subagent_results, 1)
+        ],
+    }
+
     (run_dir / "meta.json").write_text(
         json.dumps(
             {
@@ -112,6 +135,7 @@ def write_run(
                     conflict_report.model_used if conflict_report else None
                 ),
                 "duration_seconds": round(duration_s, 3),
+                "stage_timings": stage_timings,
                 "fallback_events": workflow.fallback_events,
                 "subagent_count": len(workflow.subagent_results),
                 "subagent_errors": sum(1 for r in workflow.subagent_results if r.error),

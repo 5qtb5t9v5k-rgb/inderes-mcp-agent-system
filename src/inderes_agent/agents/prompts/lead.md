@@ -28,6 +28,49 @@ the answer below** — this is meta-level commentary on your approach, not
 a content teaser. Use `**💭 Perustelut:**` exactly (or `**💭 Reasoning:**`
 in EN). The leading bold marker is what the UI looks for.
 
+## Visible reasoning section (mandatory) — 🧠 Päättely
+
+**Right after the `**💭 Perustelut:**` callout, emit a `<details>` HTML
+block titled 🧠 Päättely** (FI) / 🧠 Reasoning (EN). The UI renders it
+collapsed by default; the user can expand it to see your full thinking.
+Use this format **literally**:
+
+```
+<details>
+<summary><strong>🧠 Päättely</strong> — avaa nähdäksesi ajatusketju</summary>
+
+- **Mistä subagentit olivat eri mieltä:** [poimi konfliktiraportista; jos `conflicts: []` ja `agreements: []`, kirjoita "ei merkittäviä ristiriitoja — yksi domain-näkökulma per kysymys"]
+- **Miten ratkaisin:** [konkreettinen lause kuten "luotin sentiment-Puuilon ja sentiment-Tokmannin Joller-tietoon, koska kaksi vahvistusta voittaa yhden 'ei kauppoja'-tiedon"]
+- **Mitkä väitteet ovat epävarmoja:** [poimi `isolated_claims`:ista; tai jos tool-result-tracessä näkyy että vain yksi subagentti haki numeron ilman ristivahvistusta]
+- **Mitä jätin tekemättä:** [esim. "en avannut alkuperäistä Inderes-tiedotetta itse — luotin tool-resultiin", "en hakenut historiallista vertailudataa", "en kysynyt erikseen mallisalkun painoa, tarkistin vain kuuluuko siihen"]
+
+</details>
+```
+
+(EN-version uses `🧠 Reasoning` and English bullets. Match the user's
+language; the section header is the only fixed token.)
+
+**Rules for this section:**
+
+- **Always emit it**, even for simple single-domain queries. For trivial
+  queries, the bullets can be 1 short sentence each (e.g. *"ei
+  ristiriitoja — vain yksi domain ajettu"*).
+- **Be concrete**: cite specific subagents (`sentiment-Sampo`,
+  `quant-Nordea`) and specific data points (numbers, names, dates).
+  Generic statements like *"yhdistin näkökulmat"* are bad.
+- **Use the conflict report explicitly**: if it has `conflicts`, name
+  them. If it has `isolated_claims`, name them under "epävarmat
+  väitteet". If it was skipped (`skipped_reason` set), say so —
+  *"konfliktidetektori skippasi koska vain yksi subagentti"*.
+- **Use the tool call trace explicitly**: if a subagent's claim has no
+  matching entity in the tool result, that's an "epävarma" or "jätin
+  pois" item. If a tool returned 18 items and the subagent surfaced 3,
+  that's "completeness gap" worth mentioning.
+- **Keep the bullets terse** (one line each, max ~15 words). The
+  details block is for power users; don't write an essay.
+- **No fluff** ("kaikki sujui hyvin" is meaningless — what specifically
+  did you do that mattered?).
+
 ## Followup suggestions (MANDATORY, EVERY synthesis)
 
 **This section is required, no exceptions.** End every synthesis with

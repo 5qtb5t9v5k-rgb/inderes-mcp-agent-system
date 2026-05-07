@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,6 +37,7 @@ class ConflictReport:
     model_used: str = "skipped"
     skipped_reason: str | None = None
     error: str | None = None
+    duration_seconds: float = 0.0
 
     @property
     def has_signal(self) -> bool:
@@ -51,6 +53,7 @@ class ConflictReport:
             "model_used": self.model_used,
             "skipped_reason": self.skipped_reason,
             "error": self.error,
+            "duration_seconds": round(self.duration_seconds, 3),
             "raw": self.raw,
             "parsed": self.parsed,
         }
@@ -129,6 +132,7 @@ SUBAGENT OUTPUTS:
 Now produce the conflict report as STRICT JSON per your instructions.
 """
 
+    t_start = time.time()
     try:
         async with build_conflict_detector_agent() as detector:
             result = await detector.run(prompt)
@@ -136,16 +140,22 @@ Now produce the conflict report as STRICT JSON per your instructions.
             model_used = getattr(detector.client, "last_used_model", "unknown")
     except Exception as exc:
         log.warning("conflict-detector call failed: %s", exc)
-        return ConflictReport(error=str(exc)[:500])
+        return ConflictReport(error=str(exc)[:500], duration_seconds=time.time() - t_start)
+
+    duration = time.time() - t_start
 
     cleaned = _strip_json_fences(raw)
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError as exc:
         log.warning("conflict-detector returned non-JSON output: %s", exc)
-        return ConflictReport(raw=raw, model_used=model_used, error=f"JSON parse failed: {exc}")
+        return ConflictReport(
+            raw=raw, model_used=model_used,
+            error=f"JSON parse failed: {exc}",
+            duration_seconds=duration,
+        )
 
-    return ConflictReport(raw=raw, parsed=parsed, model_used=model_used)
+    return ConflictReport(raw=raw, parsed=parsed, model_used=model_used, duration_seconds=duration)
 
 
 def _format_conflict_block(report: ConflictReport) -> str:
@@ -159,12 +169,21 @@ def _format_conflict_block(report: ConflictReport) -> str:
     return json.dumps(report.parsed, ensure_ascii=False, indent=2)
 
 
+@dataclass
+class SynthesisTrace:
+    """Per-stage timings + conflict report from one synthesize() call."""
+    conflict_report: ConflictReport
+    lead_seconds: float = 0.0
+
+
 async def synthesize(
     query: str, workflow_result: WorkflowResult
-) -> tuple[str, str, ConflictReport]:
+) -> tuple[str, str, SynthesisTrace]:
     """Run the lead agent over the subagents' outputs.
 
-    Returns (final_answer_text, lead_model_used, conflict_report).
+    Returns (final_answer_text, lead_model_used, synthesis_trace) where
+    `synthesis_trace.conflict_report` is the conflict-detector output and
+    `synthesis_trace.lead_seconds` is the wall clock for the LEAD synthesis call.
     """
     from ..agents._common import today_prompt_prefix
 
@@ -209,8 +228,12 @@ How to use the conflict report:
 Now synthesize a final answer for the user, following your instructions.
 """
 
+    t_lead = time.time()
     async with build_lead_agent() as lead:
         result = await lead.run(prompt)
         text = result.text if hasattr(result, "text") else str(result)
         model_used = getattr(lead.client, "last_used_model", "unknown")
-        return text, model_used, conflict_report
+    lead_seconds = time.time() - t_lead
+
+    trace = SynthesisTrace(conflict_report=conflict_report, lead_seconds=lead_seconds)
+    return text, model_used, trace

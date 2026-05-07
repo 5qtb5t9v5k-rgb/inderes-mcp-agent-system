@@ -409,6 +409,8 @@ def render_agent_row(sa: dict, lang: str = "fi") -> None:
     company = sa.get("company")
     model = sa.get("model_used", "?")
     err = sa.get("error")
+    duration = sa.get("duration_seconds")  # set by run_log >= the timing-instrumentation commit
+    tool_call_count = len(sa.get("tool_calls") or [])
     p = PERSONAS.get(domain, {"glyph": "•", "color": "#888", "role_fi": "—", "role_en": "—"})
     role = p["role_en"] if lang == "en" else p["role_fi"]
     status = ("ERROR" if err else ("OK" if lang == "en" else "VALMIS"))
@@ -416,13 +418,29 @@ def render_agent_row(sa: dict, lang: str = "fi") -> None:
 
     name = domain + (f" / {company}" if company else "")
 
+    # Status cell now shows status + timing + tool-call count for richer
+    # at-a-glance visibility ("how long did this take, how many tools did
+    # it call"). Falls back gracefully if duration is missing (older runs).
+    extras: list[str] = []
+    if isinstance(duration, (int, float)) and duration > 0:
+        extras.append(f"{duration:.1f}s")
+    if tool_call_count:
+        tool_label = "tool call" if tool_call_count == 1 else "tool calls"
+        if lang == "fi":
+            tool_label = "kutsu" if tool_call_count == 1 else "kutsua"
+        extras.append(f"{tool_call_count} {tool_label}")
+    extras_html = (
+        f'<div style="font-size:11px; color: var(--ia-faint, #888); margin-top:2px;">'
+        f'{" · ".join(extras)}</div>'
+    ) if extras else ""
+
     html = (
         f'<div class="ia-agent-row {cls}">'
         f'<div class="ia-glyph" style="color:{p["color"]}">{p["glyph"]}</div>'
         f'<div><div class="ia-name" style="color:{p["color"]}">{_esc(name)}</div>'
         f'<div class="ia-role">{_esc(role)}</div></div>'
         f'<div class="ia-model">{_esc(model)}</div>'
-        f'<div class="ia-status">{status}</div>'
+        f'<div class="ia-status">{status}{extras_html}</div>'
         f'<div></div>'
         "</div>"
     )

@@ -572,6 +572,30 @@ def render_trace_expander(run_dir: Path) -> None:
             cols[2].metric("Errors", m.get("subagent_errors", 0))
             cols[3].metric("Fallbacks", m.get("fallback_events", 0))
 
+            # Stage-level timing breakdown — fanout/conflict-detector/lead
+            stage = m.get("stage_timings") or {}
+            if stage:
+                bits: list[str] = []
+                if (v := stage.get("fanout_seconds")) is not None:
+                    bits.append(
+                        f"fan-out: <strong>{v:.2f}s</strong>"
+                        if lang == "fi"
+                        else f"fan-out: <strong>{v:.2f}s</strong>"
+                    )
+                if (v := stage.get("conflict_detector_seconds")) is not None:
+                    bits.append(f"konflikti-detektori: <strong>{v:.2f}s</strong>"
+                                if lang == "fi" else f"conflict-detector: <strong>{v:.2f}s</strong>")
+                if (v := stage.get("lead_seconds")) is not None:
+                    bits.append(f"LEAD-synteesi: <strong>{v:.2f}s</strong>"
+                                if lang == "fi" else f"LEAD synthesis: <strong>{v:.2f}s</strong>")
+                if bits:
+                    label = "Vaihekohtainen kesto" if lang == "fi" else "Per-stage timing"
+                    st.markdown(
+                        f'<div style="font-size:13px; color: var(--ia-faint, #888); '
+                        f'margin: 4px 0 8px 0;">{label}: ' + " · ".join(bits) + "</div>",
+                        unsafe_allow_html=True,
+                    )
+
         for sub_path in sorted(run_dir.glob("subagent-*.json")):
             sa = json.loads(sub_path.read_text(encoding="utf-8"))
             render_agent_row(sa, lang)
@@ -837,7 +861,8 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             f"{_persona_chip('lead')} yhdistää tulokset synteesiksi…",
             html=True,
         )
-        answer, lead_model, conflict_report = await synthesize(query, workflow_result)
+        answer, lead_model, synth_trace = await synthesize(query, workflow_result)
+        conflict_report = synth_trace.conflict_report
 
         write_run(
             run_dir=run_dir,
@@ -847,6 +872,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             lead_model=lead_model,
             duration_s=time.time() - t0,
             conflict_report=conflict_report,
+            synth_trace=synth_trace,
         )
         write_narrative(run_dir)
 
