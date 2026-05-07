@@ -1035,7 +1035,7 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   right: 0;
   top: 56px;        /* clear Streamlit's deploy/share/menu toolbar */
   bottom: 0;
-  width: 400px;
+  width: 480px;     /* wider per user feedback — more breathing room */
   height: calc(100vh - 56px);  /* explicit so flex child can grow + scroll */
   background: var(--bg-1);
   border-left: 1px solid var(--line);
@@ -1062,7 +1062,7 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
    overlap. Modern browsers (2023+) support :has(). */
 .stApp:has(.ia-panel) [data-testid="stMainBlockContainer"],
 .stApp:has(.ia-panel) [data-testid="stAppViewContainer"] section.main {
-  padding-right: 416px !important;
+  padding-right: 496px !important;  /* matches panel width 480px + 16px */
 }
 .ia-panel-head {
   padding: 12px 16px;
@@ -1227,28 +1227,32 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 
 /* ─────────────────────────  CONFLICT CALLOUT (redesign §6.4)  ──────────────
    Renders above the answer when subagents genuinely disagreed. Reads from
-   conflicts.json. Source: ui/redesign-handoff/parts.jsx :: ConflictCallout. */
+   conflicts.json. Source: ui/redesign-handoff/parts.jsx :: ConflictCallout.
+   Toned down 2026-05-07 per user feedback: matches the Päättely / Avaa
+   loki visual family rather than shouting in red. The 🔀 glyph itself
+   carries the "this is a conflict" semantics — the chrome stays neutral. */
 .ia-conflict {
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  background: rgba(255, 107, 107, 0.04);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
   border-radius: 4px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   font-size: 12.5px;
   margin: 12px 0;
   font-family: var(--ia-mono);
 }
 .ia-conflict-head {
   display: flex; align-items: center; gap: 8px;
-  color: #ff9f9f; font-size: 11px;
-  letter-spacing: 0.1em; font-weight: 600;
+  color: var(--ink-2); font-size: 10.5px;
+  letter-spacing: 0.12em; font-weight: 600;
   margin-bottom: 8px;
+  text-transform: uppercase;
 }
 .ia-conflict-topic {
   color: var(--ink-2);
   font-size: 11px; letter-spacing: 0.04em;
   margin: 8px 0 4px 0;
   padding-top: 6px;
-  border-top: 1px dashed rgba(255, 107, 107, 0.2);
+  border-top: 1px dashed var(--line);
 }
 .ia-conflict-topic:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
 .ia-conflict-row {
@@ -1302,8 +1306,8 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   font-family: var(--ia-mono);
 }
 .ia-perustelut-lab {
-  font-size: 10px; letter-spacing: 0.18em;
-  color: var(--p-lead);
+  font-size: 10.5px; letter-spacing: 0.12em;
+  color: var(--ink-2);
   font-weight: 600;
   margin-bottom: 4px;
   text-transform: uppercase;
