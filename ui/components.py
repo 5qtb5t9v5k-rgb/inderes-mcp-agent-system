@@ -728,14 +728,15 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
     def t(key: str) -> str:
         return L[key][0] if fi else L[key][1]
 
-    # Tabs row — each tab is an <a> with ?panel_tab= query param. Clicking
-    # reloads the page with the new param; app.py reads it and passes it
-    # back to active_tab here so the corresponding content renders.
+    # Tabs row — rendered as visual HTML, but the actual click handlers
+    # are Streamlit buttons rendered separately below. URL-navigation
+    # links inside Streamlit don't toggle session_state reliably; native
+    # buttons do.
     def tab_html(slug: str, label: str, count: int | None = None) -> str:
         is_active = slug == active_tab
         cls = "tab is-active" if is_active else "tab"
         n_html = f' <span class="n">{count}</span>' if count is not None else ""
-        return f'<a class="{cls}" href="?panel=open&panel_tab={slug}" target="_self">{label}{n_html}</a>'
+        return f'<span class="{cls}">{label}{n_html}</span>'
 
     tabs_html = (
         f'<div class="ia-panel-tabs">'
@@ -1007,22 +1008,35 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
             f'<span class="v">{lead_s:.1f}s</span>'
         )
 
-    open_lab = "avaa loki ›" if lang == "fi" else "open log ›"
-    # st.markdown(unsafe_allow_html=True) renders directly into the Streamlit
-    # main DOM (no iframe). <a href> clicks then properly navigate the parent
-    # window, Streamlit reads new query_params on rerun, panel opens.
+    # 2026-05-07: switched from <a href="?panel=open"> to a native Streamlit
+    # button. URL-navigation links inside Streamlit kept causing the page to
+    # "refresh" without opening the panel reliably — st.button is the
+    # canonical Streamlit pattern for "click → toggle session_state" and
+    # works the same way the existing 🔍 toimintaloki st.expander does.
+    # The trade-off: we render the rich glyph row as HTML above, and the
+    # button below carries only plain-text label.
     html = (
-        '<a class="ia-timeline" href="?panel=open&panel_tab=summary" target="_self">'
+        '<div class="ia-timeline ia-timeline-info">'
         f'<span class="lab">{lab}</span> '
         f'<span class="v">{duration:.1f}s</span> '
         f'<span class="lab">·</span> '
         f'<span class="v">{subagent_count} {agentit}</span> '
         f'<span class="ag">{glyphs_html}</span>'
         f"{extras}"
-        f'<span class="open">{open_lab}</span>'
-        "</a>"
+        "</div>"
     )
     st.markdown(html, unsafe_allow_html=True)
+    # Action button — what actually opens the panel. CSS makes it look
+    # like a continuation of the strip; the click is reliable Streamlit.
+    btn_label = "📊 Avaa loki ›" if lang == "fi" else "📊 Open log ›"
+    if st.button(
+        btn_label,
+        key=f"open_panel_{run_dir.name}",
+        use_container_width=True,
+    ):
+        st.session_state.activity_panel_open = True
+        st.session_state["_panel_tab"] = "summary"
+        st.rerun()
 
 
 # Inline footnote markers in answer text. LEAD's prompt should produce

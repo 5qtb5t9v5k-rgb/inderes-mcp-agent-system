@@ -795,16 +795,10 @@ for msg in st.session_state.history:
 # `:has()` rule in theme.css.
 # ---------------------------------------------------------------------------
 
-# Read query params: ?panel=open keeps the panel visible across reruns;
-# ?panel_tab=NNN selects the active tab. Updating either of these is what
-# clicking the Aikajana strip / a tab does (anchor href).
-_qp = dict(st.query_params)
-if _qp.get("panel") == "open":
-    st.session_state.activity_panel_open = True
-elif _qp.get("panel") == "close":
-    st.session_state.activity_panel_open = False
-
-_panel_tab = _qp.get("panel_tab", "summary")
+# Activity panel state is held in session_state directly (set by the
+# Streamlit button in render_timeline_strip). Avoiding URL-navigation
+# patterns because they cause a hard reload that can wipe state.
+_panel_tab = st.session_state.get("_panel_tab", "summary")
 if _panel_tab not in {"summary", "agents", "tools", "conflicts"}:
     _panel_tab = "summary"
 
