@@ -1097,9 +1097,9 @@ def build_conflict_html(run_dir: Path, lang: str = "fi") -> str:
         return ""
 
     head_label = (
-        "🔀 SUBAGENTIT ERIMIELTÄ"
+        "SUBAGENTIT ERIMIELTÄ"
         if lang == "fi"
-        else "🔀 SUBAGENTS DISAGREE"
+        else "SUBAGENTS DISAGREE"
     )
 
     rows: list[str] = []
