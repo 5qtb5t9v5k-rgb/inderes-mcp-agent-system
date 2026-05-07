@@ -43,33 +43,37 @@ import streamlit as st
 # Persona table — purely cosmetic. Matches src/inderes_agent/agents/* codes.
 # ---------------------------------------------------------------------------
 
+# Persona colors live in BOTH places: theme.css (--p-lead etc.) for CSS-only
+# usage, and these hex literals for inline-style usage in Python-rendered HTML
+# (Streamlit's f-string injection). Keep the two in sync — the source of
+# truth is `ui/redesign-handoff/IMPLEMENTATION_NOTES.md`.
 PERSONAS: dict[str, dict[str, Any]] = {
     "LEAD": {
-        "glyph": "◆", "color": "#FFD24A",
+        "glyph": "◆", "color": "#F5B942",
         "role_fi": "Päätoimittaja", "role_en": "Editor-in-chief",
         "desc_fi": "Reitittää kysymyksen, jakaa työn subagenteille ja kirjoittaa lopullisen vastauksen.",
         "desc_en": "Routes the query, dispatches subagents and writes the final synthesis.",
     },
     "QUANT": {
-        "glyph": "▲", "color": "#4ADE80",
+        "glyph": "▲", "color": "#5FD28A",
         "role_fi": "Numerot", "role_en": "Numbers",
         "desc_fi": "Hakee fundamentaalit ja Inderesin estimaatit, ajaa Python-laskut (CAGR, suhdeluvut) sandboxissa.",
         "desc_en": "Pulls fundamentals + Inderes estimates, runs Python math (CAGR, ratios) in a sandbox.",
     },
     "RESEARCH": {
-        "glyph": "■", "color": "#60A5FA",
+        "glyph": "■", "color": "#6AA9FF",
         "role_fi": "Analyytikko", "role_en": "Analyst",
         "desc_fi": "Lukee Inderesin raportit ja transkriptit, etsii laadulliset ajurit ja näkemykset.",
         "desc_en": "Reads Inderes reports + transcripts, surfaces qualitative drivers and theses.",
     },
     "SENTIMENT": {
-        "glyph": "●", "color": "#F472B6",
+        "glyph": "●", "color": "#FF7EB3",
         "role_fi": "Tunnelmat", "role_en": "Vibes",
         "desc_fi": "Kahlaa keskustelupalstan ja sisäpiirikaupat, raportoi yksityissijoittajien tunnelman.",
         "desc_en": "Trawls forum threads + insider trades, reports retail sentiment and signals.",
     },
     "PORTFOLIO": {
-        "glyph": "✦", "color": "#A78BFA",
+        "glyph": "✦", "color": "#C294FF",
         "role_fi": "Mallisalkku", "role_en": "Model book",
         "desc_fi": "Tarkastaa onko yhtiö Inderesin mallisalkussa ja millä painoilla.",
         "desc_en": "Checks whether the company is in Inderes' model portfolio and at what weight.",
@@ -916,7 +920,7 @@ class CustomStatus:
 
         status = CustomStatus("Käsittelen kysymystäsi…", expanded=True)
         status.write("⚙️  Reitittäjä…")
-        status.write('<span style="color:#FFD24A">◆ LEAD</span>', html=True)
+        status.write('<span style="color:#F5B942">◆ LEAD</span>', html=True)
         status.update(label="Valmis", state="complete", expanded=False)
     """
 
