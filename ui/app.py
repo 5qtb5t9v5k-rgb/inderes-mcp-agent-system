@@ -150,38 +150,11 @@ inject_theme()
 
 
 # ---------------------------------------------------------------------------
-# Password gate (Path C: public deployment, simple shared password)
-# ---------------------------------------------------------------------------
-
-def _check_password() -> bool:
-    """If APP_PASSWORD secret/env is set, require it before rendering the app.
-
-    Returns True iff the user is authenticated (or no password is configured).
-    Calls st.stop() in the unauthenticated path, so the rest of the page never
-    renders.
-    """
-    expected = os.environ.get("APP_PASSWORD")
-    if not expected:
-        return True  # no gate configured — open mode, useful in local dev
-
-    if st.session_state.get("authenticated"):
-        return True
-
-    st.title("🔒 inderes-mcp-agent-system")
-    st.caption("This deployment is password-protected.")
-    pw = st.text_input("Password", type="password", key="_pw_input")
-    if not pw:
-        st.stop()
-    if pw == expected:
-        st.session_state.authenticated = True
-        st.rerun()
-    else:
-        st.error("Incorrect password.")
-        st.stop()
-    return False
-
-
-_check_password()
+# Password gate REMOVED 2026-05-07 per user request. The gate was triggering
+# unwanted re-prompts every time the page rerendered with a new query param
+# (?panel=open caused a "page reload" that bounced through the password
+# screen). The daily query cap below still applies as the only damage-limit
+# mechanism.
 
 
 # ---------------------------------------------------------------------------
