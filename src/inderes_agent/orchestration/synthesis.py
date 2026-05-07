@@ -189,43 +189,68 @@ class SynthesisTrace:
     paattely_error: str | None = None
 
 
-# Compiled once: matches `**🧠 Päättely**` (or `**🧠 Reasoning**`) followed by
-# a fenced JSON block. Works whether the model put one or many blank lines
-# between the marker and the fence, and whether the fence is ```json or ```.
-_PAATTELY_RE = re.compile(
+# Compiled once. The Päättely block can be EITHER:
+#   (a) a fenced JSON object (legacy / structured) — `**🧠 Päättely**\n```json {...}````
+#   (b) free prose (current default) — `**🧠 Päättely**\n\n<paragraphs>...\n## next-section`
+# We try (a) first because it gives the UI more structure; fall back to (b)
+# capturing everything until the next markdown heading or another bold marker
+# (📖 Lähteet / 💡 Voisit kysyä myös) or end of text.
+_PAATTELY_JSON_RE = re.compile(
     r"\*\*\s*🧠\s*(?:Päättely|Reasoning)\s*\*\*\s*\n+\s*```(?:json)?\s*\n(?P<body>\{.*?\})\s*\n```",
+    re.DOTALL | re.IGNORECASE,
+)
+_PAATTELY_PROSE_RE = re.compile(
+    r"\*\*\s*🧠\s*(?:Päättely|Reasoning)\s*\*\*\s*\n+"
+    r"(?P<body>.+?)"
+    r"(?=\n\s*##\s|\n\s*\*\*\s*(?:📖|💡)|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 
 
 def _extract_paattely(text: str) -> tuple[str, str | None, dict[str, Any] | None, str | None]:
-    """Pull the **🧠 Päättely** JSON block out of the LEAD's response.
+    """Pull the **🧠 Päättely** block out of the LEAD's response.
 
     Returns (cleaned_text, raw_block_or_None, parsed_or_None, error_or_None).
-    `cleaned_text` has the matched block (and one trailing blank line) stripped
-    so the UI doesn't render the JSON in the answer body — it renders as a
-    2×2 slot grid instead.
+    `parsed` may be:
+      - a dict {disagree, resolution, uncertain, skipped} when LEAD emitted
+        the structured JSON form (UI renders 2×2 grid); OR
+      - a dict {prose: str} when LEAD emitted free prose covering the four
+        points (UI renders prose in a styled expander).
 
-    On JSON parse failure, returns (cleaned_text, raw, None, error_msg).
+    `cleaned_text` has the matched block stripped so the UI doesn't render
+    the body twice (once in the answer body, once as the Päättely callout).
+
     On no match, returns (text, None, None, None).
     """
-    m = _PAATTELY_RE.search(text)
-    if not m:
+    # First try the structured JSON form (legacy / preferred when present).
+    m = _PAATTELY_JSON_RE.search(text)
+    if m:
+        raw_full = m.group(0)
+        body = m.group("body")
+        cleaned = (text[: m.start()] + text[m.end() :]).rstrip() + "\n"
+        try:
+            parsed = json.loads(body)
+            if not isinstance(parsed, dict):
+                # JSON valid but not an object — fall through to prose.
+                pass
+            else:
+                normalized = {k: parsed.get(k) for k in ("disagree", "resolution", "uncertain", "skipped")}
+                return cleaned, raw_full, normalized, None
+        except json.JSONDecodeError:
+            # Treat as prose — fall through.
+            pass
+
+    # Prose form — capture body until next section.
+    m2 = _PAATTELY_PROSE_RE.search(text)
+    if not m2:
         return text, None, None, None
 
-    raw_full = m.group(0)
-    body = m.group("body")
-    cleaned = (text[: m.start()] + text[m.end() :]).rstrip() + "\n"
-
-    try:
-        parsed = json.loads(body)
-        if not isinstance(parsed, dict):
-            return cleaned, raw_full, None, "päättely body is not a JSON object"
-        # Normalize: ensure expected keys exist (None if missing).
-        normalized = {k: parsed.get(k) for k in ("disagree", "resolution", "uncertain", "skipped")}
-        return cleaned, raw_full, normalized, None
-    except json.JSONDecodeError as exc:
-        return cleaned, raw_full, None, f"JSON parse failed: {exc}"
+    raw_full = m2.group(0)
+    body = m2.group("body").strip()
+    cleaned = (text[: m2.start()] + text[m2.end() :]).rstrip() + "\n"
+    if not body:
+        return cleaned, raw_full, None, "päättely block was empty"
+    return cleaned, raw_full, {"prose": body}, None
 
 
 async def synthesize(

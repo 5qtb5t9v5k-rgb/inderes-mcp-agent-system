@@ -1139,22 +1139,56 @@ def render_conflict_callout(run_dir: Path, lang: str = "fi") -> None:
 
 
 def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
-    """Render LEAD's visible-reasoning JSON as a 2×2 slot grid (BACKLOG #9).
+    """Render LEAD's visible-reasoning block — either a 2×2 slot grid (when
+    LEAD emitted JSON) or a styled prose block inside an expander (when
+    LEAD emitted free prose, the current default).
 
-    The JSON has four optional slots: `disagree / resolution / uncertain /
-    skipped`. Each slot is rendered as a labeled card in a 2×2 grid; missing
-    or null slots are hidden gracefully (so Flash Lite emitting only 3 valid
-    slots doesn't break layout). Translates the structure shipped in
-    `ui/redesign-handoff/project/redesign/parts.jsx :: PaattelyB`.
+    Schema accepted:
+      - {disagree, resolution, uncertain, skipped}: structured JSON form.
+        Each slot rendered as a labeled card in 2×2 grid; missing/null
+        slots hidden.
+      - {prose: str}: free-prose form. Rendered as styled italic block
+        inside the same expander shell.
 
-    `paattely` is the parsed dict from `SynthesisTrace.paattely`.
-    Renders nothing if the JSON wasn't emitted or parse failed (graceful
-    degradation — the answer body still reads fine).
+    Renders nothing if `paattely` is None or empty (graceful degradation —
+    the answer body still reads fine if LEAD skipped the section).
     """
     if not paattely or not isinstance(paattely, dict):
         return
 
-    # Filter out None/empty slots — UI hides them rather than showing blank.
+    header_label_outer = "Päättely" if lang == "fi" else "Reasoning"
+    open_label = (
+        "avaa nähdäksesi ajatusketju"
+        if lang == "fi"
+        else "open to see reasoning"
+    )
+
+    # Prose form: simpler shell, just the prose text inside the expander.
+    if "prose" in paattely:
+        body = paattely.get("prose") or ""
+        if not body.strip():
+            return
+        # Render newlines as <br> for paragraph breaks; preserve as-is otherwise.
+        try:
+            from markdown_it import MarkdownIt
+            md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+            body_html = md.render(body)
+        except Exception:
+            from html import escape as _esc
+            body_html = "<p>" + _esc(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+        html = (
+            '<details class="ia-paattely-b ia-paattely-prose">'
+            f'<summary class="ia-paattely-head">'
+            f'<span>🧠</span><b>{header_label_outer}</b>'
+            f'<span class="meta">{open_label}</span>'
+            f'</summary>'
+            f'<div class="ia-paattely-prose-body">{body_html}</div>'
+            "</details>"
+        )
+        st.html(html)
+        return
+
+    # Structured JSON form: 2×2 slot grid.
     slots_present = {k: v for k, v in paattely.items() if v}
     if not slots_present:
         return
@@ -1193,14 +1227,8 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
         else f"{len(rendered_slots)} / 4 slots · LEAD"
     )
 
-    # User feedback (2026-05-07): wrap the grid in a <details> expander so
-    # it reads like the previous päättely-as-expander pattern (collapsed
-    # under Perustelut by default, opens to reveal the 4-slot grid).
-    open_label = (
-        "avaa nähdäksesi ajatusketju"
-        if lang == "fi"
-        else "open to see reasoning"
-    )
+    # 2×2 grid wrapped in <details> expander. Default closed so the answer
+    # stays scannable; user clicks to open the structured reasoning view.
     html = (
         '<details class="ia-paattely-b">'
         f'<summary class="ia-paattely-head">'
