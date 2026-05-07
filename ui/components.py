@@ -1241,9 +1241,73 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
     st.html(html)
 
 
+# Match the **💭 Perustelut:** callout at the start of LEAD's text.
+# Captures the body up to the next double-newline (paragraph break).
+_PERUSTELUT_RE = re.compile(
+    r"^\s*\*\*\s*💭\s*(?:Perustelut|Reasoning)\s*:?\s*\*\*\s*"
+    r"(?P<body>.+?)"
+    r"(?=\n\s*\n|\n\s*#|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def extract_perustelut(text: str) -> tuple[str, str | None]:
+    """Pull the **💭 Perustelut:** opening paragraph out of LEAD's response.
+
+    Returns (cleaned_text, perustelut_body_or_None). The cleaned text has
+    the matched callout removed so render_lead_answer can render the rest
+    of the synthesis as the answer body, and the caller can render
+    Perustelut as its own boxed callout (matching subagent "Ajatus:"
+    boxes).
+    """
+    if not text:
+        return text, None
+    m = _PERUSTELUT_RE.search(text)
+    if not m:
+        return text, None
+    body = m.group("body").strip()
+    cleaned = (text[: m.start()] + text[m.end() :]).lstrip()
+    return cleaned, body or None
+
+
+def render_perustelut_box(body: str | None, lang: str = "fi") -> None:
+    """Render the LEAD's `💭 Perustelut` as its own callout box.
+
+    Designed to sit BELOW the 🧠 Päättely block (per user feedback: show the
+    deeper reasoning first, then the meta-summary). Matches the visual
+    weight of subagent `Ajatus:` boxes so the LEAD's meta line reads as
+    a peer of the subagent thoughts, not as a header for the answer.
+    """
+    if not body:
+        return
+    label = "Perustelut" if lang == "fi" else "Reasoning"
+    # Render markdown so any inline code / bold / italic in the body works.
+    try:
+        from markdown_it import MarkdownIt
+        md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+        body_html = md.render(body)
+    except Exception:
+        from html import escape as _esc
+        body_html = "<p>" + _esc(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+    html = (
+        '<div class="ia-perustelut-box">'
+        f'<div class="ia-perustelut-lab">💭 {label}</div>'
+        f'<div class="ia-perustelut-body">{body_html}</div>'
+        "</div>"
+    )
+    st.html(html)
+
+
 def render_lead_answer(text: str | None) -> None:
-    """Render LEAD's synthesis answer with an amber **💭 Perustelut** callout
-    at the top.
+    """Render LEAD's synthesis answer body (Perustelut + Päättely already
+    extracted by callers).
+
+    NOTE on history (2026-05-07 redesign): This function used to also render
+    the **💭 Perustelut:** callout inline as the first paragraph. Per user
+    feedback, Perustelut and Päättely now render as their own boxes ABOVE
+    the answer body via render_perustelut_box() and render_paattely_b().
+    Callers should call extract_perustelut() first to strip the callout
+    out of the text before passing it here.
 
     LEAD's prompt instructs it to start with ``**💭 Perustelut:** [meta-level
     reasoning]``. The CSS scopes its callout styling to ``.ia-lead-answer``,

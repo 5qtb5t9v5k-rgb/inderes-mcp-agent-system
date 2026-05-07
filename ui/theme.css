@@ -1279,3 +1279,35 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-paattely-prose-body strong {
   color: var(--ink-0); font-style: normal;
 }
+
+/* Perustelut as its own callout box (redesign 2026-05-07: peer to subagent
+   "Ajatus:" boxes, sits BELOW Päättely per user feedback). Used to be
+   inline inside the LEAD answer body; now extracted via extract_perustelut()
+   and rendered separately. */
+.ia-perustelut-box {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--p-lead);
+  background: linear-gradient(180deg, rgba(245,185,66,.04), rgba(245,185,66,0));
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  font-family: var(--ia-mono);
+}
+.ia-perustelut-lab {
+  font-size: 10px; letter-spacing: 0.18em;
+  color: var(--p-lead);
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.ia-perustelut-body {
+  color: var(--ink-1);
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.ia-perustelut-body p { margin: 0 0 6px 0; }
+.ia-perustelut-body p:last-child { margin-bottom: 0; }
+.ia-perustelut-body strong, .ia-perustelut-body b {
+  color: var(--ink-0); font-style: normal;
+}

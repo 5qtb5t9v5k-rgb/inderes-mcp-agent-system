@@ -113,6 +113,8 @@ from components import (  # noqa: E402
     render_timeline_strip,
     render_activity_panel,
     render_conflict_callout,
+    render_perustelut_box,
+    extract_perustelut,
     CustomStatus,
     PERSONAS,
     DOMAIN_VERBS_FI,
@@ -773,18 +775,33 @@ for msg in st.session_state.history:
                 # Conflict callout (redesign §6.4) — renders ONLY when
                 # conflicts.json has actual disagreements. Most queries: silent.
                 render_conflict_callout(run_dir, lang=st.session_state.get("ui_lang", "fi"))
-            render_lead_answer(msg["content"])
-            # Päättely 2×2 slot grid (BACKLOG #9 + redesign §5) — read from
-            # paattely.json. None / missing file silently no-ops, so old
-            # history pre-#9 still renders cleanly.
+
+            # Order per user feedback (2026-05-07): Päättely TOP, then
+            # Perustelut (own box like subagent Ajatus), then answer body.
+            # First extract the Perustelut callout from the text so we can
+            # render it as a separate box below Päättely.
+            _lang_main = st.session_state.get("ui_lang", "fi")
+            _cleaned_text, _perustelut_body = extract_perustelut(msg["content"])
+
+            # 1. 🧠 Päättely (deeper reasoning, expander; first because the
+            #    user wants the work shown before the meta-summary).
             if run_dir is not None:
                 _paattely_path = run_dir / "paattely.json"
                 if _paattely_path.exists():
                     try:
                         _paattely_blob = json.loads(_paattely_path.read_text(encoding="utf-8"))
-                        render_paattely_b(_paattely_blob.get("parsed"), lang=st.session_state.get("ui_lang", "fi"))
+                        render_paattely_b(
+                            _paattely_blob.get("parsed"),
+                            lang=_lang_main,
+                        )
                     except (OSError, json.JSONDecodeError):
                         pass
+
+            # 2. 💭 Perustelut (meta-summary, own box).
+            render_perustelut_box(_perustelut_body, lang=_lang_main)
+
+            # 3. Answer body (Perustelut already extracted out of it).
+            render_lead_answer(_cleaned_text)
             # Followup question chips — extracted from the LEAD synthesis
             # itself; clicking one writes to st.session_state.pending_query
             # and triggers a rerun that submits it as a new query.

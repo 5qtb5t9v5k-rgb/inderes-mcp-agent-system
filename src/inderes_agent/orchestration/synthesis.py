@@ -196,13 +196,16 @@ class SynthesisTrace:
 # capturing everything until the next markdown heading or another bold marker
 # (📖 Lähteet / 💡 Voisit kysyä myös) or end of text.
 _PAATTELY_JSON_RE = re.compile(
-    r"\*\*\s*🧠\s*(?:Päättely|Reasoning)\s*\*\*\s*\n+\s*```(?:json)?\s*\n(?P<body>\{.*?\})\s*\n```",
+    # Marker can be **🧠 Päättely**, ## 🧠 Päättely, ### 🧠 Päättely, or
+    # bare 🧠 Päättely on its own line — Flash Lite picks any of these.
+    r"(?:\*\*|#{1,3})\s*🧠\s*(?:Päättely|Reasoning)\s*(?:\*\*|:)?\s*\n+"
+    r"\s*```(?:json)?\s*\n(?P<body>\{.*?\})\s*\n```",
     re.DOTALL | re.IGNORECASE,
 )
 _PAATTELY_PROSE_RE = re.compile(
-    r"\*\*\s*🧠\s*(?:Päättely|Reasoning)\s*\*\*\s*\n+"
+    r"(?:\*\*|#{1,3})\s*🧠\s*(?:Päättely|Reasoning)\s*(?:\*\*|:)?\s*\n+"
     r"(?P<body>.+?)"
-    r"(?=\n\s*##\s|\n\s*\*\*\s*(?:📖|💡)|\Z)",
+    r"(?=\n\s*#{1,3}\s|\n\s*\*\*\s*(?:📖|💡)|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 
