@@ -1005,15 +1005,17 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
             f'<span class="v">{lead_s:.1f}s</span>'
         )
 
+    open_lab = "avaa loki ›" if lang == "fi" else "open log ›"
     html = (
-        '<div class="ia-timeline">'
+        '<a class="ia-timeline" href="?panel=open&panel_tab=summary">'
         f'<span class="lab">{lab}</span> '
         f'<span class="v">{duration:.1f}s</span> '
         f'<span class="lab">·</span> '
         f'<span class="v">{subagent_count} {agentit}</span> '
         f'<span class="ag">{glyphs_html}</span>'
         f"{extras}"
-        "</div>"
+        f'<span class="open">{open_lab}</span>'
+        "</a>"
     )
     st.html(html)
 

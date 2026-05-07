@@ -135,6 +135,11 @@ st.set_page_config(
     # identity to the brand mark.
     page_icon="🔶",
     layout="wide",
+    # Sidebar collapsed by default (redesign iter-2: Grok-like empty state).
+    # User can re-open via Streamlit's native sidebar arrow. The right-side
+    # activity panel is the new home for "agent log" content; the left
+    # sidebar mostly carries chrome (HUOM, KIELI, KESKUSTELU buttons).
+    initial_sidebar_state="collapsed",
 )
 
 # Trading Desk theme — must run right after set_page_config so the CSS lands
@@ -234,7 +239,12 @@ def _enforce_daily_cap_or_stop() -> None:
 _lang = st.session_state.get("ui_lang", "fi")
 render_titlebar(_lang)
 # render_ticker() — disabled: distracting, replace with a real feed if/when one's available
-render_disclaimer(_lang)
+
+# Hero / equation block: shown ONLY on the empty state (Grok-like clean entry).
+# Once the user has asked anything, the hero collapses to keep the chat the
+# focus and avoid repeating the marketing on every page.
+if not st.session_state.get("history"):
+    render_disclaimer(_lang)
 
 
 # ---------------------------------------------------------------------------
@@ -707,23 +717,15 @@ with st.sidebar:
     else:
         st.caption("Ei vielä ajoja." if _lang_side == "fi" else "No runs yet.")
 
-    # Activity-panel toggle. When checked, the right-side overlay panel
-    # renders for the latest assistant message's run dir (and CSS pushes
-    # the main column left to make room). Off = clean answer-only view.
-    _panel_label = (
-        "📊 Aktiviteettiloki paneelina"
-        if _lang_side == "fi"
-        else "📊 Activity log as panel"
-    )
-    st.session_state.activity_panel_open = st.checkbox(
-        _panel_label,
-        value=st.session_state.get("activity_panel_open", False),
-        help=(
-            "Avaa täyden aktiviteettilokin oikealle pysyvänä paneelina"
-            if _lang_side == "fi"
-            else "Show the full activity log as a persistent right-side panel"
-        ),
-    )
+    # Activity panel is now opened by clicking the Aikajana strip on a
+    # message (?panel=open in the URL). This sidebar toggle is kept as a
+    # fallback for keyboard / non-mouse users who can't click the strip.
+    if st.session_state.get("activity_panel_open"):
+        _close_label = "✕ Sulje aktiviteettiloki" if _lang_side == "fi" else "✕ Close activity log"
+        if st.button(_close_label, use_container_width=True, key="panel_close_btn"):
+            st.session_state.activity_panel_open = False
+            st.query_params.clear()
+            st.rerun()
 
     # Daily quota progress bar removed from the sidebar — the cap still
     # applies (enforced before each query in `_enforce_daily_cap_or_stop`),
