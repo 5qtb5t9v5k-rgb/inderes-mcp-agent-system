@@ -968,6 +968,88 @@ def _style_footnote_markers(html: str) -> str:
     )
 
 
+def render_conflict_callout(run_dir: Path, lang: str = "fi") -> None:
+    """Render a 🔀 callout when subagents had genuine disagreements.
+
+    Reads `conflicts.json` and surfaces the `conflicts` array (NOT
+    `agreements` or `isolated_claims` — those don't merit the callout).
+    Renders a red-bordered box with topic + positions, each tagged with
+    the supporting subagent's persona color.
+
+    Translates ui/redesign-handoff/parts.jsx :: ConflictCallout. Renders
+    above the answer body to draw attention before the user reads the
+    synthesis.
+
+    Threshold (v1): renders for any non-empty conflicts list. Future
+    refinement: only render when LEAD's Päättely indicates the resolution
+    is genuinely uncertain (`uncertain` slot has content) — for now we err
+    on the side of surfacing, since hidden conflicts are the bigger risk.
+    """
+    conflicts_path = run_dir / "conflicts.json"
+    if not conflicts_path.exists():
+        return
+    try:
+        blob = json.loads(conflicts_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+
+    parsed = (blob or {}).get("parsed") or {}
+    conflicts = parsed.get("conflicts") or []
+    if not conflicts:
+        return
+
+    head_label = (
+        "🔀 SUBAGENTIT ERIMIELTÄ"
+        if lang == "fi"
+        else "🔀 SUBAGENTS DISAGREE"
+    )
+
+    rows: list[str] = []
+    for c in conflicts:
+        topic = c.get("topic") or ""
+        positions = c.get("positions") or []
+        if not positions:
+            continue
+
+        # Topic header for each conflict
+        rows.append(
+            f'<div class="ia-conflict-topic">— {topic}</div>'
+        )
+
+        for pos in positions:
+            claim = pos.get("claim") or ""
+            supported_by = pos.get("supported_by") or []
+            # Use the FIRST supporting subagent's persona for the chip color.
+            # If multiple subagents support the same claim, persona ambiguous;
+            # use the first as a representative.
+            who_chip = ""
+            if supported_by:
+                first = supported_by[0]
+                # Strip any "— Company" suffix to get the bare persona code.
+                bare = first.split(" — ")[0].split("—")[0].strip().upper()
+                p = PERSONAS.get(bare, {"glyph": "•", "color": "#888"})
+                who_chip = (
+                    f'<span class="ia-conflict-who" style="color:{p["color"]}">'
+                    f'{p["glyph"]} {first}</span>'
+                )
+            else:
+                who_chip = '<span class="ia-conflict-who" style="color:var(--ink-3)">?</span>'
+            rows.append(
+                f'<div class="ia-conflict-row">{who_chip}<span class="claim">{claim}</span></div>'
+            )
+
+    if not rows:
+        return
+
+    html = (
+        f'<div class="ia-conflict">'
+        f'<div class="ia-conflict-head">{head_label}</div>'
+        f'{"".join(rows)}'
+        f'</div>'
+    )
+    st.html(html)
+
+
 def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
     """Render LEAD's visible-reasoning JSON as a 2×2 slot grid (BACKLOG #9).
 

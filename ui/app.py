@@ -112,6 +112,7 @@ from components import (  # noqa: E402
     render_paattely_b,
     render_timeline_strip,
     render_activity_panel,
+    render_conflict_callout,
     CustomStatus,
     PERSONAS,
     DOMAIN_VERBS_FI,
@@ -767,6 +768,9 @@ for msg in st.session_state.history:
                 # Aikajana strip — collapsed timeline summary above the answer
                 # (redesign §6.3). Reads meta.json; silently no-ops if missing.
                 render_timeline_strip(run_dir, lang=st.session_state.get("ui_lang", "fi"))
+                # Conflict callout (redesign §6.4) — renders ONLY when
+                # conflicts.json has actual disagreements. Most queries: silent.
+                render_conflict_callout(run_dir, lang=st.session_state.get("ui_lang", "fi"))
             render_lead_answer(msg["content"])
             # Päättely 2×2 slot grid (BACKLOG #9 + redesign §5) — read from
             # paattely.json. None / missing file silently no-ops, so old
