@@ -213,6 +213,13 @@ laatuhyppy vaatii todennäköisesti **isomman / "ajattelevamman" mallin
 LEAD-rooliin** (esim. Claude tai o3 / GPT-4o-thinking — Gemini Flash
 Lite kallistuu rakenteellisesti executive-summary-tyyliin).
 
+**Tärkeä riippuvuus #10:stä (Provenance threading)**: ilman raakaa
+työkaludataa LEAD:llä ei ole tarttumapintaa Case 4a/4b -tyyppisille
+hallusinaatioille (näkee vain subagentin tiivistelmän). Parempi malli
+ilman provenance:ia *vähentää todennäköisyyttä* hallusinointiin mutta
+ei tee siitä tunnistettavaa. **Tehdään #10 ensin**, sitten #9 voi
+aidosti hyödyntää datan ja perustella Sonnet/Opus:in lisäkustannusta.
+
 **Toteutusmuotoja**:
 1. *Pelkkä prompt* — `lead.md`-uudelleenkirjoitus jotta `**💭
    Perustelut:**` sisältää eksplisiittisesti *"olin epävarma X:stä,
@@ -229,6 +236,97 @@ Lite kallistuu rakenteellisesti executive-summary-tyyliin).
 liiaksi. Kannattaa pitää `**💭 Perustelut:**` -callout enintään ~6
 rivin mittaisena, raskaampi reasoning vaatii ehkä erillisen
 `<details>`-laatikon (UI-puolella expandable).
+
+---
+
+## #10 Provenance threading — pipe structured tool results to LEAD + UI  *(keskisuuri, seuraava)*
+
+> **Status: seuraava toteutettava.** Foundational fix: ilman tätä
+> parempi LEAD-malli (#9) ei silti voi diffata agentin claimeja
+> työkaluvastaukseen, koska se ei näe raakadataa. Kustannusvaikutus
+> ~2x input-tokenit (Flash Lite-mallilla senttejä päivässä), toisin
+> kuin #9:n mallinvaihto joka olisi ~40-200x kalliimpi per kysely.
+
+Nykyinen ketju: `tool → subagent (LLM tiivistää tekstiksi) → LEAD näkee vain tekstin`.
+
+Sub-agentin tiivistys on häviöllinen kompressio: kalenterin 18 itemiä
+voi typistyä 3:ksi, P/E-numeron desimaali voi droppaantua, yhtiönimi
+voi vaihtua plausibleksi-mutta-vääräksi. LEAD ei voi tarkistaa
+yhtään näistä koska se ei näe raakadataa.
+
+**Korjaus**: säilötään tool-callit ja niiden tulokset rakenteellisesti
+ja syötetään LEAD:lle.
+
+```
+tool → subagent
+       ├─ teksti (kuten nyt)  ─┐
+       └─ raw JSON              ├─→ LEAD näkee molemmat
+                                │
+                                └─→ UI näyttää "tool call" -laatikon expandable
+```
+
+### Ratkaisee suoraan
+
+| Bugi | Mekanismi |
+|---|---|
+| Case 001 / 4a — hallusinointi (claim ≠ tool data) | LEAD näkee tool-tuloksen entiteetit, voi pudottaa claimit joita ei dataa tukena |
+| Case 4b — false negative (tool data piilotettu) | LEAD näkee että listassa oli N item, voi vaatia agentin selittävän miksi M < N |
+| Numeerinen virhe (P/E 12 vs 18) | LEAD voi ristivertailla raakadataan |
+| Attribution error (claim "X sanoi", tosiasiassa Y) | LEAD näkee mistä tool-vastauksesta data tuli |
+
+### Konkreettinen toteutus
+
+1. **`SubagentResult`-rakenteeseen `tool_calls: list[ToolCallTrace]`**
+   — agent_framework jo tallentaa tool_call-osat response.parts:eihin;
+   uutta on niiden ekstraktointi `observability/output_parts.py`:ssa
+   ja serialisointi.
+
+2. **`run_log` persistöi**: subagent-NN-*.json saa kentän `tool_calls:
+   [{name, args, result_summary, item_count, first_n_items}]`. Jos
+   raakadata on iso (>50 itemiä), tallennetaan se erilliseen
+   `subagent-NN-tool-results.json`-tiedostoon, JSON-runkoon vain
+   yhteenveto.
+
+3. **`synthesis.py` formatoi LEAD-promptin uuden blokin**
+   *"TOOL CALL TRACE"*:
+   ```
+   Subagent 1 (sentiment) called list-calendar-events:
+     args: {dateFrom: 2026-05-07, dateTo: 2026-05-07, regions: [FINLAND]}
+     result: 18 items; types=[INTERIM_REPORT(15), GENERAL_MEETING(2),
+             TRIANNUAL_DIVIDEND(1)]
+     companies: [Stora Enso, Harvia, SRV Group, ..., NoHo Partners]
+   ```
+   Lead-prompttiin uusi instruktio: *"compare each subagent claim to
+   what the tools actually returned; drop unsupported claims, surface
+   omitted-but-relevant items."*
+
+4. **UI: "🔧 Työkalut"-laatikko jokaisen subagent-laatikon alle**,
+   expandable, näyttää tool-kutsut + tulokset käyttäjälle. Tämä on
+   transparency-feature joka samalla helpottaa debugausta.
+
+5. **Conflict-detector promptiin (myöhemmin)** voidaan myös laittaa
+   tool-result viittaukset, mutta tämä ei ole MVP:ssä — riittää että
+   LEAD:llä on data.
+
+### Token-kustannus
+
+Per Puuilo-tyyppinen 10-subagentti-kysely:
+- Nykyinen LEAD-prompt: ~30-45k tokens input
+- Provenance:lla: ~50-90k tokens input (lisäys ~20-50k)
+- Hinta Flash Lite -mallilla: $0.004 → $0.007 per kysely
+- 100 kyselyä/päivä = +$0.30/päivä, 1000/pv = +$3/päivä. Käytännössä senttejä.
+
+### Riippuvuudet ja seuraajat
+
+- **Edellytys #9:lle (parempi LEAD-malli)** — ilman raakadataa
+  Sonnet/Opus ei voi tehdä parempaa diffia kuin Flash Lite.
+- **Helpottaa evals-rakentamista (#4-vaiheinen polku alempana)** —
+  golden run voi replayata tool-callit suoraan, eikä tarvitse rerunnata
+  koko fan-outtia.
+- **Päällekkäisyys "Tool-result entity validation post-processor":n
+  kanssa** (Tool-result-rehellisyys -osio): provenance threading on
+  *yleisempi* ratkaisu samaan ongelmaan. Entity-validation pysyy
+  kelvollisena nopeana plug-in:ina jos LLM-pohjainen vahti ei riitä.
 
 ---
 
