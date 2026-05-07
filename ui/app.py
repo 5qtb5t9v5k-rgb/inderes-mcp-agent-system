@@ -1002,11 +1002,19 @@ if prompt:
             status.update(label="Quota exhausted", state="error", expanded=True)
             st.error(str(exc))
         except HeadlessAuthError:
-            # Auth expired mid-query (e.g. tokens died between cold start
-            # and now). Don't leak the raw error which references local
-            # paths and scripts — show the same generic card as cold-start.
+            # Auth expired mid-query (tokens died between cold start and now).
+            # Mark session as broken AND invalidate the cached _bootstrap_auth
+            # so the very next rerun goes through the full auth path again,
+            # detects the failure, and shows the persistent "Järjestelmä
+            # alhaalla" card. Without this the cached "True" return makes
+            # the app look healthy until the operator manually reboots.
             status.update(label="Inderes-yhteys vanhentunut", state="error", expanded=True)
             log.exception("oauth_headless_during_query")
+            st.session_state["_auth_broken"] = True
+            try:
+                _bootstrap_auth.clear()
+            except Exception:
+                pass
             _render_auth_expired()
         except Exception as exc:
             # If anything looks like an auth/refresh problem, mask it the
@@ -1017,6 +1025,14 @@ if prompt:
                                        "invalid_grant", "headless")):
                 status.update(label="Inderes-yhteys vanhentunut", state="error", expanded=True)
                 log.exception("oauth_likely_failure_in_query")
+                # Same auth-broken latch as above — push the app into the
+                # consistent "broken" state so the user sees the same card
+                # on every subsequent rerun.
+                st.session_state["_auth_broken"] = True
+                try:
+                    _bootstrap_auth.clear()
+                except Exception:
+                    pass
                 _render_auth_expired()
             else:
                 status.update(label="Error", state="error", expanded=True)
