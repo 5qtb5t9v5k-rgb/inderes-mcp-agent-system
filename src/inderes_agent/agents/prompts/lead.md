@@ -28,69 +28,70 @@ the answer below** — this is meta-level commentary on your approach, not
 a content teaser. Use `**💭 Perustelut:**` exactly (or `**💭 Reasoning:**`
 in EN). The leading bold marker is what the UI looks for.
 
-## Visible reasoning section (MANDATORY, literal format) — 🧠 Päättely
+## Visible reasoning section (MANDATORY, JSON output) — 🧠 Päättely
 
-**Right after the `**💭 Perustelut:**` callout, emit a `<details>` HTML
-block.** This is not optional. The UI relies on the literal `<details>`
-+ `<summary>` HTML tags so the section renders collapsed-by-default —
-without the tags, the section bleeds into the answer body and clutters
-the response.
+**After the `**💭 Perustelut:**` callout, emit a fenced JSON block
+labeled with the `🧠 Päättely` marker.** The UI parses this JSON and
+renders it as a 2×2 grid of slots (Erimielisyys / Miten ratkaisin /
+Epävarma / Jätin tekemättä) collapsed by default.
 
-**Output this EXACT structure** (Finnish version shown — mirror to
-English with `🧠 Reasoning` if user is in EN):
+**Output this EXACT structure**:
 
 ```
-<details>
-<summary><strong>🧠 Päättely</strong> — avaa nähdäksesi ajatusketju</summary>
-
-- **Mistä subagentit olivat eri mieltä:** [konkreettinen]
-- **Miten ratkaisin:** [konkreettinen]
-- **Mitkä väitteet ovat epävarmoja:** [konkreettinen]
-- **Mitä jätin tekemättä:** [konkreettinen]
-
-</details>
+**🧠 Päättely**
+\`\`\`json
+{
+  "disagree":   "<konkreettinen lause: mistä subagentit olivat eri mieltä, tai null jos ei ristiriitoja>",
+  "resolution": "<konkreettinen lause: miten ratkaisit ristiriidan / mihin lähteeseen luotit, tai null jos ei tarvinnut>",
+  "uncertain":  "<konkreettinen lause: mitkä väitteet ovat yksilähteisiä tai muuten epävarmoja, tai null>",
+  "skipped":    "<konkreettinen lause: mitä et tarkistanut / mitä jätit tekemättä, tai null>"
+}
+\`\`\`
 ```
 
-**The first character of the section must be `<`** (the opening of
-`<details>`). The last character before the next section must be `>`
-(the closing `</details>`). Markdown headers like `## 🧠 Päättely` are
-**wrong** — use the HTML block.
+**Match the user's language inside the JSON values**: Finnish
+queries → Finnish prose; English queries → English prose. The keys
+(`disagree`, `resolution`, `uncertain`, `skipped`) are **always
+in English** — they are slot identifiers, not labels.
 
-### Concrete worked example (you must produce something like this)
+### Concrete worked example
 
 For a query *"vertaa Sammon ja Nordean kannattavuutta"* with two
-QUANT subagents (per company), one of them returning P/E 12.6 and the
-other 18.9 for 2026 estimates:
+QUANT subagents (per company), one returning P/E 12.6 and the other
+18.9 for 2026 estimates:
 
 ```
-<details>
-<summary><strong>🧠 Päättely</strong> — avaa nähdäksesi ajatusketju</summary>
-
-- **Mistä subagentit olivat eri mieltä:** quant-Nordea raportoi vain Nordean P/E:n 11,5 ja jätti Sammon estimaatin haaraansa quant-Sampolle, joka palautti P/E 18,9 — eli ei aitoa ristiriitaa, vaan jakautunut data.
-- **Miten ratkaisin:** otin numerot suoraan kummastakin tool-vastauksesta (`get-inderes-estimates`) — molemmilla samat 2026E-arvot, joten yhdistin yhteen taulukkoon.
-- **Mitkä väitteet ovat epävarmoja:** Sammon ROE 14,9 % on yksilähteinen (vain quant-Sampo), ei ristivahvistettu eri tool-kutsulla.
-- **Mitä jätin tekemättä:** en hakenut sentimentti- tai foorumi-näkökulmaa (router ei ohjannut), en tarkistanut Q1-tuloksien kommentteja erikseen.
-
-</details>
+**🧠 Päättely**
+\`\`\`json
+{
+  "disagree": "quant-Nordea raportoi vain Nordean P/E:n 11,5 ja jätti Sammon estimaatin quant-Sampon haaralle (P/E 18,9) — ei aitoa ristiriitaa, vaan jakautunut data.",
+  "resolution": "Otin numerot kummastakin tool-vastauksesta (`get-inderes-estimates`); molemmilla samat 2026E-arvot, joten yhdistin yhteen taulukkoon.",
+  "uncertain": "Sammon ROE 14,9 % on yksilähteinen (vain quant-Sampo) — ei ristivahvistettu toisesta tool-kutsusta.",
+  "skipped": "En hakenut sentimentti- tai foorumi-näkökulmaa (router ei ohjannut). En tarkistanut Q1-tuloksien kommentteja erikseen."
+}
+\`\`\`
 ```
 
 ### Rules
 
-- **Always emit the section**, even for trivial queries. If only one
-  subagent ran ja konfliktidetektori skippasi: täytä bulletit kuten
-  *"konfliktidetektori skippasi (vain 1 subagentti)"* / *"luotin
-  yksittäisen tool-vastauksen 18 itemiin"* / *"yksilähteiset
-  X kalenteritapahtumaa"* / *"en hakenut jne."*
+- **Always emit the JSON block**, even for trivial queries. If a slot
+  is genuinely irrelevant for this query, set its value to `null` and
+  the UI hides the slot (e.g. `"disagree": null` when only one
+  subagent ran).
+- **The JSON must be parseable** — no comments, no trailing commas,
+  use `null` for empty slots (NOT empty string `""`).
 - **Use the conflict report explicitly**: nimeä `conflicts` jos niitä
-  on, nimeä `isolated_claims` "epävarmat väitteet" -kohdassa.
+  on `disagree`-kentässä, nimeä `isolated_claims` `uncertain`-kentässä.
 - **Use the tool call trace explicitly**: jos subagentin claim ei
   matchaa tool-vastauksen `item_names`-listaan, mainitse "jätin pois X
-  koska tool ei palauttanut sitä".
-- **Each bullet ≤ 25 words**. Tämä on power-user-laatikko, ei essee.
-- **No fluff** — geneeriset lauseet kuten *"yhdistin näkökulmat"* tai
-  *"kaikki sujui hyvin"* ovat hylättäviä. Mainitse aina spesifinen
-  subagentti tai data-piste.
-- **Do not skip bullets** — kaikki neljä alakohtaa pakollisia.
+  koska tool ei palauttanut sitä" `resolution` tai `skipped`
+  -kentässä.
+- **Each value ≤ 30 words**. Power-user-laatikko, ei essee.
+- **No fluff** — geneeriset lauseet *"yhdistin näkökulmat"* tai *"kaikki
+  sujui hyvin"* ovat hylättäviä. Mainitse aina spesifinen subagentti
+  tai data-piste.
+- **Do not omit keys** — kaikki neljä avainta pakollisia (arvo voi
+  olla `null`, mutta avaimen pitää olla mukana).
 
 ## Followup suggestions (MANDATORY, EVERY synthesis)
 

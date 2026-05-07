@@ -109,6 +109,7 @@ from components import (  # noqa: E402
     render_lead_answer,
     render_followup_chips,
     render_recommendation_badge,
+    render_paattely_b,
     CustomStatus,
     PERSONAS,
     DOMAIN_VERBS_FI,
@@ -744,6 +745,17 @@ for msg in st.session_state.history:
             if run_dir is not None:
                 render_recommendation_badge(run_dir)
             render_lead_answer(msg["content"])
+            # Päättely 2×2 slot grid (BACKLOG #9 + redesign §5) — read from
+            # paattely.json. None / missing file silently no-ops, so old
+            # history pre-#9 still renders cleanly.
+            if run_dir is not None:
+                _paattely_path = run_dir / "paattely.json"
+                if _paattely_path.exists():
+                    try:
+                        _paattely_blob = json.loads(_paattely_path.read_text(encoding="utf-8"))
+                        render_paattely_b(_paattely_blob.get("parsed"), lang=st.session_state.get("ui_lang", "fi"))
+                    except (OSError, json.JSONDecodeError):
+                        pass
             # Followup question chips — extracted from the LEAD synthesis
             # itself; clicking one writes to st.session_state.pending_query
             # and triggers a rerun that submits it as a new query.

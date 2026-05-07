@@ -644,6 +644,71 @@ def _externalize_links(html: str) -> str:
     )
 
 
+def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
+    """Render LEAD's visible-reasoning JSON as a 2×2 slot grid (BACKLOG #9).
+
+    The JSON has four optional slots: `disagree / resolution / uncertain /
+    skipped`. Each slot is rendered as a labeled card in a 2×2 grid; missing
+    or null slots are hidden gracefully (so Flash Lite emitting only 3 valid
+    slots doesn't break layout). Translates the structure shipped in
+    `ui/redesign-handoff/project/redesign/parts.jsx :: PaattelyB`.
+
+    `paattely` is the parsed dict from `SynthesisTrace.paattely`.
+    Renders nothing if the JSON wasn't emitted or parse failed (graceful
+    degradation — the answer body still reads fine).
+    """
+    if not paattely or not isinstance(paattely, dict):
+        return
+
+    # Filter out None/empty slots — UI hides them rather than showing blank.
+    slots_present = {k: v for k, v in paattely.items() if v}
+    if not slots_present:
+        return
+
+    # Slot definitions: (key, fi-label, en-label, icon)
+    slot_defs = [
+        ("disagree",   "ERIMIELISYYS",       "DISAGREEMENT",   "⚡"),
+        ("resolution", "MITEN RATKAISIN",    "HOW I RESOLVED", "✓"),
+        ("uncertain",  "EPÄVARMA",           "UNCERTAIN",      "?"),
+        ("skipped",    "JÄTIN TEKEMÄTTÄ",    "SKIPPED",        "⊘"),
+    ]
+
+    rendered_slots: list[str] = []
+    for key, fi_lab, en_lab, icon in slot_defs:
+        value = slots_present.get(key)
+        if not value:
+            continue
+        lab = fi_lab if lang == "fi" else en_lab
+        # Each slot uses a CSS class with its own accent color (matches
+        # the design tokens: disagree=red, resolution=amber, uncertain=blue,
+        # skipped=muted).
+        rendered_slots.append(
+            f'<div class="ia-paattely-slot ia-paattely-{key}">'
+            f'<div class="ia-paattely-lab"><span class="icn">{icon}</span> {lab}</div>'
+            f'<div class="ia-paattely-body">{value}</div>'
+            f"</div>"
+        )
+
+    if not rendered_slots:
+        return
+
+    header_label = "Päättely" if lang == "fi" else "Reasoning"
+    meta = (
+        f"{len(rendered_slots)} / 4 slottia · LEAD"
+        if lang == "fi"
+        else f"{len(rendered_slots)} / 4 slots · LEAD"
+    )
+
+    html = (
+        '<div class="ia-paattely-b">'
+        f'<div class="ia-paattely-head"><span>🧠</span><b>{header_label}</b>'
+        f'<span class="meta">{meta}</span></div>'
+        f'<div class="ia-paattely-grid">{"".join(rendered_slots)}</div>'
+        "</div>"
+    )
+    st.html(html)
+
+
 def render_lead_answer(text: str | None) -> None:
     """Render LEAD's synthesis answer with an amber **💭 Perustelut** callout
     at the top.

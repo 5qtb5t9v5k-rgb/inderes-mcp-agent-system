@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -171,9 +172,60 @@ def _format_conflict_block(report: ConflictReport) -> str:
 
 @dataclass
 class SynthesisTrace:
-    """Per-stage timings + conflict report from one synthesize() call."""
+    """Per-stage timings + conflict report + parsed Päättely from one synthesize() call.
+
+    `paattely` is the parsed JSON the LEAD emits as its visible-reasoning
+    block (BACKLOG #9). Schema: `{disagree, resolution, uncertain, skipped}`,
+    each value a string or null. None when LEAD did not emit a parseable
+    block. The UI renders this as a 2×2 slot grid.
+
+    `paattely_raw` is the raw text matched (block-with-fences) for forensics
+    even when JSON parse fails.
+    """
     conflict_report: ConflictReport
     lead_seconds: float = 0.0
+    paattely: dict[str, Any] | None = None
+    paattely_raw: str | None = None
+    paattely_error: str | None = None
+
+
+# Compiled once: matches `**🧠 Päättely**` (or `**🧠 Reasoning**`) followed by
+# a fenced JSON block. Works whether the model put one or many blank lines
+# between the marker and the fence, and whether the fence is ```json or ```.
+_PAATTELY_RE = re.compile(
+    r"\*\*\s*🧠\s*(?:Päättely|Reasoning)\s*\*\*\s*\n+\s*```(?:json)?\s*\n(?P<body>\{.*?\})\s*\n```",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _extract_paattely(text: str) -> tuple[str, str | None, dict[str, Any] | None, str | None]:
+    """Pull the **🧠 Päättely** JSON block out of the LEAD's response.
+
+    Returns (cleaned_text, raw_block_or_None, parsed_or_None, error_or_None).
+    `cleaned_text` has the matched block (and one trailing blank line) stripped
+    so the UI doesn't render the JSON in the answer body — it renders as a
+    2×2 slot grid instead.
+
+    On JSON parse failure, returns (cleaned_text, raw, None, error_msg).
+    On no match, returns (text, None, None, None).
+    """
+    m = _PAATTELY_RE.search(text)
+    if not m:
+        return text, None, None, None
+
+    raw_full = m.group(0)
+    body = m.group("body")
+    cleaned = (text[: m.start()] + text[m.end() :]).rstrip() + "\n"
+
+    try:
+        parsed = json.loads(body)
+        if not isinstance(parsed, dict):
+            return cleaned, raw_full, None, "päättely body is not a JSON object"
+        # Normalize: ensure expected keys exist (None if missing).
+        normalized = {k: parsed.get(k) for k in ("disagree", "resolution", "uncertain", "skipped")}
+        return cleaned, raw_full, normalized, None
+    except json.JSONDecodeError as exc:
+        return cleaned, raw_full, None, f"JSON parse failed: {exc}"
 
 
 async def synthesize(
@@ -235,5 +287,18 @@ Now synthesize a final answer for the user, following your instructions.
         model_used = getattr(lead.client, "last_used_model", "unknown")
     lead_seconds = time.time() - t_lead
 
-    trace = SynthesisTrace(conflict_report=conflict_report, lead_seconds=lead_seconds)
-    return text, model_used, trace
+    # Pull out the JSON Päättely block — UI renders it as a 2×2 slot grid,
+    # not inline text. The raw text returned to the caller has the block
+    # stripped so render_lead_answer doesn't dump JSON into the answer body.
+    cleaned_text, paattely_raw, paattely, paattely_err = _extract_paattely(text)
+    if paattely_err:
+        log.warning("päättely JSON extraction failed: %s", paattely_err)
+
+    trace = SynthesisTrace(
+        conflict_report=conflict_report,
+        lead_seconds=lead_seconds,
+        paattely=paattely,
+        paattely_raw=paattely_raw,
+        paattely_error=paattely_err,
+    )
+    return cleaned_text, model_used, trace

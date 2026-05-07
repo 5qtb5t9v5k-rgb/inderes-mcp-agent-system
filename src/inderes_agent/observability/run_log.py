@@ -6,7 +6,8 @@ Every query produces a directory at ~/.inderes_agent/runs/<ISO-timestamp>/ conta
   subagent-N.json    — each subagent's domain, company, model used, full output text, error,
                         plus tool_calls: list of {name, arguments, result_summary, item_count, item_names}
                         (BACKLOG #10 provenance threading: ground-truth tool data alongside agent text)
-  synthesis.txt      — final lead answer
+  synthesis.txt      — final lead answer (Päättely JSON block already extracted)
+  paattely.json      — parsed visible-reasoning JSON {disagree, resolution, uncertain, skipped}
   conflicts.json     — pre-synthesis conflict-detector output (agreements / conflicts / isolated_claims)
   meta.json          — timing, fallback events, lead model used
   console.log        — stderr capture (HTTP requests, MCP function calls, fallback events)
@@ -102,6 +103,19 @@ def write_run(
     if conflict_report is not None:
         (run_dir / "conflicts.json").write_text(
             json.dumps(conflict_report.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    if synth_trace is not None and (synth_trace.paattely or synth_trace.paattely_raw):
+        (run_dir / "paattely.json").write_text(
+            json.dumps(
+                {
+                    "parsed": synth_trace.paattely,
+                    "raw": synth_trace.paattely_raw,
+                    "error": synth_trace.paattely_error,
+                },
+                ensure_ascii=False, indent=2,
+            ),
             encoding="utf-8",
         )
 
