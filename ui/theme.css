@@ -434,39 +434,50 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"],
 .ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button[kind="secondary"] {
   background: transparent !important;
-  color: var(--ink-0) !important;
+  color: var(--p-lead) !important;
   border: 1px solid var(--p-lead) !important;
   border-radius: 4px !important;
   font-family: var(--ia-mono) !important;
-  font-size: 12px !important;
-  letter-spacing: 0.03em !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em !important;
   font-weight: 400 !important;
-  padding: 12px 14px !important;
+  padding: 16px 18px !important;
   height: auto !important;
-  min-height: 52px !important;
+  min-height: 88px !important;
   white-space: normal !important;
-  line-height: 1.4 !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.45 !important;
   text-align: left !important;
   justify-content: flex-start !important;
+  align-items: flex-start !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
 }
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"] > div {
   width: 100% !important;
   justify-content: flex-start !important;
   text-align: left !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
 }
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"] p,
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"] div {
-  font-size: 12px !important;
-  letter-spacing: 0.03em !important;
-  line-height: 1.4 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.45 !important;
   text-align: left !important;
-  color: var(--ink-0) !important;
+  color: var(--p-lead) !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
 }
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"]:hover,
 .ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button[kind="secondary"]:hover {
   border-color: var(--p-lead) !important;
   color: var(--p-lead) !important;
-  background: rgba(245, 185, 66, 0.08) !important;
+  background: rgba(245, 185, 66, 0.10) !important;
 }
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"]:hover p,
 .ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"]:hover div {
@@ -1297,6 +1308,19 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ia-conflict-row .claim { flex: 1; }
+
+/* When the conflict callout is embedded INSIDE the Päättely expander
+   (per user feedback 2026-05-07), strip the outer chrome — the parent
+   <details> already provides a border + background. Just keep the
+   internal layout (head + topic + rows). */
+.ia-paattely-b .ia-conflict {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  border-radius: 0;
+  margin: 0;
+  padding: 12px 16px 14px 16px;
+}
 
 /* Päättely prose form (current default — Flash Lite finds prose easier
    than JSON). Italic body inside the same <details> shell as the grid. */

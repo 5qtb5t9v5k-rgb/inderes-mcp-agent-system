@@ -112,7 +112,7 @@ from components import (  # noqa: E402
     render_paattely_b,
     render_timeline_strip,
     render_activity_panel,
-    render_conflict_callout,
+    build_conflict_html,
     render_perustelut_box,
     extract_perustelut,
     CustomStatus,
@@ -745,9 +745,6 @@ for msg in st.session_state.history:
                 # Aikajana strip — collapsed timeline summary above the answer
                 # (redesign §6.3). Reads meta.json; silently no-ops if missing.
                 render_timeline_strip(run_dir, lang=st.session_state.get("ui_lang", "fi"))
-                # Conflict callout (redesign §6.4) — renders ONLY when
-                # conflicts.json has actual disagreements. Most queries: silent.
-                render_conflict_callout(run_dir, lang=st.session_state.get("ui_lang", "fi"))
 
             # Order per user feedback (2026-05-07): Päättely TOP, then
             # Perustelut (own box like subagent Ajatus), then answer body.
@@ -758,17 +755,24 @@ for msg in st.session_state.history:
 
             # 1. 🧠 Päättely (deeper reasoning, expander; first because the
             #    user wants the work shown before the meta-summary).
+            #    The conflict callout — when there are actual disagreements
+            #    in conflicts.json — is embedded INSIDE this expander now,
+            #    above the prose body, per user feedback 2026-05-07.
             if run_dir is not None:
                 _paattely_path = run_dir / "paattely.json"
+                _conflict_html_main = build_conflict_html(run_dir, lang=_lang_main)
+                _paattely_parsed = None
                 if _paattely_path.exists():
                     try:
                         _paattely_blob = json.loads(_paattely_path.read_text(encoding="utf-8"))
-                        render_paattely_b(
-                            _paattely_blob.get("parsed"),
-                            lang=_lang_main,
-                        )
+                        _paattely_parsed = _paattely_blob.get("parsed")
                     except (OSError, json.JSONDecodeError):
-                        pass
+                        _paattely_parsed = None
+                render_paattely_b(
+                    _paattely_parsed,
+                    lang=_lang_main,
+                    conflict_html=_conflict_html_main,
+                )
 
             # 2. 💭 Perustelut (meta-summary, own box).
             render_perustelut_box(_perustelut_body, lang=_lang_main)
@@ -835,7 +839,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
 
     try:
         # Phase 1: routing
-        status.write("🧭 Reititän kysymyksen oikeille agenteille…")
+        status.write("🧭 Tunnistan, mitkä agentit tähän tarvitaan…")
         ctx = ", ".join(state.last_companies) if state.last_companies else ""
         ctx_hint = f"previous turn discussed: {ctx}" if ctx else ""
         classification = await classify_query(query, conversation_context=ctx_hint)
@@ -848,18 +852,18 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             if classification.companies else "—"
         )
         status.write(
-            f"✓ Päädyin: {domains_html} — kohde: {companies_html}",
+            f"✓ Reititys valmis — kysymys menee: {domains_html} · kohde: {companies_html}",
             html=True,
         )
 
-        # Phase 2: dispatch — write a "käynnistyy → verb" line per agent BEFORE
+        # Phase 2: dispatch — write a per-agent task description BEFORE
         # awaiting so the user sees who's working during the (often 10–30s)
         # parallel run.
-        status.write("⚙️  Subagentit käynnistyvät rinnakkain…")
+        status.write("⚙️ Käynnistän agentit rinnakkain — kukin omalla tehtävällään…")
         for d in classification.domains:
-            verb = DOMAIN_VERBS_FI.get(d.value, "tutkii")
+            verb = DOMAIN_VERBS_FI.get(d.value, "tutkii aineistoa")
             status.write(
-                f"  {_persona_chip(d.value)} käynnistyy → {verb}",
+                f"  {_persona_chip(d.value)} → {verb}",
                 html=True,
             )
 
@@ -891,7 +895,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             company = f" · {sr.company}" if sr.company else ""
             if sr.error:
                 status.write(
-                    f"  {chip}{company} ❌ virhe: {sr.error[:60]}",
+                    f"  {chip}{company} ❌ keskeytyi: {sr.error[:60]}",
                     html=True,
                 )
             else:
@@ -904,7 +908,7 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
 
         # Phase 4: synthesis
         status.write(
-            f"{_persona_chip('lead')} yhdistää tulokset synteesiksi…",
+            f"{_persona_chip('lead')} kokoaa tulokset yhdeksi vastaukseksi…",
             html=True,
         )
         answer, lead_model, synth_trace = await synthesize(query, workflow_result)
@@ -970,23 +974,30 @@ if prompt:
             _increment_query_count()
             status.update(label="Valmis", state="complete", expanded=False)
             # Render order matches the chat-history loop (redesign 2026-05-07):
-            # badge → Aikajana strip → conflict callout → 🧠 Päättely (top) →
-            # 💭 Perustelut (own box) → answer body → followups → trace.
+            # badge → Aikajana strip → 🧠 Päättely (with conflict box embedded
+            # inside) → 💭 Perustelut (own box) → answer body → followups → trace.
             _lang_live = st.session_state.get("ui_lang", "fi")
             render_recommendation_badge(run_dir)
             render_timeline_strip(run_dir, lang=_lang_live)
-            render_conflict_callout(run_dir, lang=_lang_live)
 
             _cleaned_live, _perustelut_live = extract_perustelut(answer)
 
-            # 🧠 Päättely (top — deeper reasoning before meta-summary)
+            # 🧠 Päättely (top — deeper reasoning before meta-summary).
+            # Conflict callout (when present) is embedded inside this expander.
             _paattely_live_path = run_dir / "paattely.json"
+            _conflict_html_live = build_conflict_html(run_dir, lang=_lang_live)
+            _paattely_live_parsed = None
             if _paattely_live_path.exists():
                 try:
                     _paattely_live_blob = json.loads(_paattely_live_path.read_text(encoding="utf-8"))
-                    render_paattely_b(_paattely_live_blob.get("parsed"), lang=_lang_live)
+                    _paattely_live_parsed = _paattely_live_blob.get("parsed")
                 except (OSError, json.JSONDecodeError):
-                    pass
+                    _paattely_live_parsed = None
+            render_paattely_b(
+                _paattely_live_parsed,
+                lang=_lang_live,
+                conflict_html=_conflict_html_live,
+            )
 
             # 💭 Perustelut box
             render_perustelut_box(_perustelut_live, lang=_lang_live)

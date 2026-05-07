@@ -1025,7 +1025,7 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
     )
     st.markdown(html, unsafe_allow_html=True)
 
-    btn_label = "Avaa loki ›" if lang == "fi" else "Open log ›"
+    btn_label = "AVAA LOKI ›" if lang == "fi" else "OPEN LOG ›"
     if st.button(
         btn_label,
         key=f"open_panel_{run_dir.name}",
@@ -1073,35 +1073,28 @@ def _style_footnote_markers(html: str) -> str:
     )
 
 
-def render_conflict_callout(run_dir: Path, lang: str = "fi") -> None:
-    """Render a 🔀 callout when subagents had genuine disagreements.
+def build_conflict_html(run_dir: Path, lang: str = "fi") -> str:
+    """Build the 🔀 conflict callout HTML — returns "" when there's nothing
+    to surface (no conflicts.json, parse error, or empty conflicts array).
 
-    Reads `conflicts.json` and surfaces the `conflicts` array (NOT
-    `agreements` or `isolated_claims` — those don't merit the callout).
-    Renders a red-bordered box with topic + positions, each tagged with
-    the supporting subagent's persona color.
-
-    Translates ui/redesign-handoff/parts.jsx :: ConflictCallout. Renders
-    above the answer body to draw attention before the user reads the
-    synthesis.
-
-    Threshold (v1): renders for any non-empty conflicts list. Future
-    refinement: only render when LEAD's Päättely indicates the resolution
-    is genuinely uncertain (`uncertain` slot has content) — for now we err
-    on the side of surfacing, since hidden conflicts are the bigger risk.
+    Split out from ``render_conflict_callout`` so the same HTML can be
+    embedded INSIDE the Päättely <details> expander (per user feedback
+    2026-05-07: "the disagreement box belongs inside the reasoning, not
+    standing alone — it's an indicator and LEAD resolves it in the
+    synthesis").
     """
     conflicts_path = run_dir / "conflicts.json"
     if not conflicts_path.exists():
-        return
+        return ""
     try:
         blob = json.loads(conflicts_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return
+        return ""
 
     parsed = (blob or {}).get("parsed") or {}
     conflicts = parsed.get("conflicts") or []
     if not conflicts:
-        return
+        return ""
 
     head_label = (
         "🔀 SUBAGENTIT ERIMIELTÄ"
@@ -1144,18 +1137,35 @@ def render_conflict_callout(run_dir: Path, lang: str = "fi") -> None:
             )
 
     if not rows:
-        return
+        return ""
 
-    html = (
-        f'<div class="ia-conflict">'
+    return (
+        '<div class="ia-conflict">'
         f'<div class="ia-conflict-head">{head_label}</div>'
         f'{"".join(rows)}'
-        f'</div>'
+        '</div>'
     )
-    st.html(html)
 
 
-def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
+def render_conflict_callout(run_dir: Path, lang: str = "fi") -> None:
+    """Standalone conflict callout — kept for back-compat / activity panel.
+
+    Most of the time we now embed the conflict box INSIDE the Päättely
+    expander (see ``render_paattely_b``'s ``conflict_html`` parameter),
+    so this is mostly used by the right-side activity panel's
+    "Konfliktit" tab. The chat-history + live render paths pass the HTML
+    into Päättely instead of calling this directly.
+    """
+    html = build_conflict_html(run_dir, lang=lang)
+    if html:
+        st.html(html)
+
+
+def render_paattely_b(
+    paattely: dict | None,
+    lang: str = "fi",
+    conflict_html: str = "",
+) -> None:
     """Render LEAD's visible-reasoning block — either a 2×2 slot grid (when
     LEAD emitted JSON) or a styled prose block inside an expander (when
     LEAD emitted free prose, the current default).
@@ -1167,31 +1177,58 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
       - {prose: str}: free-prose form. Rendered as styled italic block
         inside the same expander shell.
 
+    ``conflict_html`` (when non-empty) is embedded INSIDE the <details>
+    body, ABOVE the päättely content. Per user feedback 2026-05-07: the
+    conflict callout belongs inside the reasoning expander as an indicator
+    of where to focus — LEAD's synthesis is what resolves it.
+
     Renders nothing if `paattely` is None or empty (graceful degradation —
     the answer body still reads fine if LEAD skipped the section).
     """
-    if not paattely or not isinstance(paattely, dict):
+    # Even if Päättely is empty, surface the conflict box on its own when
+    # there's a non-empty conflict_html to show — wrapping it in the same
+    # <details> shell so the user has one consistent expander to open.
+    has_paattely = paattely and isinstance(paattely, dict)
+    has_conflict = bool(conflict_html)
+    if not has_paattely and not has_conflict:
         return
 
-    summary_label = "Avaa päättely ›" if lang == "fi" else "Open reasoning ›"
+    summary_label = "AVAA PÄÄTTELY ›" if lang == "fi" else "OPEN REASONING ›"
 
     # Prose form: simpler shell, just the prose text inside the expander.
-    if "prose" in paattely:
+    if has_paattely and "prose" in paattely:
         body = paattely.get("prose") or ""
-        if not body.strip():
+        if not body.strip() and not has_conflict:
             return
         # Render newlines as <br> for paragraph breaks; preserve as-is otherwise.
-        try:
-            from markdown_it import MarkdownIt
-            md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
-            body_html = md.render(body)
-        except Exception:
-            from html import escape as _esc
-            body_html = "<p>" + _esc(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+        if body.strip():
+            try:
+                from markdown_it import MarkdownIt
+                md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+                body_html = md.render(body)
+            except Exception:
+                from html import escape as _esc
+                body_html = "<p>" + _esc(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+        else:
+            body_html = ""
         html = (
             '<details class="ia-paattely-b ia-paattely-prose">'
             f'<summary class="ia-paattely-head">{summary_label}</summary>'
+            f'{conflict_html}'
             f'<div class="ia-paattely-prose-body">{body_html}</div>'
+            "</details>"
+        )
+        st.html(html)
+        return
+
+    # Conflict-only fallback: no Päättely emitted but we have conflicts to
+    # show — still render the same <details> shell so the strip-button-
+    # expander rhythm stays consistent.
+    if not has_paattely:
+        html = (
+            '<details class="ia-paattely-b ia-paattely-prose">'
+            f'<summary class="ia-paattely-head">{summary_label}</summary>'
+            f'{conflict_html}'
             "</details>"
         )
         st.html(html)
@@ -1227,6 +1264,16 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
         )
 
     if not rendered_slots:
+        if has_conflict:
+            # Same conflict-only fallback shape as in the prose branch above
+            # so the user still gets a single consistent expander.
+            html = (
+                '<details class="ia-paattely-b ia-paattely-prose">'
+                f'<summary class="ia-paattely-head">{summary_label}</summary>'
+                f'{conflict_html}'
+                "</details>"
+            )
+            st.html(html)
         return
 
     # 2×2 grid wrapped in <details> expander. Default closed so the answer
@@ -1234,6 +1281,7 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
     html = (
         '<details class="ia-paattely-b">'
         f'<summary class="ia-paattely-head">{summary_label}</summary>'
+        f'{conflict_html}'
         f'<div class="ia-paattely-grid">{"".join(rendered_slots)}</div>'
         "</details>"
     )
@@ -1555,16 +1603,16 @@ def render_full_narrative(run_dir: Path, lang: str = "fi") -> None:
 # Per-domain action-verb phrases used in the live status box. Key matches
 # the lowercase domain enum value (quant / research / sentiment / portfolio).
 DOMAIN_VERBS_FI: dict[str, str] = {
-    "quant":     "etsii tunnuslukuja ja laskee Pythonissa",
-    "research":  "kahlaa Inderesin analyysiarkistoa",
-    "sentiment": "tarkistaa sisäpiirin kaupat ja foorumin",
-    "portfolio": "tarkastaa Inderesin mallisalkun",
+    "quant":     "hakee tunnusluvut ja laskee mittarit Pythonilla",
+    "research":  "lukee Inderesin analyytikkonotet ja raportit",
+    "sentiment": "käy läpi sisäpiirikaupat ja sijoittajafoorumin",
+    "portfolio": "tarkistaa Inderesin mallisalkun nykytilan",
 }
 DOMAIN_VERBS_EN: dict[str, str] = {
-    "quant":     "fetching fundamentals + Python math",
-    "research":  "trawling Inderes' research archive",
-    "sentiment": "checking insider trades + forum buzz",
-    "portfolio": "inspecting Inderes' model portfolio",
+    "quant":     "fetches fundamentals and computes metrics in Python",
+    "research":  "reads Inderes' analyst notes and reports",
+    "sentiment": "scans insider trades and the investor forum",
+    "portfolio": "checks Inderes' current model portfolio",
 }
 
 
