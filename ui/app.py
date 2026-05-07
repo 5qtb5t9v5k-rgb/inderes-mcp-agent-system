@@ -111,6 +111,7 @@ from components import (  # noqa: E402
     render_recommendation_badge,
     render_paattely_b,
     render_timeline_strip,
+    render_activity_panel,
     CustomStatus,
     PERSONAS,
     DOMAIN_VERBS_FI,
@@ -705,6 +706,24 @@ with st.sidebar:
     else:
         st.caption("Ei vielä ajoja." if _lang_side == "fi" else "No runs yet.")
 
+    # Activity-panel toggle. When checked, the right-side overlay panel
+    # renders for the latest assistant message's run dir (and CSS pushes
+    # the main column left to make room). Off = clean answer-only view.
+    _panel_label = (
+        "📊 Aktiviteettiloki paneelina"
+        if _lang_side == "fi"
+        else "📊 Activity log as panel"
+    )
+    st.session_state.activity_panel_open = st.checkbox(
+        _panel_label,
+        value=st.session_state.get("activity_panel_open", False),
+        help=(
+            "Avaa täyden aktiviteettilokin oikealle pysyvänä paneelina"
+            if _lang_side == "fi"
+            else "Show the full activity log as a persistent right-side panel"
+        ),
+    )
+
     # Daily quota progress bar removed from the sidebar — the cap still
     # applies (enforced before each query in `_enforce_daily_cap_or_stop`),
     # we just don't surface the count in the chrome anymore.
@@ -771,6 +790,21 @@ for msg in st.session_state.history:
                 render_trace_expander(run_dir)
         else:
             st.markdown(msg["content"])
+
+
+# ---------------------------------------------------------------------------
+# Right-side activity panel (redesign §6.1 option A) — renders if the user
+# toggled "📊 Aktiviteettiloki paneelina" in the sidebar. Anchored to the
+# latest run dir. Position:fixed via CSS; main content shifts left via the
+# `:has()` rule in theme.css.
+# ---------------------------------------------------------------------------
+
+if st.session_state.get("activity_panel_open"):
+    _state = st.session_state.get("state")
+    _last_run_dir = getattr(_state, "last_run_dir", None) if _state else None
+    if _last_run_dir:
+        from pathlib import Path as _P
+        render_activity_panel(_P(_last_run_dir), lang=st.session_state.get("ui_lang", "fi"))
 
 
 # ---------------------------------------------------------------------------

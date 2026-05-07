@@ -645,6 +645,226 @@ def _externalize_links(html: str) -> str:
     )
 
 
+def render_activity_panel(run_dir: Path, lang: str = "fi") -> None:
+    """Render the right-side activity panel as a position:fixed overlay.
+
+    Translates ui/redesign-handoff/parts.jsx :: ActivityPanel. Reads from
+    `run_dir` (latest run's persisted state) and emits a single HTML block
+    styled by the `.ia-panel` rules in theme.css. The panel is anchored to
+    the right edge via position:fixed; the main column is automatically
+    pushed left by a `:has()` selector in CSS — the redesigned layout
+    needs no Python-side column gymnastics.
+
+    Tabs (Yhteenveto / Agentit / Työkalut / Konfliktit) are visual only in
+    this first pass — clicking them does not switch sub-views yet. The
+    Yhteenveto view (metric cards + stage bars + per-agent cards) is what
+    renders for now.
+    """
+    meta_path = run_dir / "meta.json"
+    if not meta_path.exists():
+        return
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+
+    duration = meta.get("duration_seconds", 0)
+    sub_count = meta.get("subagent_count", 0)
+    sub_errors = meta.get("subagent_errors", 0)
+    fallbacks = meta.get("fallback_events", 0)
+    stage = meta.get("stage_timings") or {}
+    fanout_s = stage.get("fanout_seconds")
+    detector_s = stage.get("conflict_detector_seconds") or 0
+    lead_s = stage.get("lead_seconds") or 0
+    per_subagent = stage.get("per_subagent") or []
+
+    # Count tool calls + collect persona codes used (for the chip row).
+    tool_call_count = 0
+    persona_codes: list[str] = []
+    sub_files = sorted(run_dir.glob("subagent-*.json"))
+    sub_blobs: list[dict] = []
+    for path in sub_files:
+        try:
+            blob = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        sub_blobs.append(blob)
+        tool_call_count += len(blob.get("tool_calls") or [])
+        domain = (blob.get("domain") or "").upper()
+        if domain and domain not in persona_codes:
+            persona_codes.append(domain)
+
+    # Conflict count
+    conflicts_path = run_dir / "conflicts.json"
+    conflict_count = 0
+    if conflicts_path.exists():
+        try:
+            cblob = json.loads(conflicts_path.read_text(encoding="utf-8"))
+            parsed = (cblob or {}).get("parsed") or {}
+            conflict_count = len(parsed.get("conflicts") or [])
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # Localization helpers
+    L = {
+        "head":      ("AGENTTIEN TOIMINTALOKI", "AGENT ACTIVITY LOG"),
+        "yhteenveto": ("Yhteenveto", "Summary"),
+        "agentit":   ("Agentit",     "Agents"),
+        "tyokalut":  ("Työkalut",    "Tools"),
+        "konfliktit": ("Konfliktit", "Conflicts"),
+        "duration":  ("KESTO",        "DURATION"),
+        "subagentit": ("SUBAGENTIT",  "SUBAGENTS"),
+        "tools":     ("TYÖKALUKUTSUT", "TOOL CALLS"),
+        "errors":    ("VIRHEET",      "ERRORS"),
+        "all_ok":    ("kaikki onnistuivat", "all succeeded"),
+        "fallback":  ("0 fallback",   "0 fallback"),
+        "kutsua":    ("kutsua",       "calls"),
+        "valmis":    ("valmis",       "done"),
+    }
+    fi = lang == "fi"
+    def t(key: str) -> str:
+        return L[key][0] if fi else L[key][1]
+
+    # Tabs row
+    tabs_html = (
+        f'<div class="ia-panel-tabs">'
+        f'<span class="tab is-active">{t("yhteenveto")}</span>'
+        f'<span class="tab">{t("agentit")} <span class="n">{sub_count}</span></span>'
+        f'<span class="tab">{t("tyokalut")} <span class="n">{tool_call_count}</span></span>'
+        f'<span class="tab">{t("konfliktit")} <span class="n">{conflict_count}</span></span>'
+        f"</div>"
+    )
+
+    # 2×2 metric cards
+    fanout_str = f"{fanout_s:.1f}s" if fanout_s is not None else "—"
+    detector_str = f"{detector_s:.1f}s" if detector_s else "—"
+    lead_str = f"{lead_s:.1f}s" if lead_s else "—"
+    metrics_html = (
+        '<div class="ia-panel-metrics">'
+        f'<div class="metric"><div class="lab">{t("duration")}</div>'
+        f'<div class="v num">{duration:.1f}s</div>'
+        f'<div class="sub">fan-out {fanout_str} · konflikti {detector_str} · LEAD {lead_str}</div></div>'
+        f'<div class="metric"><div class="lab">{t("subagentit")}</div>'
+        f'<div class="v num">{sub_count}</div>'
+        f'<div class="sub">{" · ".join(persona_codes) if persona_codes else "—"}</div></div>'
+        f'<div class="metric"><div class="lab">{t("tools")}</div>'
+        f'<div class="v num">{tool_call_count}</div>'
+        f'<div class="sub">Inderes MCP · {fallbacks} fallback</div></div>'
+        f'<div class="metric"><div class="lab">{t("errors")}</div>'
+        f'<div class="v num {"ok" if sub_errors == 0 else "err"}">{sub_errors}</div>'
+        f'<div class="sub">{t("all_ok") if sub_errors == 0 else ""}</div></div>'
+        '</div>'
+    )
+
+    # Stage gantt bars: routing | QUANT | RESEARCH | ... | conflicts | LEAD
+    # Total wall-clock = duration. Each stage rendered as a colored bar.
+    stages_html_parts: list[str] = ['<div class="ia-panel-stages">']
+    if fanout_s is not None:
+        # Per-subagent bars (parallel — all start near 0, vary in length)
+        for ent in per_subagent:
+            persona = (ent.get("domain") or "").upper()
+            color = PERSONAS.get(persona, {}).get("color", "#888")
+            ds = ent.get("duration_seconds", 0) or 0
+            company = ent.get("company")
+            label = persona + (f"·{company}" if company else "")
+            width_pct = min(99.0, (ds / max(duration, 0.1)) * 100)
+            stages_html_parts.append(
+                f'<div class="stage"><span class="nm">{label}</span>'
+                f'<div class="bar"><i style="left:0%; width:{width_pct:.1f}%; background:{color}"></i></div>'
+                f'<span class="v">{ds:.1f}s</span></div>'
+            )
+    if detector_s:
+        # Conflict detector runs after fan-out
+        offset_pct = (fanout_s / max(duration, 0.1)) * 100 if fanout_s else 0
+        width_pct = (detector_s / max(duration, 0.1)) * 100
+        stages_html_parts.append(
+            f'<div class="stage"><span class="nm">conflicts</span>'
+            f'<div class="bar"><i style="left:{offset_pct:.1f}%; width:{width_pct:.1f}%; background:var(--ink-2)"></i></div>'
+            f'<span class="v">{detector_s:.1f}s</span></div>'
+        )
+    if lead_s:
+        # LEAD runs after conflict detector
+        offset_pct = ((fanout_s or 0) + detector_s) / max(duration, 0.1) * 100
+        width_pct = (lead_s / max(duration, 0.1)) * 100
+        stages_html_parts.append(
+            f'<div class="stage"><span class="nm">LEAD</span>'
+            f'<div class="bar"><i style="left:{offset_pct:.1f}%; width:{width_pct:.1f}%; background:var(--p-lead)"></i></div>'
+            f'<span class="v">{lead_s:.1f}s</span></div>'
+        )
+    stages_html_parts.append('</div>')
+
+    # Per-agent cards
+    agent_cards: list[str] = []
+    for blob in sub_blobs:
+        domain = (blob.get("domain") or "").upper()
+        company = blob.get("company")
+        persona = PERSONAS.get(domain, {"glyph": "•", "color": "#888", "role_fi": "—", "role_en": "—"})
+        role = persona["role_fi"] if fi else persona["role_en"]
+        ds = blob.get("duration_seconds", 0) or 0
+        n_calls = len(blob.get("tool_calls") or [])
+        text = blob.get("text") or ""
+        # Take the "Ajatus:" line as a compact preview if present, else first 200 chars.
+        thought = ""
+        m = re.search(r"\*\*Ajatus:\*\*\s*(.+?)(?:\n\n|$)", text, re.DOTALL)
+        if m:
+            thought = m.group(1).strip()
+        else:
+            mb = re.search(r"Ajatus:\s*(.+?)(?:\n\n|$)", text, re.DOTALL)
+            if mb:
+                thought = mb.group(1).strip()
+            else:
+                thought = text[:200].strip()
+        if len(thought) > 240:
+            thought = thought[:240].rstrip() + "…"
+
+        # Tool list (compact)
+        tool_list = ""
+        for tc in (blob.get("tool_calls") or [])[:6]:
+            tname = tc.get("name") or "?"
+            count = tc.get("item_count")
+            names = tc.get("item_names") or []
+            preview = ", ".join(names[:3])
+            if len(names) > 3:
+                preview += "…"
+            count_str = f"{count} items" if count is not None else "—"
+            tool_list += (
+                f'<li><span class="tool" style="color:{persona["color"]}">{tname}</span>'
+                f' <span class="ret">→ {count_str}{(" · " + preview) if preview else ""}</span></li>'
+            )
+        if not tool_list:
+            tool_list = '<li style="color:var(--ink-3)">—</li>'
+
+        label = domain + (f" / {company}" if company else "")
+
+        agent_cards.append(
+            f'<div class="ia-panel-agcard" style="border-left:2px solid {persona["color"]}">'
+            f'<div class="head">'
+            f'<span class="glyph" style="color:{persona["color"]}">{persona["glyph"]}</span>'
+            f'<span class="nm" style="color:{persona["color"]}">{label}</span>'
+            f'<span class="role">{role}</span>'
+            f'<span class="meta"><span class="ok">✓ {t("valmis")}</span> '
+            f'<span>{ds:.1f}s</span> <span>{n_calls} {t("kutsua")}</span></span>'
+            f'</div>'
+            f'<div class="body"><div class="think"><b>Ajatus:</b> {thought}</div></div>'
+            f'<div class="tools"><div class="toolhead">▾ TYÖKALUT ({n_calls})</div>'
+            f'<ol>{tool_list}</ol></div>'
+            f'</div>'
+        )
+
+    panel_html = (
+        '<aside class="ia-panel">'
+        f'<div class="ia-panel-head"><span>🔍</span><b>{t("head")}</b></div>'
+        f'{tabs_html}'
+        f'<div class="ia-panel-body">'
+        f'{metrics_html}'
+        f'{"".join(stages_html_parts)}'
+        f'{"".join(agent_cards)}'
+        '</div>'
+        '</aside>'
+    )
+    st.html(panel_html)
+
+
 def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
     """Render the collapsed Aikajana strip — single-line summary above the answer.
 
