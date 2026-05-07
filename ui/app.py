@@ -650,19 +650,8 @@ def _render_tool_calls(tool_calls: list[dict], lang: str) -> None:
                 st.caption(head + ("…" if len(result_text) > 300 else ""))
             else:
                 st.caption("(empty)" if lang == "en" else "(tyhjä)")
-
-            # Full raw result behind a nested details block for users who want
-            # to verify the ground truth byte-for-byte. Skip rendering huge
-            # results inline; show first ~5kB.
-            if result_text:
-                with st.expander(
-                    "raakatulos (JSON)" if lang == "fi" else "raw result (JSON)",
-                    expanded=False,
-                ):
-                    snippet = result_text[:5000]
-                    if len(result_text) > 5000:
-                        snippet += f"\n\n…(+{len(result_text) - 5000} chars truncated)"
-                    st.code(snippet, language="json")
+            # Full raw JSON is in run_dir/subagent-NN-*.json; not surfaced in
+            # the UI to keep the panel scannable when fan-out is wide.
 
 
 # ---------------------------------------------------------------------------
