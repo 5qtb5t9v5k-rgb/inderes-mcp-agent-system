@@ -20,7 +20,7 @@ from ..agents import (
     build_research_agent,
     build_sentiment_agent,
 )
-from ..observability.output_parts import extract_parts
+from ..observability.output_parts import ToolCallTrace, extract_parts
 from ..settings import get_settings
 from .router import Domain, QueryClassification
 
@@ -33,6 +33,7 @@ class SubagentResult:
     model_used: str
     error: str | None = None
     image_paths: list[str] = field(default_factory=list)
+    tool_calls: list[ToolCallTrace] = field(default_factory=list)
 
 
 @dataclass
@@ -71,7 +72,7 @@ async def _run_one(
                 # Walk response parts so code blocks, code outputs and images
                 # land structured rather than flattened into one text blob.
                 label = f"{domain.value}-{company}" if company else domain.value
-                text, image_paths = extract_parts(
+                text, image_paths, tool_calls = extract_parts(
                     result, run_dir=run_dir, agent_label=label
                 )
                 return SubagentResult(
@@ -80,6 +81,7 @@ async def _run_one(
                     text=text,
                     model_used=model_used,
                     image_paths=image_paths,
+                    tool_calls=tool_calls,
                 )
         except Exception as exc:
             return SubagentResult(

@@ -73,6 +73,35 @@ def _format_subagent_results(result: WorkflowResult) -> str:
     return "\n".join(lines)
 
 
+def _format_tool_call_trace(result: WorkflowResult) -> str:
+    """Render every subagent's tool calls as ground-truth context for synthesis.
+
+    BACKLOG #10 provenance threading: lead synthesis needs to see what tools
+    actually returned, not just the subagent's text summary, so it can:
+      - drop hallucinated entities (in agent text but not in tool output)
+      - surface omitted-but-relevant entities (in tool output but not in agent text)
+      - cross-check numbers and attributions against raw data
+    """
+    lines: list[str] = []
+    for i, sr in enumerate(result.subagent_results, 1):
+        if not sr.tool_calls:
+            continue
+        label = sr.domain.value
+        if sr.company:
+            label += f" — {sr.company}"
+        lines.append(f"### Subagent {i} ({label}) — {len(sr.tool_calls)} tool call(s):")
+        for tc in sr.tool_calls:
+            args_repr = json.dumps(tc.arguments, ensure_ascii=False) if tc.arguments is not None else "{}"
+            if len(args_repr) > 300:
+                args_repr = args_repr[:300] + "…"
+            lines.append(f"- `{tc.name}` args={args_repr}")
+            lines.append(f"    → {tc.result_summary(max_items=30)}")
+        lines.append("")
+    if not lines:
+        return "_no tool calls captured for any subagent_"
+    return "\n".join(lines)
+
+
 def _strip_json_fences(text: str) -> str:
     """Defensively strip ```json fences in case the model added them despite the prompt."""
     s = text.strip()
@@ -142,6 +171,7 @@ async def synthesize(
     conflict_report = await detect_conflicts(workflow_result)
 
     subagents_block = _format_subagent_results(workflow_result)
+    tool_trace_block = _format_tool_call_trace(workflow_result)
     conflict_block = _format_conflict_block(conflict_report)
     cls = workflow_result.classification
 
@@ -155,8 +185,18 @@ companies = {cls.companies}
 comparison = {cls.is_comparison}
 reasoning = {cls.reasoning}
 
-SUBAGENT OUTPUTS:
+SUBAGENT OUTPUTS (the agent's own narrative summary):
 {subagents_block}
+
+TOOL CALL TRACE (ground truth — what the MCP tools actually returned):
+{tool_trace_block}
+
+How to use the tool call trace:
+- This is the **structured ground truth**. The subagent text above is its summary; this section shows what the tools actually returned.
+- **Hallucination check**: if a subagent named a specific entity (company, person, date) that does NOT appear in the tool result's `item_names`, **drop that entity from your answer**. Do not surface unsupported claims.
+- **Completeness check**: if the tool returned N items and the subagent only mentioned M < N when the user asked for a list, either include the missing items or explicitly state which subset and why. Do not silently truncate.
+- **Numerical & attribution check**: if a subagent quoted a specific number, name, or date, the tool result is the source of truth — prefer it when there's a conflict.
+- If `item_names` is empty for a tool call, the result was non-structured (e.g. document body, transcript) and the subagent's summary is the best you have.
 
 CONFLICT REPORT (pre-synthesis structural analysis of subagent outputs):
 {conflict_block}

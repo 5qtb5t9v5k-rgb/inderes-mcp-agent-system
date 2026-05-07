@@ -18,11 +18,18 @@ writes referencing files it `savefig()`'d into the sandbox FS — those would
 render as broken icons in the UI. Inline_data (real chart capture) is not
 supported by `agent_framework_gemini`, so charts are not extracted in this
 build; that's documented as a known limitation.
+
+In addition to text, we also extract **tool-call traces** (BACKLOG #10
+provenance threading): every `function_call` / `function_result` Content
+in the response is captured as a `ToolCallTrace` so synthesis and the UI
+can compare what the agent claimed against what the tool actually returned.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +48,45 @@ _PY_TOKEN_RES = [
 _IMG_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)\s*")
 
 
+@dataclass
+class ToolCallTrace:
+    """A single tool invocation within a subagent's run.
+
+    Captured for BACKLOG #10 (provenance threading): synthesis sees the
+    structured tool data alongside the agent's text summary, so it can
+    diff agent claims against what the tool actually returned.
+
+    `result_text` is the full text result from the tool (already
+    JSON-serialized in most MCP cases). `result_summary` is a compact
+    human-readable summary used in synthesis prompts when the full
+    result would blow the context window.
+    """
+    name: str
+    arguments: Any  # dict or str — depends on the model's serialization choice
+    result_text: str = ""
+    item_count: int | None = None
+    item_names: list[str] = field(default_factory=list)
+    error: str | None = None
+    call_id: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def result_summary(self, max_items: int = 30) -> str:
+        """Compact one-line summary suitable for embedding in synthesis prompts."""
+        if self.error:
+            return f"ERROR: {self.error[:200]}"
+        if self.item_count is not None:
+            preview = ", ".join(self.item_names[:max_items])
+            if len(self.item_names) > max_items:
+                preview += f", … (+{len(self.item_names) - max_items} more)"
+            return f"{self.item_count} items returned: [{preview}]"
+        if self.result_text:
+            head = self.result_text[:300].replace("\n", " ")
+            return f"text result ({len(self.result_text)} chars): {head}…" if len(self.result_text) > 300 else head
+        return "(empty result)"
+
+
 def _looks_like_python(text: str) -> bool:
     """Heuristic — does this text chunk look like Python source code?"""
     if not text or not text.strip():
@@ -52,13 +98,116 @@ def _looks_like_python(text: str) -> bool:
 
 
 def _strip_dangling_image_refs(text: str) -> str:
-    """Remove `![alt](path)` references from text — image capture isn't supported.
-
-    Inline_data parts are dropped by agent_framework_gemini, so any image
-    references the agent writes point to sandbox-only files. Strip them so
-    the UI doesn't show broken-icon thumbnails.
-    """
+    """Remove `![alt](path)` references from text — image capture isn't supported."""
     return _IMG_REF_RE.sub("", text)
+
+
+def _parse_arguments(args: Any) -> Any:
+    """Normalize tool arguments into a JSON-serializable form.
+
+    Gemini sometimes emits args as a string of JSON, sometimes as a dict.
+    We try to parse JSON strings, otherwise pass through.
+    """
+    if isinstance(args, str):
+        try:
+            return json.loads(args)
+        except (json.JSONDecodeError, TypeError):
+            return args
+    return args
+
+
+def _summarize_result(result_text: str) -> tuple[int | None, list[str]]:
+    """Try to extract item count and entity names from a JSON result.
+
+    Most Inderes MCP tools return shape `{"items": [{...}], "pageInfo": {...}}`.
+    We pull `companyName` from each item if present. This gives synthesis
+    explicit ground-truth entity names to diff against the agent's claims.
+
+    Returns (item_count, item_names). Both None/empty if we can't parse.
+    """
+    if not result_text:
+        return None, []
+    try:
+        parsed = json.loads(result_text)
+    except (json.JSONDecodeError, TypeError):
+        return None, []
+
+    items = None
+    if isinstance(parsed, dict):
+        for key in ("items", "results", "data"):
+            if isinstance(parsed.get(key), list):
+                items = parsed[key]
+                break
+    elif isinstance(parsed, list):
+        items = parsed
+
+    if items is None:
+        return None, []
+
+    names: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        # Common name-like fields across Inderes MCP tool schemas
+        for key in ("companyName", "name", "title", "topicTitle", "personName"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                names.append(value.strip())
+                break
+    return len(items), names
+
+
+def _collect_tool_calls(messages: Any) -> list[ToolCallTrace]:
+    """Walk messages and pair function_call → function_result content items by call_id.
+
+    Tool calls and their results land in separate Content items inside the
+    response.messages stream, linked via call_id. We pair them and emit one
+    ToolCallTrace per call, in order.
+    """
+    calls: dict[str, dict[str, Any]] = {}
+    order: list[str] = []  # preserve call_id insertion order for stable output
+
+    for msg in messages or []:
+        for content in (getattr(msg, "contents", None) or []):
+            ctype = getattr(content, "type", None)
+            if ctype == "function_call":
+                call_id = getattr(content, "call_id", None) or f"_anon_{len(order)}"
+                if call_id not in calls:
+                    calls[call_id] = {}
+                    order.append(call_id)
+                calls[call_id]["name"] = getattr(content, "name", None) or "<unknown>"
+                calls[call_id]["arguments"] = _parse_arguments(getattr(content, "arguments", None))
+            elif ctype == "function_result":
+                call_id = getattr(content, "call_id", None) or f"_anon_{len(order)}"
+                if call_id not in calls:
+                    calls[call_id] = {}
+                    order.append(call_id)
+                result_text = getattr(content, "result", None) or ""
+                if not isinstance(result_text, str):
+                    try:
+                        result_text = json.dumps(result_text, default=str)
+                    except (TypeError, ValueError):
+                        result_text = str(result_text)
+                calls[call_id]["result_text"] = result_text
+                calls[call_id]["error"] = getattr(content, "exception", None)
+
+    traces: list[ToolCallTrace] = []
+    for call_id in order:
+        d = calls[call_id]
+        result_text = d.get("result_text", "")
+        item_count, item_names = _summarize_result(result_text) if result_text else (None, [])
+        traces.append(
+            ToolCallTrace(
+                name=d.get("name", "<unknown>"),
+                arguments=d.get("arguments"),
+                result_text=result_text,
+                item_count=item_count,
+                item_names=item_names,
+                error=d.get("error"),
+                call_id=call_id if not call_id.startswith("_anon_") else None,
+            )
+        )
+    return traces
 
 
 def extract_parts(
@@ -66,16 +215,19 @@ def extract_parts(
     *,
     run_dir: Path,
     agent_label: str,  # kept for API compat; unused now that images aren't extracted
-) -> tuple[str, list[str]]:
-    """Walk the response's content parts and return (markdown, image_paths).
+) -> tuple[str, list[str], list[ToolCallTrace]]:
+    """Walk the response's content parts and return (markdown, image_paths, tool_calls).
 
-    Returns a markdown string with Python source wrapped in ```python``` blocks,
-    and an empty image_paths list (image extraction is not supported in this
-    build — see module docstring).
+    Returns:
+      - markdown: text response with Python source wrapped in ```python``` blocks
+      - image_paths: empty list (image extraction not supported in this build)
+      - tool_calls: list of ToolCallTrace, one per function_call/result pair found
     """
     messages = getattr(response, "messages", None)
     if messages is None:
-        return _strip_dangling_image_refs(_fallback_text(response)), []
+        return _strip_dangling_image_refs(_fallback_text(response)), [], []
+
+    tool_calls = _collect_tool_calls(messages)
 
     rendered: list[str] = []
 
@@ -92,15 +244,15 @@ def extract_parts(
                 else:
                     rendered.append(text)
 
-            # function_call / function_result and any non-text parts are
-            # intentionally skipped — already in console.log; not user-facing.
+            # function_call / function_result are captured separately into
+            # tool_calls; not rendered into the user-facing text.
 
     md = "\n\n".join(s for s in rendered if s).strip()
     if not md:
         md = _fallback_text(response)
 
     md = _strip_dangling_image_refs(md)
-    return md, []
+    return md, [], tool_calls
 
 
 def _fallback_text(response: Any) -> str:

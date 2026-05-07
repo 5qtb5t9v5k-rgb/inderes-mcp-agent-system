@@ -3,7 +3,9 @@
 Every query produces a directory at ~/.inderes_agent/runs/<ISO-timestamp>/ containing:
   query.txt          — user question
   routing.json       — router classification (domains, companies, comparison flag, reasoning)
-  subagent-N.json    — each subagent's domain, company, model used, full output text, error
+  subagent-N.json    — each subagent's domain, company, model used, full output text, error,
+                        plus tool_calls: list of {name, arguments, result_summary, item_count, item_names}
+                        (BACKLOG #10 provenance threading: ground-truth tool data alongside agent text)
   synthesis.txt      — final lead answer
   conflicts.json     — pre-synthesis conflict-detector output (agreements / conflicts / isolated_claims)
   meta.json          — timing, fallback events, lead model used
@@ -86,6 +88,7 @@ def write_run(
                     "error": sr.error,
                     "text": sr.text,
                     "image_paths": sr.image_paths,
+                    "tool_calls": [tc.to_dict() for tc in sr.tool_calls],
                 },
                 ensure_ascii=False,
                 indent=2,

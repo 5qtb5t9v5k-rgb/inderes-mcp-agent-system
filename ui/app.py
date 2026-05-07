@@ -579,6 +579,66 @@ def render_trace_expander(run_dir: Path) -> None:
                 st.error(sa["error"])
             else:
                 render_agent_output(sa.get("text"))
+                _render_tool_calls(sa.get("tool_calls") or [], lang)
+
+
+def _render_tool_calls(tool_calls: list[dict], lang: str) -> None:
+    """Render the subagent's tool calls — what the MCP tools actually returned.
+
+    BACKLOG #10 provenance threading: gives the user transparency into the
+    structured ground-truth the agent saw. Each tool call shows args + a
+    compact summary of items returned, with the full JSON behind a nested
+    `<details>` block.
+    """
+    if not tool_calls:
+        return
+    label = (
+        f"🔧 Työkalukutsut ({len(tool_calls)})"
+        if lang == "fi"
+        else f"🔧 Tool calls ({len(tool_calls)})"
+    )
+    with st.expander(label, expanded=False):
+        for i, tc in enumerate(tool_calls, 1):
+            name = tc.get("name") or "<unknown>"
+            args = tc.get("arguments") or {}
+            err = tc.get("error")
+            count = tc.get("item_count")
+            names = tc.get("item_names") or []
+            result_text = tc.get("result_text") or ""
+
+            args_repr = json.dumps(args, ensure_ascii=False)
+            if len(args_repr) > 200:
+                args_repr = args_repr[:200] + "…"
+            st.markdown(f"**{i}. `{name}`** &nbsp; `{args_repr}`", unsafe_allow_html=True)
+
+            if err:
+                st.error(err)
+                continue
+
+            if count is not None:
+                preview_n = min(20, len(names))
+                preview = ", ".join(names[:preview_n])
+                more = f" *(+{len(names) - preview_n} more)*" if len(names) > preview_n else ""
+                lbl = "tulosta" if lang == "fi" else "items"
+                st.caption(f"{count} {lbl}: {preview}{more}")
+            elif result_text:
+                head = result_text[:300].replace("\n", " ")
+                st.caption(head + ("…" if len(result_text) > 300 else ""))
+            else:
+                st.caption("(empty)" if lang == "en" else "(tyhjä)")
+
+            # Full raw result behind a nested details block for users who want
+            # to verify the ground truth byte-for-byte. Skip rendering huge
+            # results inline; show first ~5kB.
+            if result_text:
+                with st.expander(
+                    "raakatulos (JSON)" if lang == "fi" else "raw result (JSON)",
+                    expanded=False,
+                ):
+                    snippet = result_text[:5000]
+                    if len(result_text) > 5000:
+                        snippet += f"\n\n…(+{len(result_text) - 5000} chars truncated)"
+                    st.code(snippet, language="json")
 
 
 # ---------------------------------------------------------------------------
