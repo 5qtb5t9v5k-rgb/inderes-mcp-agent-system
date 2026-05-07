@@ -988,23 +988,20 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
    Single-line summary above the answer body. Replaces the live-status
    block once synthesis lands. Source: parts.jsx :: TimelineStrip. */
 .ia-timeline {
-  display: flex; align-items: center; gap: 12px;
-  border: 1px solid var(--line); border-radius: 4px;
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line); border-radius: 3px;
   background: var(--bg-1);
-  padding: 8px 14px; font-size: 11px; color: var(--ink-2);
-  margin: 4px 0 12px 0;
+  padding: 6px 12px; font-size: 10px; color: var(--ink-2);
+  margin: 4px 0 4px 0;
   font-family: var(--ia-mono);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-decoration: none;
-  cursor: pointer;
+  font-weight: 400;
 }
-.ia-timeline:hover { border-color: var(--p-lead); background: var(--bg-2); }
-.ia-timeline .lab { color: var(--ink-3); letter-spacing: 0.12em; font-size: 10px; }
+.ia-timeline .lab { color: var(--ink-3); letter-spacing: 0.12em; font-size: 9.5px; }
 .ia-timeline .v { color: var(--ink-0); font-variant-numeric: tabular-nums; }
-.ia-timeline .ag { display: flex; gap: 8px; margin-left: 4px; }
-.ia-timeline .ag span { font-size: 10.5px; }
-.ia-timeline .open { margin-left: auto; color: var(--ink-3); font-size: 10.5px; }
-.ia-timeline:hover .open { color: var(--p-lead); }
+.ia-timeline .ag { display: flex; gap: 6px; margin-left: 2px; }
+.ia-timeline .ag span { font-size: 10px; letter-spacing: 0.04em; }
 
 /* ─────────────────────────  INLINE FOOTNOTE MARKERS  ──────────────────────
    `[N]` markers in the answer body that reference sources / tool calls.
