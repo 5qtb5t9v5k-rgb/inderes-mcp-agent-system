@@ -1108,8 +1108,68 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   display: flex; align-items: center; gap: 8px;
   font-size: 11px; letter-spacing: 0.12em; color: var(--ink-2);
   flex: 0 0 auto;
+  /* Reserve the right edge for the ✕ close button overlay. */
+  padding-right: 48px;
 }
 .ia-panel-head b { color: var(--ink-0); letter-spacing: 0.08em; font-weight: 600; }
+
+/* Inline ✕ close button anchored to the panel's top-right corner.
+   Streamlit's st.container(key=...) emits a wrapper with class
+   .st-key-<key> — we use that as a stable CSS hook to lift the button
+   out of the main column flow and pin it over the panel. */
+.st-key-panel_close_overlay {
+  position: fixed !important;
+  top: 64px !important;          /* aligns with panel's top:56px + small inset */
+  right: 12px !important;        /* matches panel's right edge */
+  width: 28px !important;
+  height: 28px !important;
+  z-index: 1001 !important;      /* above .ia-panel (z:999) */
+  margin: 0 !important;
+  padding: 0 !important;
+}
+/* The button inside the overlay needs to outscore the slim-secondary
+   rule defined later — it's a square iconic button, not a label. */
+.st-key-panel_close_overlay [data-testid="stButton"] {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"] {
+  width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 3px !important;
+  background: var(--bg-1) !important;
+  color: var(--ink-2) !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  justify-content: center !important;
+  align-items: center !important;
+  display: flex !important;
+}
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"] > div,
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"] p,
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"] div {
+  width: auto !important;
+  font-size: 14px !important;
+  letter-spacing: 0 !important;
+  text-align: center !important;
+  justify-content: center !important;
+  color: var(--ink-2) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"]:hover {
+  border-color: var(--p-lead) !important;
+  color: var(--ink-0) !important;
+  background: var(--bg-2) !important;
+}
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"]:hover p,
+.st-key-panel_close_overlay [data-testid="stButton"] button[kind="secondary"]:hover div {
+  color: var(--ink-0) !important;
+}
 
 .ia-panel-tabs {
   display: flex; border-bottom: 1px solid var(--line);

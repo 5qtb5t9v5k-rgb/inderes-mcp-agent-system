@@ -953,6 +953,20 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
     # the main DOM (st.html sandboxes in an iframe and breaks navigation).
     st.markdown(panel_html, unsafe_allow_html=True)
 
+    # Inline close affordance — a small ✕ button positioned over the panel's
+    # top-right corner via CSS (.st-key-panel_close_overlay). User no longer
+    # has to open the sidebar to dismiss the panel. Using a keyed container
+    # is the cleanest way to attach a stable CSS hook to a Streamlit button.
+    with st.container(key="panel_close_overlay"):
+        if st.button(
+            "✕",
+            key="panel_close_x",
+            type="secondary",
+            help=("Sulje aktiviteettiloki" if fi else "Close activity log"),
+        ):
+            st.session_state.activity_panel_open = False
+            st.rerun()
+
 
 def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
     """Render the collapsed Aikajana strip — single-line summary above the answer.
