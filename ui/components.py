@@ -1008,32 +1008,28 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
             f'<span class="v">{lead_s:.1f}s</span>'
         )
 
-    # 2026-05-07: switched from <a href="?panel=open"> to a native Streamlit
-    # button. URL-navigation links inside Streamlit kept causing the page to
-    # "refresh" without opening the panel reliably — st.button is the
-    # canonical Streamlit pattern for "click → toggle session_state" and
-    # works the same way the existing 🔍 toimintaloki st.expander does.
-    # The trade-off: we render the rich glyph row as HTML above, and the
-    # button below carries only plain-text label.
-    html = (
-        '<div class="ia-timeline ia-timeline-info">'
-        f'<span class="lab">{lab}</span> '
-        f'<span class="v">{duration:.1f}s</span> '
-        f'<span class="lab">·</span> '
-        f'<span class="v">{subagent_count} {agentit}</span> '
-        f'<span class="ag">{glyphs_html}</span>'
-        f"{extras}"
-        "</div>"
+    # 2026-05-07: combined the visual Aikajana strip + open-log action
+    # into ONE minimal Streamlit button per user feedback ("minimaalinen,
+    # samaan tyyliin kuin aikajana"). Trade-off: the button label is plain
+    # text so we lose per-persona glyph coloring; the persona codes still
+    # show via plain-text glyphs (▲ ■ ●), they're just monochrome.
+    glyphs_plain = " ".join(
+        f"{PERSONAS.get(p, {}).get('glyph', '•')} {p}"
+        for p in seen_personas
     )
-    st.markdown(html, unsafe_allow_html=True)
-    # Action button — what actually opens the panel. CSS makes it look
-    # like a continuation of the strip; the click is reliable Streamlit.
-    btn_label = "📊 Avaa loki ›" if lang == "fi" else "📊 Open log ›"
+    extras_plain = ""
+    if fanout_s is not None and lead_s is not None:
+        extras_plain = f" · fan-out {fanout_s:.1f}s · lead {lead_s:.1f}s"
+    btn_label = (
+        f"{lab} {duration:.1f}s · {subagent_count} {agentit} · {glyphs_plain}"
+        f"{extras_plain} · "
+        + ("avaa loki ›" if lang == "fi" else "open log ›")
+    )
     if st.button(
         btn_label,
         key=f"open_panel_{run_dir.name}",
         use_container_width=True,
-        type="secondary",   # subtle (CSS overrides further to match Päättely)
+        type="secondary",   # subtle (CSS overrides match the Päättely shell)
     ):
         st.session_state.activity_panel_open = True
         st.session_state["_panel_tab"] = "summary"
