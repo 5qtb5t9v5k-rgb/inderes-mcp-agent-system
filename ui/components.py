@@ -846,8 +846,11 @@ def render_activity_panel(run_dir: Path, lang: str = "fi") -> None:
             f'<span>{ds:.1f}s</span> <span>{n_calls} {t("kutsua")}</span></span>'
             f'</div>'
             f'<div class="body"><div class="think"><b>Ajatus:</b> {thought}</div></div>'
-            f'<div class="tools"><div class="toolhead">▾ TYÖKALUT ({n_calls})</div>'
-            f'<ol>{tool_list}</ol></div>'
+            # Tool list as native <details> — click summary to expand. Default
+            # closed so a fan-out with 10 agents × 4 tools doesn't dump 40
+            # rows on the user. They click to drill in.
+            f'<details class="tools"><summary class="toolhead">▾ TYÖKALUT ({n_calls})</summary>'
+            f'<ol>{tool_list}</ol></details>'
             f'</div>'
         )
 
@@ -1105,12 +1108,22 @@ def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
         else f"{len(rendered_slots)} / 4 slots · LEAD"
     )
 
+    # User feedback (2026-05-07): wrap the grid in a <details> expander so
+    # it reads like the previous päättely-as-expander pattern (collapsed
+    # under Perustelut by default, opens to reveal the 4-slot grid).
+    open_label = (
+        "avaa nähdäksesi ajatusketju"
+        if lang == "fi"
+        else "open to see reasoning"
+    )
     html = (
-        '<div class="ia-paattely-b">'
-        f'<div class="ia-paattely-head"><span>🧠</span><b>{header_label}</b>'
-        f'<span class="meta">{meta}</span></div>'
+        '<details class="ia-paattely-b">'
+        f'<summary class="ia-paattely-head">'
+        f'<span>🧠</span><b>{header_label}</b>'
+        f'<span class="meta">{meta} · {open_label}</span>'
+        f'</summary>'
         f'<div class="ia-paattely-grid">{"".join(rendered_slots)}</div>'
-        "</div>"
+        "</details>"
     )
     st.html(html)
 
