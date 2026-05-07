@@ -1325,29 +1325,42 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 }
 
 
-/* "Aikajana → Avaa loki" combined button — replaces the rich-HTML strip
-   per user feedback ("minimaalinen, samaan tyyliin kuin aikajana"). The
-   button label is plain mono text; this CSS gives it the same dark
-   subtle look as the previous .ia-timeline strip. */
+/* "Aikajana → Avaa loki" combined button — terminal-DNA, slim, minimal.
+   Mirrors the original .ia-timeline strip styling: small mono, muted
+   ink, subtle border, hover lights up to amber. */
 [data-testid="stButton"] button[kind="secondary"] {
   background: var(--bg-1) !important;
   color: var(--ink-2) !important;
   border: 1px solid var(--line) !important;
-  border-radius: 4px !important;
+  border-radius: 3px !important;
   font-family: var(--ia-mono) !important;
-  font-size: 11px !important;
-  letter-spacing: 0.04em !important;
-  padding: 8px 14px !important;
-  height: auto !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.06em !important;
+  padding: 5px 10px !important;
+  height: 28px !important;
   min-height: 0 !important;
-  font-weight: 500 !important;
+  line-height: 1.2 !important;
   text-align: left !important;
   justify-content: flex-start !important;
+  /* The button's own internal text container */
+}
+[data-testid="stButton"] button[kind="secondary"] p,
+[data-testid="stButton"] button[kind="secondary"] div {
+  font-size: 10px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.06em !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
 }
 [data-testid="stButton"] button[kind="secondary"]:hover {
   border-color: var(--p-lead) !important;
   color: var(--ink-0) !important;
   background: var(--bg-2) !important;
+}
+[data-testid="stButton"] button[kind="secondary"]:hover p,
+[data-testid="stButton"] button[kind="secondary"]:hover div {
+  color: var(--ink-0) !important;
 }
 [data-testid="stButton"] button[kind="secondary"]:active,
 [data-testid="stButton"] button[kind="secondary"]:focus {
