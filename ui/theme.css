@@ -976,3 +976,40 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   .ia-paattely-slot:not(:last-child) { border-bottom: 1px solid var(--line); }
   .ia-paattely-slot:last-child { border-bottom: 0; }
 }
+
+/* ─────────────────────────  AIKAJANA STRIP (redesign timeline)  ────────────
+   Single-line summary above the answer body. Replaces the live-status
+   block once synthesis lands. Source: parts.jsx :: TimelineStrip. */
+.ia-timeline {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--line); border-radius: 4px;
+  background: var(--bg-1);
+  padding: 8px 14px; font-size: 11px; color: var(--ink-2);
+  margin: 4px 0 12px 0;
+  font-family: var(--ia-mono);
+  letter-spacing: 0.04em;
+}
+.ia-timeline:hover { border-color: var(--line-2); }
+.ia-timeline .lab { color: var(--ink-3); letter-spacing: 0.12em; font-size: 10px; }
+.ia-timeline .v { color: var(--ink-0); font-variant-numeric: tabular-nums; }
+.ia-timeline .ag { display: flex; gap: 8px; margin-left: 4px; }
+.ia-timeline .ag span { font-size: 10.5px; }
+
+/* ─────────────────────────  INLINE FOOTNOTE MARKERS  ──────────────────────
+   `[N]` markers in the answer body that reference sources / tool calls.
+   Color-neutral baseline; hinted persona variants below for when the
+   prompt evolves to surface backing-agent info. */
+.ia-fn {
+  display: inline-block; vertical-align: super;
+  font-size: 9.5px; padding: 0 4px; height: 14px; line-height: 14px;
+  border-radius: 2px; margin: 0 2px;
+  background: var(--bg-3); color: var(--ink-1);
+  border: 1px solid var(--line);
+  font-weight: 500;
+  font-family: var(--ia-mono);
+}
+.ia-fn:hover { border-color: var(--line-2); }
+.ia-fn-q { color: var(--p-quant);     border-color: rgba(95,210,138,.3); }
+.ia-fn-r { color: var(--p-research);  border-color: rgba(106,169,255,.3); }
+.ia-fn-s { color: var(--p-sentiment); border-color: rgba(255,126,179,.3); }
+.ia-fn-p { color: var(--p-portfolio); border-color: rgba(194,148,255,.3); }

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import re
 from typing import Any
 
 import streamlit as st
@@ -644,6 +645,109 @@ def _externalize_links(html: str) -> str:
     )
 
 
+def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
+    """Render the collapsed Aikajana strip — single-line summary above the answer.
+
+    Replaces the live-status block once synthesis lands. Shows wall-clock
+    duration, agent count, and the agents' persona glyphs in their colors.
+    Designed as a clickable affordance to open the full activity log
+    (currently it's purely informational; activity log is its own
+    expander further down). Translates ui/redesign-handoff/parts.jsx ::
+    TimelineStrip.
+    """
+    meta_path = run_dir / "meta.json"
+    if not meta_path.exists():
+        return
+    try:
+        m = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+
+    duration = m.get("duration_seconds")
+    if duration is None:
+        return
+    subagent_count = m.get("subagent_count", 0)
+    stage = m.get("stage_timings") or {}
+    per_subagent = stage.get("per_subagent") or []
+
+    # Build the agent-glyph row from per-subagent entries (deduped — one
+    # glyph per persona even if fan-out spawned multiple per company).
+    seen_personas: list[str] = []
+    for entry in per_subagent:
+        persona = (entry.get("domain") or "").upper()
+        if persona and persona not in seen_personas:
+            seen_personas.append(persona)
+
+    glyphs_html = "".join(
+        f'<span style="color:{PERSONAS.get(p, {}).get("color", "#888")}">'
+        f'{PERSONAS.get(p, {}).get("glyph", "•")} {p}</span>'
+        for p in seen_personas
+    )
+
+    lab = "AIKAJANA" if lang == "fi" else "TIMELINE"
+    agentit = "agenttia" if lang == "fi" else "agents"
+    # Optional: stage-timing hint as the third inline metric. Keeps the
+    # strip terse but tells the user where time went.
+    fanout_s = stage.get("fanout_seconds")
+    lead_s = stage.get("lead_seconds")
+    extras = ""
+    if fanout_s is not None and lead_s is not None:
+        extras = (
+            f' · <span class="lab">fan-out</span> '
+            f'<span class="v">{fanout_s:.1f}s</span> · '
+            f'<span class="lab">lead</span> '
+            f'<span class="v">{lead_s:.1f}s</span>'
+        )
+
+    html = (
+        '<div class="ia-timeline">'
+        f'<span class="lab">{lab}</span> '
+        f'<span class="v">{duration:.1f}s</span> '
+        f'<span class="lab">·</span> '
+        f'<span class="v">{subagent_count} {agentit}</span> '
+        f'<span class="ag">{glyphs_html}</span>'
+        f"{extras}"
+        "</div>"
+    )
+    st.html(html)
+
+
+# Inline footnote markers in answer text. LEAD's prompt should produce
+# `[¹]` / `[²]` style numbered superscript markers at the end of sentences
+# that are backed by specific tool calls. Here we post-process the
+# rendered HTML to wrap those markers in persona-colored spans so they
+# stand out (and later: become clickable to scroll the activity panel).
+#
+# The model isn't disciplined about always producing them, so this is
+# best-effort styling: we match `[1]`, `[2]`, etc. (or unicode ¹²³),
+# and color them by the persona that backed the claim — IF the surrounding
+# text gave a hint via class="fn q/r/s/p" (translated from the redesign).
+# When no hint is present we color them neutrally.
+_FOOTNOTE_MARKER_RE = re.compile(
+    r"\[(\d+)\]"  # plain ASCII [N] form — model emits this
+)
+_FOOTNOTE_PERSONA_HINT_RE = re.compile(
+    r'<sup\s+class="fn-([qrsp])"[^>]*>(\d+)</sup>'  # hinted form
+)
+
+
+def _style_footnote_markers(html: str) -> str:
+    """Wrap `[N]` markers in styled <sup> tags so they read as inline footnotes.
+
+    `[1]` → `<sup class="ia-fn">[1]</sup>` (color-neutral baseline).
+    Sentences with persona hints get persona-colored markers later.
+
+    This is best-effort: the model sometimes uses `(1)` or `[1.]` or
+    parenthetical citations; we only catch the canonical `[N]` form and
+    leave others as-is. The risk of false positives (a literal `[1]` in
+    a quoted text) is low in this domain.
+    """
+    return _FOOTNOTE_MARKER_RE.sub(
+        r'<sup class="ia-fn">[\1]</sup>',
+        html,
+    )
+
+
 def render_paattely_b(paattely: dict | None, lang: str = "fi") -> None:
     """Render LEAD's visible-reasoning JSON as a 2×2 slot grid (BACKLOG #9).
 
@@ -746,6 +850,7 @@ def render_lead_answer(text: str | None) -> None:
 
         html_content = f"<pre>{_html_escape(main)}</pre>"
     html_content = _externalize_links(html_content)
+    html_content = _style_footnote_markers(html_content)
     st.html(f'<div class="ia-lead-answer">{html_content}</div>')
 
 

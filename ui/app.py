@@ -110,6 +110,7 @@ from components import (  # noqa: E402
     render_followup_chips,
     render_recommendation_badge,
     render_paattely_b,
+    render_timeline_strip,
     CustomStatus,
     PERSONAS,
     DOMAIN_VERBS_FI,
@@ -744,6 +745,9 @@ for msg in st.session_state.history:
             # a recommendation in this run; silently no-ops otherwise.
             if run_dir is not None:
                 render_recommendation_badge(run_dir)
+                # Aikajana strip — collapsed timeline summary above the answer
+                # (redesign §6.3). Reads meta.json; silently no-ops if missing.
+                render_timeline_strip(run_dir, lang=st.session_state.get("ui_lang", "fi"))
             render_lead_answer(msg["content"])
             # Päättely 2×2 slot grid (BACKLOG #9 + redesign §5) — read from
             # paattely.json. None / missing file silently no-ops, so old
