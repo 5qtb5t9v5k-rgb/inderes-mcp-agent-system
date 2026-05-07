@@ -423,28 +423,54 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 /* Style buttons that follow our followup-label. Streamlit nests the
    button inside [data-testid="stButton"]; we target everything inside
    it. The followup-label and its button cluster live in the same
-   chat-message container so the sibling combinator finds them. */
-.ia-followup-label ~ div [data-testid="stButton"] > button,
-.ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button {
+   chat-message container so the sibling combinator finds them.
+
+   These chips are deliberately HEAVIER than the slim Avaa-loki / Avaa-päättely
+   buttons above the answer. The trio above acts as a quiet meta strip;
+   the chips below are an invitation to dig deeper, so they read as the
+   primary CTA after the answer — amber accent + larger hit area. We
+   include [kind="secondary"] in the selector to outscore the slim
+   secondary-button rule defined later in this file. */
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"],
+.ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button[kind="secondary"] {
   background: transparent !important;
-  color: var(--ia-dim) !important;
-  border: 1px solid var(--ia-border) !important;
-  border-radius: 0 !important;
+  color: var(--ink-0) !important;
+  border: 1px solid var(--p-lead) !important;
+  border-radius: 4px !important;
   font-family: var(--ia-mono) !important;
-  font-size: 11px !important;
-  letter-spacing: 0.04em !important;
+  font-size: 12px !important;
+  letter-spacing: 0.03em !important;
   font-weight: 400 !important;
-  padding: 6px 10px !important;
+  padding: 12px 14px !important;
+  height: auto !important;
+  min-height: 52px !important;
   white-space: normal !important;
-  line-height: 1.35 !important;
-  min-height: 0 !important;
+  line-height: 1.4 !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"] > div {
+  width: 100% !important;
+  justify-content: flex-start !important;
   text-align: left !important;
 }
-.ia-followup-label ~ div [data-testid="stButton"] > button:hover,
-.ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button:hover {
-  border-color: var(--ia-amber) !important;
-  color: var(--ia-amber) !important;
-  background: rgba(255, 210, 74, 0.04) !important;
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"] p,
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"] div {
+  font-size: 12px !important;
+  letter-spacing: 0.03em !important;
+  line-height: 1.4 !important;
+  text-align: left !important;
+  color: var(--ink-0) !important;
+}
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"]:hover,
+.ia-followup-label ~ div [data-testid="stColumn"] [data-testid="stButton"] > button[kind="secondary"]:hover {
+  border-color: var(--p-lead) !important;
+  color: var(--p-lead) !important;
+  background: rgba(245, 185, 66, 0.08) !important;
+}
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"]:hover p,
+.ia-followup-label ~ div [data-testid="stButton"] > button[kind="secondary"]:hover div {
+  color: var(--p-lead) !important;
 }
 
 /* HERO — top intro panel: short description + agent roster + GitHub CTA.
@@ -1346,6 +1372,11 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   justify-content: flex-start !important;
   /* The button's own internal text container */
 }
+[data-testid="stButton"] button[kind="secondary"] > div {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
 [data-testid="stButton"] button[kind="secondary"] p,
 [data-testid="stButton"] button[kind="secondary"] div {
   font-size: 10px !important;
@@ -1353,6 +1384,7 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
   letter-spacing: 0.06em !important;
   line-height: 1.2 !important;
   margin: 0 !important;
+  text-align: left !important;
 }
 [data-testid="stButton"] button[kind="secondary"]:hover {
   border-color: var(--p-lead) !important;
