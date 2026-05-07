@@ -1311,3 +1311,4 @@ input:focus, textarea:focus { border-color: var(--ia-amber) !important; }
 .ia-perustelut-body strong, .ia-perustelut-body b {
   color: var(--ink-0); font-style: normal;
 }
+
