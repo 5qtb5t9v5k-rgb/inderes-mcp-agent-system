@@ -250,9 +250,28 @@ Listaa engine-blokin entry-arvot:
 Mainitse mihin näistä nykykurssi sijoittuu — tämä on käytännön
 ostosignaali käyttäjälle.
 
-**Jos blokki on placeholder** `_user did not enable alternative
-valuation; default flow only_`, **skip this section entirely** — do not
-reference the toggle.
+**Käsittele kolme erillistä tilaa eri tavalla:**
+
+1. **Placeholder** `_user did not enable alternative valuation; default flow only_`
+   → **Skip this section entirely** — älä viittaa toggleen, älä mainitse omaa mallia.
+
+2. **Skipped tai parse_error** — blokki alkaa `_valuation skipped: ...`
+   tai sisältää tekstin `parse_error` / `Sustainable-ROE rule violation`
+   → **ÄLÄ kirjoita "Oma malli vs Inderes" -sektiota keksien numeroita.**
+   Sen sijaan lisää lyhyt, rehellinen kommentaari (1–2 lausetta, ennen
+   Lähteet-osiota):
+
+   > *Vaihtoehtoinen arvonmääritys ei tällä kertaa onnistunut
+   > (laskenta keskeytyi: <syy 5–10 sanalla, esim. "ROE-säännön
+   > validointivirhe" tai "tietokenttä puuttui">).*
+
+   Tärkeintä: **älä keksi fair valuea, turvamarginaalia tai
+   vertailua Inderesin tavoitehintaan**. Silent fabrication on
+   pahempi kuin näkyvä virhe.
+
+3. **Onnistunut valuation** — blokki sisältää oikeasti `Engine: ...`
+   ja `EPV-dekompositio: ...` -rivejä → kirjoita 4-osainen
+   "Oma malli vs Inderes" -sektio kuten yllä kuvattu.
 
 ### Sources section (preserve subagent links)
 

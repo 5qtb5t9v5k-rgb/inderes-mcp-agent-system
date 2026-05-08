@@ -232,26 +232,40 @@ def validate_agent_roe_choice(
     agent_version: str,
     stats: RoeStatistics,
     *,
-    abs_tol: float = 0.001,
+    abs_tol: float = 0.005,
+    rel_tol: float = 0.01,
 ) -> tuple[bool, str]:
     """Check whether the agent's roe_used + roe_version match the rule.
 
     Returns ``(is_valid, message)``. When invalid, ``message`` is a
     human-readable explanation of what the rule expected and what it got.
 
-    Tolerance: 0.001 (i.e., 0.1 percentage points). Rounding from the
-    agent's display precision shouldn't trigger a false rejection.
+    Tolerance is ``max(abs_tol, |expected_roe| × rel_tol)``:
+      - ``abs_tol = 0.005`` (0.5pp) absorbs 2-decimal display rounding.
+        The agent often emits ROE as 0.28 when the rule's true value is
+        0.2837 — that's a 0.4pp display-rounding gap, not a real rule
+        violation. Caught the Qt run 20260508-190141-372 false positive.
+      - ``rel_tol = 0.01`` (1%) gives proportionally more room for
+        higher ROEs while keeping low-ROE checks tight.
+
+    Real rule violations (e.g., agent picks trend_weighted = 0.366 on a
+    laskeva trend when min_3y_trend = 0.18 is required — a 0.18 gap)
+    still fail cleanly because they exceed both tolerances by an order
+    of magnitude.
     """
     expected_roe, expected_version = select_sustainable_roe(stats)
 
     if not math.isfinite(agent_roe):
         return False, f"agent's roe_used is not finite: {agent_roe!r}"
 
-    if abs(agent_roe - expected_roe) > abs_tol:
+    tol = max(abs_tol, abs(expected_roe) * rel_tol)
+    diff = abs(agent_roe - expected_roe)
+    if diff > tol:
         return False, (
             f"agent picked roe_used={agent_roe:.4f} (version={agent_version!r}) "
             f"but the sustainable-ROE rule for trend_label={stats.trend_label!r} "
             f"requires {expected_roe:.4f} (version={expected_version!r}). "
+            f"Tolerance was {tol:.4f}; difference was {diff:.4f}. "
             f"History stats: lfy={stats.lfy}, "
             f"3y_median={stats.p3y_median}, 5y_median={stats.p5y_median}, "
             f"trend_weighted={stats.trend_weighted}."
