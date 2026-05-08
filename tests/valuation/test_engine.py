@@ -320,3 +320,90 @@ def test_decomposition_internally_consistent() -> None:
     expected_share = (v.price - v.epv_pure) / v.price
     assert v.market_premium_to_epv_pct == pytest.approx(expected_premium, abs=1e-6)
     assert v.growth_priced_in_share == pytest.approx(expected_share, abs=1e-6)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FCF per share — exposed in dataclass for the perussetti table
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_fcf_ps_matches_definition() -> None:
+    """fcf_ps = (ROE - g) × BVPS — the free cash flow per share."""
+    v = value_stock(bvps=10.0, roe=0.18, k=0.09, g=0.05, price=15.0)
+    expected = (0.18 - 0.05) * 10.0
+    assert v.fcf_ps == pytest.approx(expected, abs=1e-9)
+
+
+def test_fv_gordon_equals_fcf_over_k_minus_g() -> None:
+    """Sanity that FV_Gordon = FCF_ps / (k - g)."""
+    v = value_stock(bvps=10.0, roe=0.18, k=0.09, g=0.05, price=15.0)
+    expected = v.fcf_ps / (v.k - v.g)
+    assert v.fv_gordon == pytest.approx(expected, abs=1e-9)
+
+
+def test_fcf_ps_negative_when_roe_below_g() -> None:
+    """FCF goes negative when ROE < g (cash sink). Engine still computes —
+    LEAD prompt warns about this case interpretively."""
+    v = value_stock(bvps=10.0, roe=0.04, k=0.10, g=0.05, price=4.0)
+    assert v.fcf_ps < 0
+    # Quality is "tuhoutuva" since ROE < k
+    assert v.quality == "tuhoutuva"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Implied ROE — dual inverse Gordon (hold g, solve ROE)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_implied_roe_for_nordea_case() -> None:
+    """Nordea (2026-05-08): BVPS 9.41, k 9%, g 3%, price 16.09.
+
+    Implied ROE = P/B × (k - g) + g
+    P/B = 16.09/9.41 = 1.7099
+    implied_roe = 1.7099 × 0.06 + 0.03 = 0.1326 = 13.26%
+
+    Compared to model's ROE=15%, market implies ROE 13.26% (at model's g=3%).
+    Both are valid readings of the same gap (FV 18.86 vs price 16.09).
+    """
+    v = value_stock(bvps=9.41, roe=0.15, k=0.09, g=0.03, price=16.09)
+    assert v.implied_roe == pytest.approx(0.1326, abs=0.001)
+    assert v.implied_roe < v.roe  # market more pessimistic on ROE
+
+
+def test_implied_roe_at_fair_value_equals_model_roe() -> None:
+    """Sanity: when price = fair_value, implied_roe should equal model ROE."""
+    v = value_stock(bvps=10.0, roe=0.18, k=0.09, g=0.05, price=10.0)
+    v_at_fv = value_stock(bvps=10.0, roe=0.18, k=0.09, g=0.05, price=v.fv_gordon)
+    assert v_at_fv.implied_roe == pytest.approx(0.18, abs=1e-6)
+
+
+def test_implied_roe_inverse_consistency() -> None:
+    """If we plug implied_roe back into Gordon with the model's g and k,
+    we should recover the current price."""
+    v = value_stock(bvps=9.41, roe=0.15, k=0.09, g=0.03, price=16.09)
+    pb_reconstructed = (v.implied_roe - v.g) / (v.k - v.g)
+    price_reconstructed = pb_reconstructed * v.bvps
+    assert price_reconstructed == pytest.approx(v.price, abs=0.001)
+
+
+def test_implied_roe_at_pb_one_equals_k() -> None:
+    """When P/B = 1 (market values exactly at book), implied_roe = k.
+
+    Algebraic derivation:
+      P/B = (ROE - g)/(k - g) = 1
+      → ROE - g = k - g
+      → ROE = k
+
+    Intuition: P/B = 1 means market expects no premium over book, which
+    corresponds to ROE exactly meeting the cost of capital.
+    """
+    v = value_stock(bvps=10.0, roe=0.10, k=0.09, g=0.05, price=10.0)
+    assert v.pb == pytest.approx(1.0, abs=1e-9)
+    assert v.implied_roe == pytest.approx(v.k, abs=1e-6)
+
+
+def test_implied_roe_above_model_roe_when_overvalued() -> None:
+    """When price > fair_value, implied_roe > model_roe."""
+    v = value_stock(bvps=2.68, roe=0.19, k=0.09, g=0.05, price=12.0)
+    assert v.price > v.fv_gordon  # overvalued
+    assert v.implied_roe > v.roe  # market implies higher ROE than model

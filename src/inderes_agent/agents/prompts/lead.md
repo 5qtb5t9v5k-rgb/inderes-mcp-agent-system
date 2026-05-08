@@ -269,62 +269,174 @@ Vain Inderes-pohjaista sisältöä — mitään ei oteta omasta mallista.
 
 Vain oman mallin sisältöä — **ei vertailua Inderesiin tässä**.
 
-**Engine-laskenta** (siteeraa engine-blokista):
-- Fair value (3 desimaalia tarkkuudella, mutta esitä 2 dec): X €
-- EPV (kasvuton arvo): Y €
-- Kasvun arvo: Z €
-- Quality: laatu / keskinkertainen / tuhoutuva
-- Growth multiplier (GM)
-- Rock Bottom -ankkuri
+**ALOITA aina yhteenveto-taulukolla** (perussetti, joka käyttäjä haluaa
+nähdä joka ajossa):
 
-**Markkinan implisiittinen näkemys** (käytä uusia kenttiä):
-- `growth_priced_in_share`: mikä osuus kurssista on kasvun maksamista
-- `implied_g`: mitä g markkina hinnoittelee — vertaile mallin g:hen
-  - Sanoita: *"Markkina hinnoittelee X% kasvua, oma malli olettaa Y% —
-    markkina on [optimistisempi/pessimistisempi] kuin minä."*
-- Jos `implied_g is None`: totea *"Markkinan implisiittinen kasvu on
-  Gordonin viitekehyksen ulkopuolella (yli k:n) — markkina hinnoittelee
-  yhtiölle epärealistisen korkeaa pysyvää kasvua."*
-- Erityistapaukset:
-  - `market_premium_to_epv_pct ≤ 0` → *"Kasvun saa kaupan päälle,
-    EPV yksin riittää perustelemaan kurssin."*
-  - `growth_priced_in_share > 50%` → *"Yli puolet kurssista perustuu
-    odotuksiin tulevasta kasvusta."*
+```
+| Mittari            | Arvo     | Peruste / lähde                        |
+|--------------------|----------|----------------------------------------|
+| BVPS               | X,XX €   | marketCap/sharesTotal/pb @ <bvps_date> |
+| ROE (käytetty)     | Y,Y %    | <roe_version> — siteeraa lyhyt peruste |
+| Tuottovaatimus (k) | Z,Z %    | <sektoriperuste 1 lauseella>           |
+| Kasvu (g)          | W,W %    | <perusteen ydin 1 lauseella>           |
+| FCF/osake          | A,AA €   | (ROE − g) × BVPS                       |
+| EPV (kasvuton arvo)| B,BB €   | (ROE / k) × BVPS — Greenwald          |
+| Kasvun arvo        | C,CC €   | FV − EPV (vain laatuyhtiöillä)        |
+| **Fair value**     | **D,DD €** | FCF / (k − g) — Gordon              |
+| Nykykurssi         | E,EE €   | <price_date>                           |
+| Turvamarginaali    | +X,X %   | (FV − kurssi) / FV                     |
+```
 
-**Parametrit** (siteeraa agentin rationale-kenttiä — älä parafraasoi
-liian lyhyeksi, käyttäjä haluaa nähdä perustelun):
-- ROE-valinta + lyhyt perustelu (`roe_rationale`)
-- k + perustelu (`k_rationale`)
-- g + perustelu (`g_rationale`)
+Lukijalle tämä taulukko on koko mallin tiivistetty näkymä. Käytä
+EXAKT numeroita engine-blokista (`fcf_ps`, `epv_pure`, `growth_value_pure`,
+`fv_gordon`, `safety_margin_to_fv_pct`).
 
-**Entry-tasot**:
-- Aloitus 90% / Nosto 80% / Täysi 75% fair valuesta
-- Mainitse mihin näistä nykykurssi sijoittuu
+**Laatuluokitus 1 lauseella** taulukon jälkeen:
+- `quality=laatu` → *"Yhtiö luokitellaan **laatuyhtiöksi** — ROE
+  (X %) ylittää tuottovaatimuksen (Y %), joten kasvu lisää arvoa
+  (Greenwald GM = Z×)."*
+- `quality=keskinkertainen` → *"Yhtiö on **keskinkertainen** —
+  ROE on lähellä tuottovaatimusta, kasvu neutraali."*
+- `quality=tuhoutuva` → *"Mallin mukaan **kasvu tuhoaa arvoa** —
+  ROE (X %) jää alle tuottovaatimuksen (Y %), joten EPV (€) on
+  itse asiassa korkeampi kuin Gordon-FV (€)."*
+
+**Markkinan implisiittinen näkemys — DUAALINEN luenta**
+
+Tärkeä matemaattinen tosiasia: Gordon-yhtälössä on **kaksi
+tuntematonta** (ROE, g) mutta vain **yksi rajoite** (kurssi). Sama
+hinta-ero (oma fair value vs kurssi) selittyy joko alemmalla g:llä
+TAI alemmalla ROE:lla — tai niiden yhdistelmällä. ÄLÄ esitä vain
+toista tulkintaa kuin "se oikea".
+
+Käytä engine-blokin DUAALI-osaa:
+- `implied_g` (kun ROE pidetään mallin arvossa)
+- `implied_roe` (kun g pidetään mallin arvossa)
+
+Kirjoita kappale tähän tyyliin:
+
+> *"Markkinan nykyhinta voidaan tulkita kahdella tavalla:*
+> *• Jos ROE pysyy mallin arvossa (X %), markkina hinnoittelee*
+>   *kasvuksi vain implied_g % (oma g = Y %).*
+> *• Jos g pysyy mallin arvossa (Y %), markkina hinnoittelee ROE:n*
+>   *implied_roe %:iin (oma ROE = X %).*
+> *Kummassakin lukemassa markkinan näkemys on [varovaisempi/optimistisempi]*
+> *kuin oma mallini, mutta dimension valinta on [esimerkiksi:*
+> *kasvunäkemyksen kysymys vs kannattavuusnäkymän kysymys]."*
+
+Erityistapaukset:
+- `implied_g is None` → *"Markkinan implisiittinen kasvu (kun ROE
+  pidetään mallin arvossa) on Gordonin viitekehyksen ulkopuolella —
+  markkina hinnoittelee yhtiölle pysyvää kasvua, joka ylittäisi
+  tuottovaatimuksen. Tarkastele toista lukemaa (implied_ROE) tai
+  arvioi mallin parametrit uudelleen."*
+- `implied_roe < 0` (harvinainen, mutta mahdollinen) → *"Markkina
+  hinnoittelee yhtiölle negatiivista ROE:ta tällä g-oletuksella —
+  selvä signaali yhtiön nykyrakenne ei kestä."*
+- `growth_priced_in_share > 50 %` → *"Yli puolet kurssista perustuu
+  odotuksiin tulevasta kasvusta."*
+- `market_premium_to_epv_pct ≤ 0` → *"Kasvun saa kaupan päälle,
+  EPV yksin riittää perustelemaan kurssin."*
+
+**Parametrien perustelut** (kappale alle, EI taulukossa) —
+agentti laati `roe_rationale`, `k_rationale`, `g_rationale`
+2–4 lauseella. Lainaa tai parafraasoi nämä **lyhentämättä**:
+
+- ROE-valinnan tausta: <roe_rationale>
+- k:n valinta: <k_rationale>
+- g:n valinta: <g_rationale>
+
+**Entry-tasot taulukkona**:
+
+```
+| Taso     | Hinta    | Kuvaus                                  |
+|----------|----------|-----------------------------------------|
+| Aloitus  | A,AA €   | 90 % fair valuesta — pieni alennus     |
+| Nosto    | B,BB €   | 80 % — selvä alennus                   |
+| Täysi    | C,CC €   | 75 % — vahva turvamarginaali           |
+```
+
+Mainitse 1 lauseella mihin näistä nykykurssi sijoittuu — tämä
+on käyttäjälle konkreettinen ostosignaali.
 
 ##### ⚖️ Vertailu
 
-Vasta tässä numerot kohtaavat. Tee **taulukko** jos kohtuullisesti
-mahtuu, tai kompakti listaus:
+Vasta tässä numerot kohtaavat. Tee **taulukko** kaikilla kolmella
+sarakkeella jokaiselle riville — ei tyhjiä kohtia ellei oikeasti
+puuttuvaa dataa:
 
 ```
-| Mittari            | Inderes  | Oma malli | Markkina (kurssi) |
-|--------------------|----------|-----------|---------------------|
-| Tavoite/Fair value | XX,XX €  | YY,YY €   | ZZ,ZZ €             |
-| Turvamarginaali    | +X,X %   | +Y,Y %    | —                   |
-| Implisiittinen g   | (—)      | g % oletus | implied_g %        |
+| Mittari              | Inderes  | Oma malli | Markkina (kurssi)  |
+|----------------------|----------|-----------|---------------------|
+| Tavoite/Fair value   | XX,XX €  | YY,YY €   | ZZ,ZZ €             |
+| Turvamarginaali      | +X,X %   | +Y,Y %    | —                   |
+| Implisiittinen g     | (—)      | g % oletus | implied_g %         |
+| Implisiittinen ROE   | (—)      | ROE % oletus | implied_roe %    |
 ```
 
-Sit **1–3 kappaletta tulkintaa**:
+Sit **1–3 kappaletta tulkintaa**, joissa **mainitse duaalinen luenta**:
 - **Yhtenevyys**: missä molemmat sanovat samaa? (esim. "molemmat näkevät
   yhtiön lievästi aliarvostettuna")
-- **Eroavaisuus**: missä eroavat ja **miksi**? (esim. "ero johtuu
-  pääosin g-oletuksesta — Inderes implisiittisesti varovaisempi kuin
-  oma malli")
+- **Eroavaisuus**: missä eroavat ja **miksi**? Erityisesti: voiko ero
+  selittyä eri kasvuoletuksella, eri ROE-oletuksella, vai molemmilla?
 - **Päätelmä käyttäjälle**: kumpi näkemys uskottavampi missä
-  skenaariossa? Älä ota voimakasta kantaa, vaan auta käyttäjää
+  skenaariossa? Älä ota voimakasta kantaa — auta käyttäjää
   ymmärtämään minkä uskomus johtaa kumpaan päätelmään
 
 **Älä keksi numeroita** joita ei ole engine- tai quant-blokeissa.
+
+##### 📚 Avattava infoboksi metodologiasta
+
+Lisää **AINA** Vertailu-sektion JÄLKEEN ja ennen Lähteitä avattava
+metodologiakuvaus, jotta käyttäjä voi halutessaan ymmärtää mihin
+laskenta perustui. Käytä HTML `<details>` -elementtiä — Streamlit
+renderöi sen avattavaksi:
+
+```html
+<details>
+<summary>📚 Miten arvonmääritys lasketaan (avaa tarkempi kuvaus)</summary>
+
+**Käytetty malli: Greenwald-Gordon -hybridi**
+
+Lähtökohta: yhtiön arvo = nykyinen tulosvoima + kasvun tuoma lisäarvo.
+
+**Kaavat:**
+- **FCF/osake** = (ROE − g) × BVPS
+- **EPV** (Earning Power Value) = (ROE / k) × BVPS — arvo ilman kasvua
+- **Fair Value** = FCF / (k − g) — Gordonin perusyhtälö
+- **Kasvun arvo** = FV − EPV (vain kun ROE > k)
+
+**Parametrit:**
+- **ROE** = oman pääoman tuotto, kestävä taso. Käytetään mediaania
+  5 vuoden yli (vakaa trendi) tai pienempää 3 vuoden mediaanin /
+  trend-painotetun arvioista (laskeva trendi).
+- **k** = tuottovaatimus, 8–10 % vakaalle / pankkisektorille,
+  korkeampi sykliselle / teknologialle.
+- **g** = pitkän aikavälin kasvu, 4–6 % nominaalisen BKT:n mukaan,
+  alhaisempi kypsille toimialoille.
+
+**Laadun erottelu:**
+- ROE > k → laatuyhtiö, kasvu lisää arvoa
+- ROE ≈ k → keskinkertainen, kasvu neutraali
+- ROE < k → tuhoutuva, kasvu syö arvoa
+
+**Implisiittisten arvojen DUAALI-luenta:**
+Gordon-yhtälössä on kaksi tuntematonta (ROE, g) mutta vain yksi
+rajoite (markkinahinta). Saman hinnan voi selittää joko alemmalla
+g:llä TAI alemmalla ROE:lla. Implied_g lasketaan kun ROE pidetään
+mallin arvossa, implied_roe kun g pidetään mallin arvossa.
+Kummatkin ovat ekvivalentteja luentoja samasta hinta-erosta.
+
+**Lähde:** Bruce Greenwaldin *Value Investing* -ajattelu (Earnings
+Power Value) yhdistettynä Gordon Growth Model -kaavaan. Yksityiskohdat
+reposta: `/methodology` -kansio.
+
+</details>
+```
+
+**HUOM**: tämä infoboksi on **osa promptia**, mutta sen sisältö on
+**staattinen** — sen pitäisi olla VERBATIM kuten yllä, ei agentin
+keksimää. Tehtäväsi on liimata se sellaisenaan.
 
 ---
 

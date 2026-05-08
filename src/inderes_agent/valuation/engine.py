@@ -45,7 +45,8 @@ class Valuation:
     price: float
 
     # ── Pure derived values ──
-    fv_gordon: float                 # (ROE-g)/(k-g) × BVPS
+    fcf_ps: float                    # (ROE - g) × BVPS — free cash flow per share
+    fv_gordon: float                 # FCF_ps / (k-g) = (ROE-g)/(k-g) × BVPS
     epv_pure: float                  # (ROE/k) × BVPS — no-growth perpetuity
     growth_value_pure: float         # fv_gordon - epv_pure
     gm: float                        # (1-g/ROE) / (1-g/k) — Greenwald multiplier
@@ -82,11 +83,26 @@ class Valuation:
                                          # (price below EPV) or up to ~1
                                          # (almost all of price is growth).
     implied_g: float | None              # Inverse Gordon: solve for g given
-                                         # current price. None when math
-                                         # degenerates (P/B too close to 1,
-                                         # or implied_g would explode past k).
-                                         # Compare to model's g to see who's
-                                         # more optimistic — market or model.
+                                         # current price WHILE HOLDING ROE
+                                         # at the model's value. None when
+                                         # math degenerates (P/B too close
+                                         # to 1, or implied_g ≥ k).
+    implied_roe: float                   # Dual inverse Gordon: solve for ROE
+                                         # given current price WHILE HOLDING g
+                                         # at the model's value.
+                                         #   ROE = P/B × (k - g) + g
+                                         # Always computable when k > g.
+                                         #
+                                         # Why both: Gordon has TWO unknowns
+                                         # (ROE, g) but only ONE constraint
+                                         # (price). The "missing value" vs
+                                         # model's fair value can be
+                                         # explained by EITHER lower-than-
+                                         # assumed growth OR lower-than-
+                                         # assumed ROE — or any combination.
+                                         # Surface both to avoid the false
+                                         # impression that "market is
+                                         # pessimistic on growth specifically".
     safety_margin_to_fv_pct: float       # (fair_value - price) / fair_value × 100
                                          # Positive = market price is below
                                          # own fair value (undervalued from
@@ -228,6 +244,21 @@ def value_stock(
         else:
             implied_g = candidate
 
+    # Dual inverse Gordon: solve for ROE given the current price WHILE
+    # HOLDING g at the model's value. This gives the OTHER reading of the
+    # same market price — instead of "market thinks growth is lower",
+    # "market thinks ROE is lower". Both are mathematically valid
+    # explanations for any price below model's fair value; surfacing
+    # both avoids the false impression that one dimension is the
+    # "real" gap.
+    #
+    #   P/B = (ROE - g) / (k - g)  →  ROE = P/B × (k - g) + g
+    #
+    # Always computable when k > g (which is enforced earlier). Can be
+    # negative if P/B is very low (market pricing in decline). LEAD
+    # narration handles such edge cases.
+    implied_roe = pb * (k - g) + g
+
     # Safety margin = how much below own fair value is the price?
     # Positive = undervalued from the model's perspective.
     safety_margin_to_fv_pct = (fair_value - price) / fair_value * 100.0
@@ -238,6 +269,7 @@ def value_stock(
         k=k,
         g=g,
         price=price,
+        fcf_ps=fcf_ps,
         fv_gordon=fv_gordon,
         epv_pure=epv_pure,
         growth_value_pure=growth_value_pure,
@@ -253,6 +285,7 @@ def value_stock(
         market_premium_to_epv_pct=market_premium_to_epv_pct,
         growth_priced_in_share=growth_priced_in_share,
         implied_g=implied_g,
+        implied_roe=implied_roe,
         safety_margin_to_fv_pct=safety_margin_to_fv_pct,
         entry_aloitus=0.90 * fair_value,
         entry_nosto=0.80 * fair_value,

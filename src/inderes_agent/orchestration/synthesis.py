@@ -427,26 +427,39 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
             for w in a.warnings:
                 lines.append(f"  ⚠ {w}")
 
-        # Engine output — include the new EPV/growth-decomposition fields
-        # so LEAD can write the "tulosvoiman arvo + kasvun hinnoittelu"
-        # section of the report.
-        lines.append(f"Engine: quality={v.quality}, fair_value={v.fair_value:.2f} €, "
-                     f"FV_Gordon={v.fv_gordon:.2f}, EPV_pure={v.epv_pure:.2f}, "
-                     f"GM={v.gm:.2f}x, Rock Bottom={v.rock_bottom:.2f}")
+        # Engine output — full set so LEAD can build the perussetti table.
+        lines.append(
+            f"Engine: quality={v.quality}, fair_value={v.fair_value:.2f} €, "
+            f"FV_Gordon={v.fv_gordon:.2f}, FCF_ps={v.fcf_ps:.3f}, "
+            f"EPV_pure={v.epv_pure:.2f}, growth_value={v.growth_value_pure:.2f}, "
+            f"GM={v.gm:.2f}x, Rock_Bottom={v.rock_bottom:.2f}, P/B={v.pb:.2f}"
+        )
 
-        # EPV / growth-pricing decomposition — the Greenwald split that
-        # answers "how much of the current price is the market paying for
-        # growth?". Format chosen to be unambiguous in the LEAD prompt.
+        # EPV / growth-pricing decomposition + dual implied reading.
+        # Gordon's equation has TWO unknowns (ROE, g) but only ONE constraint
+        # (price). A price below model's fair value can be explained by
+        # EITHER lower growth OR lower ROE. Surface both so LEAD doesn't
+        # pick one dimension as "the" answer.
         implied_g_str = (
             f"{v.implied_g:+.2%}" if v.implied_g is not None
-            else "ei laskettavissa (P/B ≈ 1 tai laskenta hajoaa)"
+            else "ei laskettavissa (P/B ≈ 1 tai implied_g ≥ k)"
         )
         lines.append(
             f"  EPV-dekompositio: kurssi on {v.market_premium_to_epv_pct:+.1f}% "
             f"yli/alle EPV:n; kasvun osuus nykyhinnasta "
-            f"{v.growth_priced_in_share*100:+.1f}%; "
-            f"markkinan implisiittinen g = {implied_g_str} "
-            f"(oma g = {a.g:.1%})"
+            f"{v.growth_priced_in_share*100:+.1f}%."
+        )
+        lines.append(
+            f"  Markkinan implisiittinen näkemys (DUAALI — sama hinta selittyy "
+            f"joko alemmalla g:llä TAI alemmalla ROE:lla):"
+        )
+        lines.append(
+            f"    • Kun ROE pidetään mallin arvossa ({a.roe_used:.1%}): "
+            f"implied_g = {implied_g_str} (oma g = {a.g:.1%})"
+        )
+        lines.append(
+            f"    • Kun g pidetään mallin arvossa ({a.g:.1%}): "
+            f"implied_ROE = {v.implied_roe:+.2%} (oma ROE = {a.roe_used:.1%})"
         )
         lines.append(
             f"  Turvamarginaali oman fair valuen suhteen: "
