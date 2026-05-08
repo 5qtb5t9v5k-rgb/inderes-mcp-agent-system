@@ -1436,25 +1436,28 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
 }
 
 
-/* "Aikajana → Avaa loki" combined button — terminal-DNA, slim, minimal.
-   Mirrors the original .ia-timeline strip styling: small mono, muted
-   ink, subtle border, hover lights up to amber. */
+/* AVAA LOKI / AVAA PÄÄTTELY -tyylinen slim secondary -painike — kolmas
+   rivi Aikajana-strippiä ja Päättely-kuorta vastaavassa "meta strip"
+   -triossa. Kaikki kolme jakavat saman padding/font/letter-spacingin
+   jotta ne lukevat yhtenä rytmityksenä — käyttäjä huomasi 2026-05-08
+   että hardcoded 5px 10px / 0.06em / kiinteä 28px korkeus oli
+   epäsynkassa naapurien kanssa (4px 16px / 0.12em / auto). Tämä
+   sääntö snäppää tokenirajoihin. */
 [data-testid="stButton"] button[kind="secondary"] {
   background: var(--bg-1) !important;
   color: var(--ink-0) !important;
   border: 1px solid var(--line) !important;
-  border-radius: 3px !important;
+  border-radius: var(--r) !important;
   font-family: var(--ia-mono) !important;
-  font-size: 10px !important;
+  font-size: var(--t-micro) !important;
   font-weight: 400 !important;
-  letter-spacing: 0.06em !important;
-  padding: 5px 10px !important;
-  height: 28px !important;
+  letter-spacing: var(--ls-caps) !important;
+  padding: var(--s-1) var(--s-3) !important;
+  height: auto !important;
   min-height: 0 !important;
   line-height: 1.2 !important;
   text-align: left !important;
   justify-content: flex-start !important;
-  /* The button's own internal text container */
 }
 [data-testid="stButton"] button[kind="secondary"] > div {
   width: 100% !important;
@@ -1463,9 +1466,9 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
 }
 [data-testid="stButton"] button[kind="secondary"] p,
 [data-testid="stButton"] button[kind="secondary"] div {
-  font-size: 10px !important;
+  font-size: var(--t-micro) !important;
   font-weight: 400 !important;
-  letter-spacing: 0.06em !important;
+  letter-spacing: var(--ls-caps) !important;
   line-height: 1.2 !important;
   margin: 0 !important;
   text-align: left !important;
