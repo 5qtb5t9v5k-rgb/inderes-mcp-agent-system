@@ -190,18 +190,67 @@ real records (not the placeholder `_user did not enable...`), add a
 section titled `## Oma malli vs Inderes` (FI) or `## Own model vs Inderes`
 (EN) **after** the standard answer body and **before** `**📖 Lähteet:**`.
 
-For each company in the block:
-- State the **own fair value** (engine's `fair_value`, 2 decimals).
-- State **Inderes' tavoitehinta** (from QUANT subagent's INDERES VIEW).
-- State the **percentage delta** (e.g. *"Oma malli 14.20€, Inderes 16.50€ → -14% vs Inderes"*).
-- Explain **the source of the difference** (different k? different g? which
-  ROE-version was chosen?). Use the rationale fields verbatim — they're
-  already worded for an end-user audience.
-- State the **quality classification** (laatu / keskinkertainen / tuhoutuva)
-  with one-sentence implication.
-- If the agent attached `warnings`, surface them with a ⚠ glyph.
+The section should have **four subsections** for each company in the block:
 
-If the block is the placeholder `_user did not enable alternative
+#### 1. Tiivistelmä kahdella numerolla
+
+- Oma fair value vs kurssi → turvamarginaali %
+- Inderes-tavoite vs kurssi → turvamarginaali %
+- Yhteneväkö vai eroaako viestit?
+
+#### 2. Tulosvoiman arvo (EPV) ja kasvun hinnoittelu
+
+Tämä on Greenwaldin keskeinen oivallus jonka käyttäjä haluaa nähdä:
+**arvon dekompositio EPV:hen + kasvun arvoon**.
+
+Käytä engine-blokin lukuja:
+- `EPV_pure` = arvo jos kasvua ei oletettu
+- `market_premium_to_epv_pct` = kuinka paljon yli EPV:n markkina maksaa
+- `growth_priced_in_share` = mikä osuus kurssista on kasvun maksamista
+- `implied_g` = mitä g markkina hinnoittelee
+
+Sanoita selkeästi tilanteesta riippuen:
+
+- **Jos `market_premium_to_epv_pct ≤ 0`**: *"Markkina ei hinnoittele
+  yhtiölle juurikaan kasvua — kasvun saa kaupan päälle, EPV jo kattaa
+  kurssin."*
+- **Jos `growth_priced_in_share` 0–30%**: *"Maltillinen kasvu
+  hinnoiteltu — N% kurssista on kasvun maksamista, loput tulosvoimaa."*
+- **Jos `growth_priced_in_share` > 50%**: *"Yli puolet kurssista
+  perustuu odotuksiin tulevasta kasvusta — yhtiön nykytulos ei
+  yksin perustele hintaa."*
+
+Vertaile lopuksi `implied_g`:tä omaan g:hen:
+- *"Markkina hinnoittelee X% kasvun, oma malli olettaa Y%. Markkina
+  on [optimistisempi/pessimistisempi] kuin minä — jos näkemykseni
+  toteutuu, kurssin tulisi [korjautua ylös/alas]."*
+
+Jos `implied_g` on None (ei laskettavissa), totea: *"Implisiittinen
+kasvu ei ole laskettavissa nykyisellä P/B-tasolla."*
+
+#### 3. Miksi nämä parametrit (siteeraa agentin perustelut)
+
+Lainaa tai parafraasoi agentin rationale-kentät:
+
+- **ROE-valinta**: käytä `roe_rationale` (selittää miksi tämä versio,
+  mitä historia näyttää, toimialakonteksti).
+- **k:n perustelu**: käytä `k_rationale`.
+- **g:n perustelu**: käytä `g_rationale`.
+
+Älä keksi numeroita itse — kaikki parametrit ja perustelut tulevat
+agentin output:sta.
+
+#### 4. Entry-tasot (jos kurssi alle fair valuen)
+
+Listaa engine-blokin entry-arvot:
+- Aloitus = 90% fair valuesta
+- Nosto = 80%
+- Täysi = 75%
+
+Mainitse mihin näistä nykykurssi sijoittuu — tämä on käytännön
+ostosignaali käyttäjälle.
+
+**Jos blokki on placeholder** `_user did not enable alternative
 valuation; default flow only_`, **skip this section entirely** — do not
 reference the toggle.
 

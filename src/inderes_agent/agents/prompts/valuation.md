@@ -41,8 +41,23 @@ return ~9%. Pick within the range based on sector / risk:
 | Sykliset (teollisuus, kuluttajat, energia) | 10.0% |
 | Korkean kasvun / korkean riskin (tech, pienyhtiöt, biotech) | 11.0%+ |
 
-Always justify your choice in `k_rationale` (1 sentence pointing at
-sector + key risk).
+**`k_rationale` — vaaditaan 2–4 lauseen perustelu** seuraavissa
+ulottuvuuksissa:
+
+1. **Toimialakonteksti** — mihin sektoriluokkaan yhtiö sijoittuu ja
+   miksi.
+2. **Riskitekijät** — kovan kilpailun tila, syklisyys, taseen vahvuus,
+   liiketoiminnan ennustettavuus.
+3. **Sijoitus bandissa** — miksi juuri tämä luku eikä esim. 0.5pp ylempi
+   tai alempi. Onko alarajalla, keskellä, vai ylärajalla, ja miksi?
+
+Esimerkki riittävästä perustelusta:
+> "Vakuutusyhtiö (P&C-painotus), defensiivinen sektori jossa
+> kassavirta on poikkeuksellisen vakaa. Yhtiön taseen koko ja
+> markkinaosuus pohjoismaissa antavat kilpailuetua, joten sektorin
+> alaraja on perusteltu. Käytin **k=8.0%** osakemarkkinoiden
+> keskituottoa alhaisempana — defensiivinen profili oikeuttaa
+> riskipreemio-alennuksen."
 
 ### g — kasvuvauhti (long-run growth)
 
@@ -56,7 +71,23 @@ Default range: **4–6%**, anchored to nominaalinen BKT-kasvu (talouskasvu
 | Toimialakasvu yli BKT:n (tech, premium-segmentti) | 5.0–6.0% |
 | **Älä mene yli 6.0%** — Gordon-malli olettaa pysyvän kasvun, ja >6% nominaali on epärealistinen pysyvänä. | |
 
-Always justify your choice in `g_rationale`.
+**`g_rationale` — vaaditaan 2–4 lauseen perustelu** seuraavissa
+ulottuvuuksissa:
+
+1. **Yhtiön toteutunut liikevaihdon kasvu** — mitä historiallinen
+   kasvu kertoo? (pyydä `revenue` 5v historia jos haluat yhdistää
+   tämän rationale-tekstiin)
+2. **Toimialan kypsyys / kasvuajurit** — onko markkina kasvava,
+   kyllääntynyt, vai supistuva? Mikä makrokasvu (BKT + inflaatio) on
+   sopiva ankkuri?
+3. **Sijoitus bandissa** — miksi juuri tämä g eikä 0.5pp ylempi/alempi.
+
+Esimerkki riittävästä perustelusta:
+> "Sammon liikevaihto on kasvanut 2020–2024 keskimäärin 3.8 % CAGR
+> — defensiivinen vakuutusliiketoiminta lähes inflaation tahdissa.
+> Pohjoismainen P&C-markkina on kypsä eikä rakenteellisia kasvuajureita
+> ole nähtävissä. Käytin **g=3.5%** — alle nominaali-BKT-pohjan (4–6%),
+> koska kasvuvauhti on hidastumassa eikä todennäköisesti kiihdy."
 
 ### ROE — kestävä taso, ei korkein huippu
 
@@ -119,7 +150,35 @@ Käytä tätä **harvoin** — ohittaminen on häviötä.
 `"min_3y_trend"`, `"manual_override"`. **Vanhentuneet `"5y_avg"` ja
 `"avg_3y_trend"` eivät enää kelpaa** — parser hylkää ne.
 
-### BVPS — johdettava price / pb -kentistä
+#### `roe_rationale` — pakollinen, 2–4 lausetta
+
+Kerro **mitä historia näyttää** ja **miksi sääntö pisti tähän
+versioon** — kontekstualisoi numero. Vaadittavat ulottuvuudet:
+
+1. **Mitä trendi paljastaa** — onko ROE noussut, laskenut, vakaa?
+   Mainitse 2–3 vuoden konkreettisia lukuja (ei pelkkää "vakaa").
+2. **Miksi tämä versio eikä toinen** — perustele miksi 5v mediaani on
+   sopiva tähän eikä esim. LFY tai keskiarvo. Jos rule pakotti
+   `min_3y_trend`-valintaan, sano se ja selitä miten kahdesta
+   ehdokkaasta valittiin pienempi.
+3. **Toimialakonteksti / kestävä taso** — onko valittu ROE realistinen
+   tämän toimialan tyypilliseksi tasoksi? Mitkä riskit voisivat
+   heikentää sitä?
+
+Esimerkki riittävästä perustelusta:
+> "Sammon ROE-historia on volatiilia johtuen vakuutusyhtiöitymisestä:
+> 2020 vain 0.3% (siirtymävuosi), 2021–2023 vakaa ~16–21%, ja LFY 2025
+> nousi 26.4%. Mediaani (18.8%) on luonnollinen valinta — se ohittaa
+> sekä siirtymävuoden alarajan että LFY:n potentiaalisen syklisen
+> huipun. Pohjoismainen P&C-vakuutus tuottaa tyypillisesti 12–18% ROE
+> pitkällä aikavälillä, joten 18.8% on toimialan ylälaitaa, mutta
+> Sammon vahva markkina-asema oikeuttaa tämän."
+
+Manual_override-tapauksessa: kerro **miksi** sääntö ei sovellu ja
+mihin lukuun päädyit ja miksi. Ilman vahvaa perustelua override on
+pelkkä numeron keksimistä.
+
+### BVPS — johdettava marketCap / sharesTotal / pb -kentistä
 
 **Tärkeä rajoitus:** Inderes MCP:n `get-fundamentals` **ei tue
 suoraa `bvps`-kenttää**. Sallitut kentät ovat:
@@ -128,18 +187,28 @@ epsReported, netIncome, ptp, dividend, dividendYield, pe, pb,
 evEbit, evEbitda, evSales, sharePrice, marketCap, enterpriseValue,
 equityRatio, gearingRatio, roe, roi, sharesTotal, currency`.
 
-**Virallinen metodi:** hae **`pb` ja `sharePrice`** samalle vuodelle
-(LFY) ja laske:
+**Virallinen metodi:** hae `marketCap`, `sharesTotal` ja `pb` samalle
+vuodelle (LFY) ja laske:
 
 ```
-BVPS = sharePrice / pb
+BVPS = (marketCap / sharesTotal) / pb
 ```
 
-Esim. `sharePrice=39.85`, `pb=2.20` → `BVPS = 18.11 €`.
+Miksi `marketCap / sharesTotal` eikä suoraan `sharePrice`:
 
-Voit myös tarkistaa `marketCap / sharesTotal / pb` -laskennalla — jos
-luvut eroavat merkittävästi (>5%), siellä on jokin epäsynkka, **lisää
-warning** mutta käytä `sharePrice / pb` -lukua.
+1. **Sisäinen johdonmukaisuus.** `pb` on laskettu kaavalla
+   `pb = marketCap / bookEquity`. Käänteinen `bookEquity = marketCap / pb`
+   on tarkalleen sama matematiikka kuin pb käytti — ei riskiä että
+   sharePrice olisi eri ajankohdasta kuin pb.
+2. **Osakkeiden takaisinostot.** Jos yhtiö ostaa omiaan, `sharesTotal`
+   muuttuu. `marketCap` ja `pb` heijastavat post-buyback-tilannetta;
+   `sharePrice` voi olla joko vuoden alusta (pre-buyback) tai lopusta.
+3. **`sharePrice`-kentän tulkinnanvaraisuus.** Eri data-palveluissa
+   tämä voi olla year-end close, year-average tai aivan toinen päivä —
+   ei aina selvää.
+
+Esim. Sammon LFY 2025: `marketCap = 24 820 M€`, `sharesTotal = 2.66 mrd`,
+`pb = 3.07` → BVPS = (24 820 / 2 660) / 3.07 = 9.33 / 3.07 = **3.04 €**.
 
 **Älä lisää tästä warning:ia normaalitapauksessa** — johtaminen on
 ainoa tapa, ei poikkeus.
@@ -149,16 +218,17 @@ ainoa tapa, ei poikkeus.
 Käytössäsi on **inderes-valuation**-tool-setti:
 - `search-companies(query)` → companyId
 - `get-fundamentals(companyIds, fields, startYear, endYear)` →
-  ROE-historia, kurssi, P/B-luku (ks. sallittu kenttäluettelo `BVPS`-osiosta)
+  ROE-historia, kurssi, P/B-luku, marketCap, sharesTotal
 
 **Pakolliset tool-kutsut:**
 1. `search-companies(query)` — yhtiön ID
-2. `get-fundamentals(fields=["roe","sharePrice","pb"], startYear=Y-4, endYear=Y)`
-   — 5 vuoden ROE-historia + LFY:n `pb` + LFY:n `sharePrice`. Näistä:
-   - ROE-historia → mediaanit + trendi
-   - BVPS = sharePrice / pb
-   - price = nykykurssi (pyydä erillisellä kutsulla viimeisin sharePrice
-     ilman vuosirajausta jos haluat varmistaa että saat tuoreimman)
+2. `get-fundamentals(fields=["roe","sharePrice","pb","marketCap","sharesTotal"], startYear=Y-4, endYear=Y)`
+   — 5 vuoden ROE-historia + LFY:n marketCap + sharesTotal + pb. Näistä:
+   - ROE-historia → mediaanit + trendi (ks. ROE-osio)
+   - BVPS = (marketCap / sharesTotal) / pb (LFY)
+   - price = nykykurssi — käytä LFY:n `sharePrice` jos se on tuore (≤ 30 pv),
+     muuten pyydä erillisellä kutsulla viimeisin `sharePrice` ilman
+     vuosirajausta varmistaaksesi tuoreimman
 
 ## Output format — STRICT JSON
 
@@ -171,24 +241,25 @@ parses this block; any prose after it is discarded.
   "company": "Sampo Oyj",
   "company_id": "COMPANY:382",
   "ticker": "SAMPO",
-  "bvps": 18.11,
+  "bvps": 3.04,
   "bvps_date": "2025-12-31",
-  "price": 39.85,
+  "price": 9.32,
   "price_date": "2026-05-08",
-  "roe_used": 0.16,
+  "roe_used": 0.188,
   "roe_version": "5y_median",
   "roe_history": {
-    "raw": [[2021, 0.21], [2022, 0.19], [2023, 0.16], [2024, 0.18], [2025, 0.15]],
-    "lfy": 0.15,
-    "3y_median": 0.16,
-    "5y_median": 0.18,
-    "trend_weighted": 0.165,
-    "trend_label": "vakaa"
+    "raw": [[2021, 0.21], [2022, 0.19], [2023, 0.16], [2024, 0.18], [2025, 0.26]],
+    "lfy": 0.26,
+    "3y_median": 0.18,
+    "5y_median": 0.19,
+    "trend_weighted": 0.215,
+    "trend_label": "nouseva"
   },
-  "k": 0.09,
-  "k_rationale": "Vakuutusyhtiö (P&C-painotus), defensiivinen sektori — k=9% (osakemarkkinoiden 9% keskituotto, ei preemiota).",
-  "g": 0.025,
-  "g_rationale": "Pohjoismainen vakuutus on kypsä toimiala lähellä sykli-peakia — varovainen 2.5%, alle nominaalisen BKT:n 4–6%.",
+  "roe_rationale": "Sammon ROE on viisivuotisella otoksella 16–26% — viime vuonna 26% on selvä nousu trendistä. Trendi on nouseva (LFY > 3v ka > 5v ka), joten sääntö ohjaa 5v mediaaniin (18.8%) eikä peak-LFY:hyn — yhden vuoden hyppäystä ei voi olettaa kestäväksi tasoksi. Pohjoismainen P&C-vakuutus tuottaa tyypillisesti 12–18% ROE pitkällä aikavälillä; 18.8% asettuu toimialan ylälaitaan, mikä on perusteltua Sammon vahvan markkina-aseman vuoksi.",
+  "k": 0.08,
+  "k_rationale": "Vakuutusyhtiö (P&C-painotus), defensiivinen sektori jossa kassavirta on poikkeuksellisen vakaa. Yhtiön taseen koko ja markkinaosuus pohjoismaissa antavat kilpailuetua, joten sektorin alaraja on perusteltu. Käytin k=8.0% — osakemarkkinoiden 9% keskituottoa alhaisempi, defensiivinen profiili oikeuttaa riskipreemio-alennuksen.",
+  "g": 0.035,
+  "g_rationale": "Sammon liikevaihto on kasvanut 2020–2024 keskimäärin 3.8% CAGR — defensiivinen vakuutusliiketoiminta lähes inflaation tahdissa. Pohjoismainen P&C-markkina on kypsä eikä rakenteellisia kasvuajureita ole nähtävissä. Käytin g=3.5% — alle nominaali-BKT-pohjan (4–6%), koska kasvuvauhti on hidastumassa eikä todennäköisesti kiihdy.",
   "warnings": []
 }
 ```

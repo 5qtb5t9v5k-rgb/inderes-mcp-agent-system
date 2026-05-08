@@ -417,16 +417,42 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
                      f"price {a.price:.2f} ({a.price_date or '?'}), "
                      f"ROE {a.roe_used:.1%} ({a.roe_version}), "
                      f"k {a.k:.1%}, g {a.g:.1%}")
-        lines.append(f"  k_rationale: {a.k_rationale}")
-        lines.append(f"  g_rationale: {a.g_rationale}")
+        # Multi-line rationales (the agent now produces 2-4 sentence
+        # explanations per parameter — surface them in full so LEAD
+        # can paraphrase or quote them).
+        lines.append(f"  ROE-perustelu: {a.roe_rationale}")
+        lines.append(f"  k-perustelu: {a.k_rationale}")
+        lines.append(f"  g-perustelu: {a.g_rationale}")
         if a.warnings:
             for w in a.warnings:
                 lines.append(f"  ⚠ {w}")
 
+        # Engine output — include the new EPV/growth-decomposition fields
+        # so LEAD can write the "tulosvoiman arvo + kasvun hinnoittelu"
+        # section of the report.
         lines.append(f"Engine: quality={v.quality}, fair_value={v.fair_value:.2f} €, "
                      f"FV_Gordon={v.fv_gordon:.2f}, EPV_pure={v.epv_pure:.2f}, "
                      f"GM={v.gm:.2f}x, Rock Bottom={v.rock_bottom:.2f}")
-        lines.append(f"  Yli-/aliarvostus: {v.yli_ali_pct:+.1f}% (kurssi vs oma fair value)")
+
+        # EPV / growth-pricing decomposition — the Greenwald split that
+        # answers "how much of the current price is the market paying for
+        # growth?". Format chosen to be unambiguous in the LEAD prompt.
+        implied_g_str = (
+            f"{v.implied_g:+.2%}" if v.implied_g is not None
+            else "ei laskettavissa (P/B ≈ 1 tai laskenta hajoaa)"
+        )
+        lines.append(
+            f"  EPV-dekompositio: kurssi on {v.market_premium_to_epv_pct:+.1f}% "
+            f"yli/alle EPV:n; kasvun osuus nykyhinnasta "
+            f"{v.growth_priced_in_share*100:+.1f}%; "
+            f"markkinan implisiittinen g = {implied_g_str} "
+            f"(oma g = {a.g:.1%})"
+        )
+        lines.append(
+            f"  Turvamarginaali oman fair valuen suhteen: "
+            f"{v.safety_margin_to_fv_pct:+.1f}% "
+            f"(positiivinen = aliarvostettu)"
+        )
         lines.append(f"  Entry-tasot: aloitus {v.entry_aloitus:.2f}€, "
                      f"nosto {v.entry_nosto:.2f}€, täysi {v.entry_taysi:.2f}€")
         lines.append("")

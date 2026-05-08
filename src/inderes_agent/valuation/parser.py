@@ -97,6 +97,7 @@ class ValuationAgentOutput:
     roe_history: dict[str, Any]
     k_rationale: str
     g_rationale: str
+    roe_rationale: str
     warnings: list[str] = field(default_factory=list)
 
     def to_engine_kwargs(self) -> dict[str, float]:
@@ -335,5 +336,6 @@ def parse(
         roe_history=blob.get("roe_history") or {},
         k_rationale=_ensure_str(blob, "k_rationale", raw_text) or "",
         g_rationale=_ensure_str(blob, "g_rationale", raw_text) or "",
+        roe_rationale=_ensure_str(blob, "roe_rationale", raw_text) or "",
         warnings=list(blob.get("warnings") or []),
     )

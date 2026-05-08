@@ -56,6 +56,7 @@ viime 5 vuotta, joten käytän 5v mediaania.
   "g": 0.025,
   "k_rationale": "Vakuutusyhtiö, defensiivinen sektori — k=9%.",
   "g_rationale": "Pohjoismainen vakuutus on kypsä — varovainen 2.5%.",
+  "roe_rationale": "ROE-historia on vakaa 14–16% — käytin 5v mediaania.",
   "warnings": []
 }
 ```
@@ -94,6 +95,7 @@ def _good_agent_text(**overrides) -> str:
         "roe_history": history,
         "k": 0.09, "g": 0.05,
         "k_rationale": "test", "g_rationale": "test",
+        "roe_rationale": "test",
         "warnings": [],
     }
     base.update(overrides)
@@ -203,6 +205,14 @@ def test_missing_required_field_raises() -> None:
     text = _good_agent_text()
     text = text.replace('"bvps": 10.0, ', "")
     with pytest.raises(ValuationParseError, match="bvps"):
+        parse(text)
+
+
+def test_missing_roe_rationale_raises() -> None:
+    """roe_rationale is required so LEAD has narrative material to weave."""
+    text = _good_agent_text()
+    text = text.replace('"roe_rationale": "test", ', "")
+    with pytest.raises(ValuationParseError, match="roe_rationale"):
         parse(text)
 
 
