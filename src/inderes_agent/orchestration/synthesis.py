@@ -328,7 +328,11 @@ def _process_valuation_subagents(
     for sr in workflow_result.subagent_results:
         if sr.domain != Domain.VALUATION:
             continue
-        company = sr.company or sr.text[:80] or "<unknown>"
+        # Default company label: subagent's per-company tag for fanout, or
+        # "<unknown>" until the parser succeeds and we can use parsed.company.
+        # We deliberately do NOT fall back to sr.text[:80] — that pulls the
+        # **Ajatus:** line into the run-log's company field.
+        company = sr.company or "<unknown>"
         if sr.error:
             records.append(ValuationRecord(
                 company=company,
@@ -350,13 +354,16 @@ def _process_valuation_subagents(
 
         if isinstance(parsed, ValuationAgentSkipped):
             records.append(ValuationRecord(
-                company=company,
+                company=parsed.company,  # use parser's company name once we have it
                 skipped=parsed,
                 raw_text=sr.text,
             ))
             continue
 
         # Happy path: agent emitted clean JSON → run the deterministic engine.
+        # Use parsed.company once available — it's the canonical name from
+        # the structured output, free of "**Ajatus:**" leakage.
+        company = parsed.company
         try:
             valuation = value_stock(**parsed.to_engine_kwargs())
         except ValueError as exc:

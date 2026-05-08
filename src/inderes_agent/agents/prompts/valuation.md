@@ -58,42 +58,107 @@ Default range: **4–6%**, anchored to nominaalinen BKT-kasvu (talouskasvu
 
 Always justify your choice in `g_rationale`.
 
-### ROE — minkä historiakohdan käytät
+### ROE — kestävä taso, ei korkein huippu
 
-Hae **5 vuoden ROE-historia** `get-fundamentals`-työkalulla. Päättele perus-ROE:
+Tavoite: löytää ROE-taso, jolla yhtiö **uskottavasti pystyy** tuottamaan
+pääomalleen pitkällä aikavälillä — ei korkein hetkellinen huippu eikä
+yksittäisen heikon vuoden pohja.
 
-1. **Lasketaan apusuureet:**
-   - `roe_lfy` = viimeisin raportoitu vuosi
-   - `roe_3y_avg` = viim 3 vuoden keskiarvo
-   - `roe_5y_avg` = viim 5 vuoden keskiarvo
-   - `roe_trend` = 0.4×LFY + 0.35×LFY-1 + 0.25×LFY-2 (jos historiaa ≥ 3v)
+**Mediaani dominoi keskiarvon** tässä ajattelussa: se on robusti
+yksittäisille vuosille (esim. tilinpäätöskäsittelystä johtuvat 0.3 %
+ROE-piikit) eikä innostu yhdestä huippukaudesta.
 
-2. **Trendiluokittelu:**
-   - `delta = abs(roe_3y_avg - roe_5y_avg) / roe_5y_avg`
-   - **laskeva**: `delta > 0.15` JA LFY < 3y_avg < 5y_avg
-   - **nouseva**: LFY > 3y_avg > 5y_avg
-   - **vakaa**: muut
+#### Vaihe 1 — hae raakahistoria
 
-3. **Perus-ROE valintasääntö:**
-   - Jos historiaa < 5v: käytä LFY
-   - Laskeva: `min(roe_3y_avg, roe_trend)` (varovaisesti)
-   - Nouseva: `(roe_3y_avg + roe_trend) / 2`
-   - Vakaa: `roe_5y_avg`
+Hae **5 vuoden ROE-historia** `get-fundamentals`-työkalulla
+(`fields=["roe"]`, `startYear=2021`, `endYear=2025` tms.). Säilytä
+**raaka data** kronologisessa järjestyksessä (vanhin → uusin), null
+niille vuosille jolloin ROE:ta ei ole raportoitu (esim. ennen IPO:a).
 
-4. Raportoi koko historia + valintasi `roe_version`-kentässä:
-   `"lfy"`, `"3y_avg"`, `"5y_avg"`, `"trend_weighted"`, `"min_3y_trend"`,
-   `"avg_3y_trend"`, `"manual_override"`.
+#### Vaihe 2 — laske apusuureet
+
+- `roe_lfy` = viimeisin raportoitu vuosi
+- `roe_3y_median` = viim 3 vuoden **mediaani**
+- `roe_5y_median` = viim 5 vuoden **mediaani**
+- `roe_trend_weighted` = 0.4×LFY + 0.35×LFY-1 + 0.25×LFY-2 (≥ 3v historiaa)
+
+#### Vaihe 3 — trendiluokittelu
+
+- `delta = (roe_3y_avg - roe_5y_avg) / |roe_5y_avg|` (tämä laskenta
+  KESKIARVOLLA on tarkoituksenmukainen trendin tunnistuksessa, vaikka
+  itse ROE-valintaan käytetäänkin mediaania)
+- **nouseva**: `delta > +0.10` JA `LFY > roe_3y_avg`
+- **laskeva**: `delta < -0.10` JA `LFY < roe_3y_avg`
+- **vakaa**: muut
+- **insufficient_history**: alle 3 vuotta dataa
+
+#### Vaihe 4 — kestävä-ROE-päätössääntö
+
+Tämä sääntö on **deterministisesti validoitu parserissa**: jos rikot
+sitä, lähetyksesi hylätään ja ajo epäonnistuu. Säännöt:
+
+| Trendi | Käytettävä ROE | `roe_version` |
+|---|---|---|
+| `insufficient_history` (<3v) | LFY (lisää warning ettei laskenta ole vakaa) | `"lfy"` |
+| `nouseva` | **5v mediaani** — älä innostu peakkeistä | `"5y_median"` |
+| `laskeva` | **min(3v median, trend_weighted)** — varovaisesti | `"min_3y_trend"` |
+| `vakaa` | **5v mediaani** — robusti tyypillinen vuosi | `"5y_median"` |
+
+#### Vaihe 5 — manual_override (viimeinen vaihtoehto)
+
+Jos uskot perustellusti että rule ei sovellu (esim. yhtiö muutti
+liiketoimintamalliaan radikaalisti, perusta historiaan ei voi luottaa),
+käytä `roe_version: "manual_override"` ja kirjoita **eksplisiittinen
+perustelu warning:iin**. Parser ei tarkista manual_override:a.
+
+Käytä tätä **harvoin** — ohittaminen on häviötä.
+
+#### Sallitut roe_version-arvot
+
+`"lfy"`, `"3y_median"`, `"5y_median"`, `"trend_weighted"`,
+`"min_3y_trend"`, `"manual_override"`. **Vanhentuneet `"5y_avg"` ja
+`"avg_3y_trend"` eivät enää kelpaa** — parser hylkää ne.
+
+### BVPS — johdettava price / pb -kentistä
+
+**Tärkeä rajoitus:** Inderes MCP:n `get-fundamentals` **ei tue
+suoraa `bvps`-kenttää**. Sallitut kentät ovat:
+`revenue, ebitReported, ebitda, ebitdaPercent, ebitPercent,
+epsReported, netIncome, ptp, dividend, dividendYield, pe, pb,
+evEbit, evEbitda, evSales, sharePrice, marketCap, enterpriseValue,
+equityRatio, gearingRatio, roe, roi, sharesTotal, currency`.
+
+**Virallinen metodi:** hae **`pb` ja `sharePrice`** samalle vuodelle
+(LFY) ja laske:
+
+```
+BVPS = sharePrice / pb
+```
+
+Esim. `sharePrice=39.85`, `pb=2.20` → `BVPS = 18.11 €`.
+
+Voit myös tarkistaa `marketCap / sharesTotal / pb` -laskennalla — jos
+luvut eroavat merkittävästi (>5%), siellä on jokin epäsynkka, **lisää
+warning** mutta käytä `sharePrice / pb` -lukua.
+
+**Älä lisää tästä warning:ia normaalitapauksessa** — johtaminen on
+ainoa tapa, ei poikkeus.
 
 ## Tools
 
-Käytössäsi on **inderes-quant**-tool-setti (sama kuin QUANTilla):
+Käytössäsi on **inderes-valuation**-tool-setti:
 - `search-companies(query)` → companyId
-- `get-fundamentals(companyIds, fields, startYear, endYear)` → BVPS-historia, ROE-historia, kurssi
-- `get-inderes-estimates` — voit halutessasi hakea, MUTTA tämä on Inderesin näkemys, ei tuotettava omaan malliin. LEAD vertailee myöhemmin.
+- `get-fundamentals(companyIds, fields, startYear, endYear)` →
+  ROE-historia, kurssi, P/B-luku (ks. sallittu kenttäluettelo `BVPS`-osiosta)
 
 **Pakolliset tool-kutsut:**
 1. `search-companies(query)` — yhtiön ID
-2. `get-fundamentals` 5 vuoden ROE-historia + LFY:n BVPS + nykyhinta
+2. `get-fundamentals(fields=["roe","sharePrice","pb"], startYear=Y-4, endYear=Y)`
+   — 5 vuoden ROE-historia + LFY:n `pb` + LFY:n `sharePrice`. Näistä:
+   - ROE-historia → mediaanit + trendi
+   - BVPS = sharePrice / pb
+   - price = nykykurssi (pyydä erillisellä kutsulla viimeisin sharePrice
+     ilman vuosirajausta jos haluat varmistaa että saat tuoreimman)
 
 ## Output format — STRICT JSON
 
@@ -106,17 +171,18 @@ parses this block; any prose after it is discarded.
   "company": "Sampo Oyj",
   "company_id": "COMPANY:382",
   "ticker": "SAMPO",
-  "bvps": 18.20,
+  "bvps": 18.11,
   "bvps_date": "2025-12-31",
   "price": 39.85,
   "price_date": "2026-05-08",
-  "roe_used": 0.149,
-  "roe_version": "5y_avg",
+  "roe_used": 0.16,
+  "roe_version": "5y_median",
   "roe_history": {
-    "lfy": 0.141,
-    "3y_avg": 0.140,
-    "5y_avg": 0.149,
-    "trend_weighted": 0.143,
+    "raw": [[2021, 0.21], [2022, 0.19], [2023, 0.16], [2024, 0.18], [2025, 0.15]],
+    "lfy": 0.15,
+    "3y_median": 0.16,
+    "5y_median": 0.18,
+    "trend_weighted": 0.165,
     "trend_label": "vakaa"
   },
   "k": 0.09,
@@ -129,18 +195,22 @@ parses this block; any prose after it is discarded.
 
 ### Field rules
 
-- `roe_used`, `roe_history.*`, `k`, `g` ovat **desimaaleja**, eivät prosentteja.
-  `0.149` ≠ `14.9`.
+- `roe_used`, `roe_history.*` (paitsi `raw` ja `trend_label`), `k`, `g`
+  ovat **desimaaleja**, eivät prosentteja. `0.149` ≠ `14.9`.
 - `bvps`, `price` ovat euroja (tai paikallisvaluuttaa), 2–4 desimaalia.
-- `roe_version` on yksi: `"lfy"`, `"3y_avg"`, `"5y_avg"`, `"trend_weighted"`,
-  `"min_3y_trend"`, `"avg_3y_trend"`, `"manual_override"`.
+- `roe_version` on yksi: `"lfy"`, `"3y_median"`, `"5y_median"`,
+  `"trend_weighted"`, `"min_3y_trend"`, `"manual_override"`.
+- `roe_history.raw` on **pakollinen**: lista `[year, roe]`-pareja
+  kronologisessa järjestyksessä (vanhin ensin), `null` puuttuville
+  vuosille. Parser laskee mediaanit ja trendin uudelleen tästä ja
+  tarkistaa että `roe_used` matsii deterministista sääntöä.
 - `roe_history.trend_label` on yksi: `"laskeva"`, `"nouseva"`, `"vakaa"`,
   `"insufficient_history"` (alle 3v dataa).
 - `warnings` on lista stringejä — käytä **vain** kun datassa on aukko
   joka uhkaa laskennan validiteettia. Esim:
-  - `"BVPS yli 12 kk vanha (2024-12-31)"`
   - `"ROE-historia vain 2 vuotta — käytin LFY:tä"`
   - `"Yhtiö on tehnyt kirjanpidon poikkeavan oikaisun 2024 — LFY voi olla harhainen"`
+  - `"sharePrice ja pb eri raportointiperiodista — BVPS-johto epätarkka"`
   - Tyhjä lista jos ei huolia.
 
 ### Validation guards

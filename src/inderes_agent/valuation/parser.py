@@ -6,17 +6,22 @@ This module:
   1. Pulls that block out of the agent's free text (defensively — the
      agent might prepend the **Ajatus:** line, append commentary, etc.)
   2. Validates the schema (required fields, sane ranges)
-  3. Returns either:
+  3. **Validates the ROE-version choice** against the deterministic
+     sustainable-ROE rule in ``valuation.roe_selection``. The agent
+     provides ``roe_history.raw`` (chronological [year, roe] pairs);
+     we recompute statistics from that and verify the agent picked
+     what the rule prescribes.
+  4. Returns either:
      - a ``ValuationAgentOutput`` ready to feed into ``engine.value_stock``,
      - a ``ValuationAgentSkipped`` when the agent flagged ``valid=false``
        (e.g., loss-making company), or
      - raises ``ValuationParseError`` with the original raw text for
-       forensic logging when the JSON is malformed or missing required
-       fields.
+       forensic logging when the JSON is malformed, missing required
+       fields, or violates the deterministic rule.
 
 The parser is intentionally strict: agents that drift from the schema
-should fail loudly so we notice and fix the prompt rather than letting
-silently-wrong numbers reach the user.
+or the rule should fail loudly so we notice and fix the prompt rather
+than letting silently-wrong numbers reach the user.
 """
 
 from __future__ import annotations
@@ -25,6 +30,11 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
+
+from .roe_selection import (
+    compute_roe_statistics,
+    validate_agent_roe_choice,
+)
 
 # Match the first ```json ... ``` (or just ``` ... ```) fenced block in the text.
 # Greedy-but-non-overlapping; the agent emits exactly one per prompt.
@@ -100,10 +110,12 @@ class ValuationAgentOutput:
         }
 
 
-# Allowed roe_version values (must match the prompt).
+# Allowed roe_version values. Must match the labels select_sustainable_roe
+# returns plus a couple of escape hatches (3y_median for short history,
+# manual_override when the analyst overrides the rule explicitly).
 _ALLOWED_ROE_VERSIONS = frozenset({
-    "lfy", "3y_avg", "5y_avg",
-    "trend_weighted", "min_3y_trend", "avg_3y_trend",
+    "lfy", "3y_median", "5y_median",
+    "trend_weighted", "min_3y_trend",
     "manual_override",
 })
 
@@ -141,6 +153,74 @@ def _ensure_str(blob: dict[str, Any], key: str, raw_text: str, *, allow_none: bo
             f"Missing required string field {key!r}", raw_text=raw_text
         )
     return str(val)
+
+
+def _validate_roe_against_rule(
+    blob: dict[str, Any],
+    roe_used: float,
+    roe_version: str,
+    raw_text: str,
+) -> None:
+    """Check that the agent picked the ROE the deterministic rule prescribes.
+
+    Requires the agent to include ``roe_history.raw`` — a chronological
+    list of ``[year, roe]`` pairs (oldest first), with `null` for years
+    where the metric was not reported.
+
+    We recompute statistics from this raw history (so the agent can't
+    silently mis-compute medians) and call ``validate_agent_roe_choice``
+    on the result.
+
+    Raises ``ValuationParseError`` if:
+      - roe_history.raw is missing or malformed
+      - the recomputed rule disagrees with the agent's ``roe_used``
+    """
+    history_obj = blob.get("roe_history") or {}
+    if not isinstance(history_obj, dict):
+        raise ValuationParseError(
+            "roe_history must be an object", raw_text=raw_text
+        )
+
+    raw = history_obj.get("raw")
+    if not isinstance(raw, list) or not raw:
+        raise ValuationParseError(
+            "roe_history.raw is required: a non-empty chronological list of "
+            "[year, roe] pairs (oldest first). Use null for years where ROE "
+            "was not reported (those years are skipped).",
+            raw_text=raw_text,
+        )
+
+    # Extract just the ROE values, dropping null years and validating shape
+    history_values: list[float] = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, list) or len(item) != 2:
+            raise ValuationParseError(
+                f"roe_history.raw[{i}] must be a [year, roe] pair, got {item!r}",
+                raw_text=raw_text,
+            )
+        _, roe_val = item
+        if roe_val is None:
+            continue  # skip years without reported ROE
+        if not isinstance(roe_val, (int, float)):
+            raise ValuationParseError(
+                f"roe_history.raw[{i}][1] must be numeric or null, got {roe_val!r}",
+                raw_text=raw_text,
+            )
+        history_values.append(float(roe_val))
+
+    if not history_values:
+        raise ValuationParseError(
+            "roe_history.raw contains no valid (year, roe) pairs after dropping nulls",
+            raw_text=raw_text,
+        )
+
+    stats = compute_roe_statistics(history_values)
+    ok, msg = validate_agent_roe_choice(roe_used, roe_version, stats)
+    if not ok:
+        raise ValuationParseError(
+            f"Sustainable-ROE rule violation: {msg}",
+            raw_text=raw_text,
+        )
 
 
 def parse(
@@ -229,6 +309,13 @@ def parse(
             f"{sorted(_ALLOWED_ROE_VERSIONS)}",
             raw_text=raw_text,
         )
+
+    # ── Deterministic sustainable-ROE rule check ──
+    # The agent provides roe_history.raw (chronological [year, roe] pairs).
+    # We recompute statistics from scratch and verify the agent's choice
+    # matches what the rule prescribes. Skipped only for manual_override.
+    if roe_version_raw != "manual_override":
+        _validate_roe_against_rule(blob, roe_used, roe_version_raw, raw_text)
 
     company = _ensure_str(blob, "company", raw_text)
     assert company is not None  # for type-checker; _ensure_str raised if missing
