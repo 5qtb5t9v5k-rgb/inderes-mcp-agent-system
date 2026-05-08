@@ -1027,6 +1027,26 @@ if prompt:
             except Exception:
                 pass
             _render_auth_expired()
+        except asyncio.CancelledError:
+            # MCP / anyio cancels the request scope when the upstream stream
+            # dies mid-handshake. Common cause: Inderes Keycloak's 10h SSO
+            # Session Max kicks in and the MCP server closes the stream
+            # before raising a clean OAuth error, so we get a bare
+            # CancelledError instead of HeadlessAuthError.
+            #
+            # CancelledError inherits from BaseException, NOT Exception, so
+            # the generic `except Exception` below would NEVER catch it —
+            # the script crashes silently and the UI just freezes. Treat it
+            # as the same "auth probably broken" state and surface the same
+            # card so the user has something actionable.
+            status.update(label="Yhteys keskeytyi", state="error", expanded=True)
+            log.warning("mcp_cancelled_likely_auth_or_network")
+            st.session_state["_auth_broken"] = True
+            try:
+                _bootstrap_auth.clear()
+            except Exception:
+                pass
+            _render_auth_expired()
         except Exception as exc:
             # If anything looks like an auth/refresh problem, mask it the
             # same way. Otherwise show the (already-non-sensitive)
