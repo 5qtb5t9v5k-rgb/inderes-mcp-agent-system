@@ -119,6 +119,32 @@ def write_run(
             encoding="utf-8",
         )
 
+    # Alternative-valuation results — only present when user enabled the
+    # "Käytä vaihtoehtoista arvonmääritystä" sidebar toggle and at least one
+    # VALUATION subagent ran. Each record includes the agent's parsed
+    # parameters + the deterministic engine's computed Valuation, so the run
+    # is fully reconstructible offline (replay-friendly per BCBS 239).
+    if synth_trace is not None and synth_trace.valuations:
+        from dataclasses import asdict as _asdict
+        valuation_payload = []
+        for rec in synth_trace.valuations:
+            payload: dict = {
+                "company": rec.company,
+                "parse_error": rec.parse_error,
+                "raw_text": rec.raw_text,
+            }
+            if rec.agent_output is not None:
+                payload["agent_output"] = _asdict(rec.agent_output)
+            if rec.skipped is not None:
+                payload["skipped"] = _asdict(rec.skipped)
+            if rec.valuation is not None:
+                payload["valuation"] = _asdict(rec.valuation)
+            valuation_payload.append(payload)
+        (run_dir / "valuation.json").write_text(
+            json.dumps(valuation_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     # Stage timings make the cost of each phase visible — useful for the UI's
     # 🧠 Päättely panel and for debugging slow queries. They also let us spot
     # patterns like "conflict-detector dominates on small fan-outs" or

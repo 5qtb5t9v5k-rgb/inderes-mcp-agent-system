@@ -21,6 +21,11 @@ class Domain(str, Enum):
     RESEARCH = "research"
     SENTIMENT = "sentiment"
     PORTFOLIO = "portfolio"
+    # VALUATION is opt-in: router never picks it; ui/app.py appends it
+    # when the user enables the "Käytä vaihtoehtoista arvonmääritystä"
+    # sidebar toggle. The agent fetches BVPS/ROE via MCP and emits JSON
+    # the deterministic valuation engine consumes.
+    VALUATION = "valuation"
 
 
 class QueryClassification(BaseModel):

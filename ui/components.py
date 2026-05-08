@@ -79,6 +79,12 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "desc_fi": "Tarkastaa onko yhtiö Inderesin mallisalkussa ja millä painoilla.",
         "desc_en": "Checks whether the company is in Inderes' model portfolio and at what weight.",
     },
+    "VALUATION": {
+        "glyph": "◇", "color": "#FFB85F",  # warmer amber tone, distinct from LEAD's #F5B942
+        "role_fi": "Oma malli", "role_en": "Own model",
+        "desc_fi": "Soveltaa käyttäjän omaa Greenwald-Gordon -arvonmääritystä, tuottaa fair valuen vertailtavaksi Inderesin tavoitehintaan.",
+        "desc_en": "Applies the user's own Greenwald-Gordon valuation, computing a fair value to compare against Inderes' target price.",
+    },
 }
 
 # Mock ticker — replace with a real feed if/when available.
@@ -1625,12 +1631,14 @@ DOMAIN_VERBS_FI: dict[str, str] = {
     "research":  "lukee Inderesin analyytikkonotet ja raportit",
     "sentiment": "käy läpi sisäpiirikaupat ja sijoittajafoorumin",
     "portfolio": "tarkistaa Inderesin mallisalkun nykytilan",
+    "valuation": "laskee oman fair valuen Greenwald-Gordon -mallilla",
 }
 DOMAIN_VERBS_EN: dict[str, str] = {
     "quant":     "fetches fundamentals and computes metrics in Python",
     "research":  "reads Inderes' analyst notes and reports",
     "sentiment": "scans insider trades and the investor forum",
     "portfolio": "checks Inderes' current model portfolio",
+    "valuation": "computes own fair value via Greenwald-Gordon model",
 }
 
 
