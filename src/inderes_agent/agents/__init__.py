@@ -10,6 +10,7 @@ from .portfolio import build_portfolio_agent
 from .quant import build_quant_agent
 from .research import build_research_agent
 from .sentiment import build_sentiment_agent
+from .valuation import build_valuation_agent
 
 __all__ = [
     "build_conflict_detector_agent",
@@ -18,4 +19,5 @@ __all__ = [
     "build_quant_agent",
     "build_research_agent",
     "build_sentiment_agent",
+    "build_valuation_agent",
 ]

@@ -18,5 +18,18 @@ when the user has the "vaihtoehtoinen arvonmääritys" toggle enabled in the UI.
 """
 
 from .engine import Valuation, value_stock
+from .parser import (
+    ValuationAgentOutput,
+    ValuationAgentSkipped,
+    ValuationParseError,
+    parse,
+)
 
-__all__ = ["Valuation", "value_stock"]
+__all__ = [
+    "Valuation",
+    "ValuationAgentOutput",
+    "ValuationAgentSkipped",
+    "ValuationParseError",
+    "parse",
+    "value_stock",
+]

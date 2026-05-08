@@ -91,6 +91,15 @@ PORTFOLIO_TOOLS: tuple[str, ...] = (
     "search-companies",
 )
 
+# Valuation agent uses the same MCP tools as QUANT (it needs BVPS, ROE
+# history, and current price from get-fundamentals). The difference is
+# in the prompt + output contract: QUANT outputs a narrative summary,
+# VALUATION outputs strict JSON the deterministic engine consumes.
+VALUATION_TOOLS: tuple[str, ...] = (
+    "search-companies",
+    "get-fundamentals",
+)
+
 
 class _InderesBearerAuth(httpx.Auth):
     """Per-request httpx.Auth that fetches the latest cached Inderes token.
