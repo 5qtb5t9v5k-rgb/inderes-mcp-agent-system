@@ -62,7 +62,38 @@ class Valuation:
 
     # ── Market comparison ──
     pb: float                        # price / bvps
-    yli_ali_pct: float               # (price - fair_value) / price × 100
+    yli_ali_pct: float               # (price - fair_value) / fair_value × 100
+                                     # (matches Excel I column convention)
+
+    # ── EPV / kasvun hinnoittelu -dekompositio ──
+    # The Greenwald insight: total value = EPV + value of growth. The market
+    # price decomposes the same way — so we can ask "how much of the current
+    # price is the market paying for growth?" These four fields make that
+    # decomposition explicit.
+    market_premium_to_epv_pct: float    # (price - epv_pure) / epv_pure × 100
+                                         # How much above the "no-growth"
+                                         # value is the market paying?
+                                         # Negative → "kasvun saa kaupan päälle PLUS alennus EPV:stä"
+                                         # 0 → market prices zero growth
+                                         # >0 → market pays for some growth
+    growth_priced_in_share: float        # (price - epv_pure) / price
+                                         # Share of current price that is
+                                         # growth pricing. Can be negative
+                                         # (price below EPV) or up to ~1
+                                         # (almost all of price is growth).
+    implied_g: float | None              # Inverse Gordon: solve for g given
+                                         # current price. None when math
+                                         # degenerates (P/B too close to 1,
+                                         # or implied_g would explode past k).
+                                         # Compare to model's g to see who's
+                                         # more optimistic — market or model.
+    safety_margin_to_fv_pct: float       # (fair_value - price) / fair_value × 100
+                                         # Positive = market price is below
+                                         # own fair value (undervalued from
+                                         # this model's perspective). The
+                                         # entry-level numbers below are
+                                         # absolute thresholds; this is
+                                         # the relative discount.
 
     # ── Entry levels (per methodology/formulas.md) ──
     entry_aloitus: float             # 0.90 × fair_value
@@ -170,6 +201,37 @@ def value_stock(
     pb = price / bvps
     yli_ali_pct = (price - fair_value) / fair_value * 100.0
 
+    # ── EPV / growth-pricing decomposition ──
+    # The Greenwald split: market_price = EPV + (something for growth).
+    # Compute three views of that decomposition.
+    market_premium_to_epv_pct = (price - epv_pure) / epv_pure * 100.0
+    growth_priced_in_share = (price - epv_pure) / price
+
+    # Inverse Gordon: g_implied = (P/B × k - ROE) / (P/B - 1)
+    #   Edge cases:
+    #     - P/B too close to 1: denominator near zero, formula degenerates
+    #     - implied_g >= k: Gordon explodes (no finite valuation)
+    #   Both → return None and let the caller surface "ei laskettavissa".
+    implied_g: float | None
+    pb_minus_one = pb - 1.0
+    if abs(pb_minus_one) < 0.001:
+        # P/B ≈ 1 → market values at book → implied_g undefined
+        # (any g satisfies if ROE = k; no g satisfies if ROE ≠ k).
+        implied_g = None
+    else:
+        candidate = (pb * k - roe) / pb_minus_one
+        if candidate >= k:
+            # Implied growth at or above cost of capital → Gordon model
+            # would explode. Surface as "off-the-chart" rather than
+            # report a misleading number.
+            implied_g = None
+        else:
+            implied_g = candidate
+
+    # Safety margin = how much below own fair value is the price?
+    # Positive = undervalued from the model's perspective.
+    safety_margin_to_fv_pct = (fair_value - price) / fair_value * 100.0
+
     return Valuation(
         bvps=bvps,
         roe=roe,
@@ -188,6 +250,10 @@ def value_stock(
         gv_excel=gv_excel,
         pb=pb,
         yli_ali_pct=yli_ali_pct,
+        market_premium_to_epv_pct=market_premium_to_epv_pct,
+        growth_priced_in_share=growth_priced_in_share,
+        implied_g=implied_g,
+        safety_margin_to_fv_pct=safety_margin_to_fv_pct,
         entry_aloitus=0.90 * fair_value,
         entry_nosto=0.80 * fair_value,
         entry_taysi=0.75 * fair_value,

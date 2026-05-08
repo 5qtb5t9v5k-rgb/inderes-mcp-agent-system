@@ -206,3 +206,117 @@ def test_returns_valuation_dataclass() -> None:
     """Sanity: ensure the public return type is the documented dataclass."""
     v = value_stock(bvps=5.0, roe=0.18, k=0.09, g=0.05, price=12.0)
     assert isinstance(v, Valuation)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EPV / growth-pricing decomposition (the Excel "Markkinahinnoittelu" view)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_market_premium_to_epv_for_sampo_case() -> None:
+    """Sampo from run 20260508-171706-948.
+
+    Engine inputs that the agent fed to the engine:
+      BVPS=3.04, ROE=20.7%, k=8%, g=3.5%, price=9.32
+
+    Engine computes:
+      EPV_pure = (0.207/0.08) × 3.04 = 7.86
+      Market premium to EPV = (9.32 - 7.86) / 7.86 ≈ +18.6%
+      Growth_priced_in_share = (9.32 - 7.86) / 9.32 ≈ 15.7%
+    """
+    v = value_stock(bvps=3.0385, roe=0.207, k=0.08, g=0.035, price=9.32)
+    assert v.epv_pure == pytest.approx(7.862, abs=0.01)
+    assert v.market_premium_to_epv_pct == pytest.approx(18.5, abs=0.5)
+    assert v.growth_priced_in_share == pytest.approx(0.157, abs=0.005)
+
+
+def test_implied_g_for_sampo_pessimistic_market() -> None:
+    """Sampo: market is pricing less growth than the model assumes."""
+    v = value_stock(bvps=3.0385, roe=0.207, k=0.08, g=0.035, price=9.32)
+    # implied_g = (P/B × k - ROE) / (P/B - 1)
+    # P/B = 3.067; (3.067 × 0.08 - 0.207) / (3.067 - 1) ≈ 0.0185 = 1.85%
+    assert v.implied_g is not None
+    assert v.implied_g == pytest.approx(0.0185, abs=0.002)
+    # Market (1.85%) < model (3.5%) → market is more pessimistic
+    assert v.implied_g < v.g
+
+
+def test_implied_g_for_qt_optimistic_market() -> None:
+    """Qt: market is pricing MORE growth than the model assumes.
+
+    Inputs (with the corrected ROE per the new sustainable rule):
+      BVPS=8.25, ROE=18.1% (3y_median), k=11%, g=5.5%, price=32.94
+    """
+    v = value_stock(bvps=8.25, roe=0.181, k=0.11, g=0.055, price=32.94)
+    # implied_g = (P/B × k - ROE) / (P/B - 1)
+    # P/B = 3.99; (3.99 × 0.11 - 0.181) / (3.99 - 1) ≈ 0.0863 = 8.6%
+    assert v.implied_g is not None
+    assert v.implied_g == pytest.approx(0.0863, abs=0.002)
+    # Market (8.6%) > model (5.5%) → market is more optimistic
+    assert v.implied_g > v.g
+
+
+def test_safety_margin_undervalued_positive() -> None:
+    """Sampo: price 9.32 < fair_value 11.61 → positive margin (undervalued)."""
+    v = value_stock(bvps=3.0385, roe=0.207, k=0.08, g=0.035, price=9.32)
+    # safety_margin_to_fv_pct = (fair_value - price) / fair_value × 100
+    # (11.61 - 9.32) / 11.61 = 0.197 → +19.7%
+    assert v.safety_margin_to_fv_pct == pytest.approx(19.7, abs=0.5)
+    assert v.safety_margin_to_fv_pct > 0
+
+
+def test_safety_margin_overvalued_negative() -> None:
+    """Qt with corrected ROE: price 32.94 > fair_value 22.65 → negative margin."""
+    v = value_stock(bvps=8.25, roe=0.181, k=0.11, g=0.055, price=32.94)
+    assert v.safety_margin_to_fv_pct < 0
+
+
+def test_kasvun_saa_kaupan_paalle() -> None:
+    """When price < EPV, market prices in zero or negative growth.
+
+    Construct a case where price is well below the no-growth value.
+    """
+    # Build a laatu-yhtiö but price it at 80% of EPV
+    v = value_stock(bvps=10.0, roe=0.20, k=0.08, g=0.05, price=20.0)
+    # EPV_pure = (0.20/0.08) × 10 = 25.0
+    # price 20 < epv 25 → growth_priced_in_share negative
+    assert v.epv_pure == pytest.approx(25.0)
+    assert v.market_premium_to_epv_pct < 0
+    assert v.growth_priced_in_share < 0
+    # Implied growth would be negative (or None if math degenerates)
+    if v.implied_g is not None:
+        # Market is pricing in less growth than zero — interpret as decline expected
+        assert v.implied_g < 0.05  # below model's g, definitely
+
+
+def test_implied_g_returns_none_when_pb_near_one() -> None:
+    """P/B ≈ 1 → market values at book → implied_g undefined."""
+    # Construct so that price = bvps (P/B = 1.0)
+    v = value_stock(bvps=10.0, roe=0.10, k=0.10, g=0.05, price=10.0)
+    # ROE == k boundary → quality = keskinkertainen, P/B exactly 1
+    assert v.pb == pytest.approx(1.0)
+    assert v.implied_g is None
+
+
+def test_implied_g_returns_none_when_explosion() -> None:
+    """If implied_g would be ≥ k, return None rather than a misleading number."""
+    # Construct an extreme case: very high P/B, low ROE → implied g would explode
+    v = value_stock(bvps=1.0, roe=0.10, k=0.08, g=0.04, price=20.0)
+    # P/B = 20. (20 × 0.08 - 0.10) / 19 = 1.5 / 19 = 0.079 < 0.08
+    # So implied_g ≈ 7.9% < k=8% — actually NOT explosive
+    # Let me use a case that actually explodes:
+    v2 = value_stock(bvps=1.0, roe=0.05, k=0.08, g=0.04, price=20.0)
+    # P/B = 20. (20 × 0.08 - 0.05) / 19 = 1.55 / 19 = 0.0816 > 0.08 → None
+    assert v2.implied_g is None
+
+
+def test_decomposition_internally_consistent() -> None:
+    """Sanity: market_premium_to_epv_pct ↔ growth_priced_in_share match."""
+    v = value_stock(bvps=10.0, roe=0.20, k=0.10, g=0.04, price=30.0)
+    # market_premium_to_epv_pct = (price - epv) / epv × 100
+    # growth_priced_in_share = (price - epv) / price
+    # Both have the same numerator (price - epv); just different denominators.
+    expected_premium = (v.price - v.epv_pure) / v.epv_pure * 100.0
+    expected_share = (v.price - v.epv_pure) / v.price
+    assert v.market_premium_to_epv_pct == pytest.approx(expected_premium, abs=1e-6)
+    assert v.growth_priced_in_share == pytest.approx(expected_share, abs=1e-6)
