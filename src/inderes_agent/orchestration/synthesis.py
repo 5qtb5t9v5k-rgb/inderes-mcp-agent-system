@@ -709,6 +709,98 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _all_subagents_failed_or_fabricated(workflow_result: WorkflowResult) -> bool:
+    """True iff every dispatched subagent either errored or got
+    fabrication-guarded.
+
+    Empty subagent_results (zero dispatched) returns False — this is a
+    routing failure rather than a data-availability failure, and LEAD
+    should still produce a generic answer in that edge case.
+    """
+    results = workflow_result.subagent_results or []
+    if not results:
+        return False
+    return all(sr.error is not None for sr in results)
+
+
+def _no_data_response(
+    query: str,
+    workflow_result: WorkflowResult,
+    *,
+    lead_model_when_skipped: str = "skipped_no_data",
+) -> tuple[str, str, SynthesisTrace]:
+    """Construct the fixed answer when no subagent retrieved real data.
+
+    Three pieces of context drive the message: the original query, the
+    companies the router identified (so we can name them in the
+    response), and the union of subagent error reasons (so a curious
+    user can dig into why).
+
+    The intent is the opposite of LEAD's normal job: instead of
+    synthesising from data, we explicitly tell the user there IS no
+    data so the user can decide whether to retry, rephrase, or move on.
+    No invented numbers, no recommendations.
+    """
+    cls = workflow_result.classification
+    companies = cls.companies or []
+    company_str = ", ".join(companies) if companies else None
+
+    error_reasons: list[str] = []
+    for sr in workflow_result.subagent_results or []:
+        if sr.error and sr.error not in error_reasons:
+            error_reasons.append(sr.error)
+
+    if company_str:
+        head = (
+            f"En löytänyt yhtiötä **{company_str}** Inderes-tietokannasta tai "
+            f"datalähteet eivät palauttaneet tietoja tähän kysymykseen."
+        )
+    else:
+        head = (
+            "En saanut palautettua dataa tähän kysymykseen mistään käytössä "
+            "olevasta lähteestä."
+        )
+
+    body_parts = [
+        f"**💭 Perustelut:** Kaikki {len(workflow_result.subagent_results or [])} "
+        f"subagenttia kuolivat ennen synteesiä, joten synteesi ohitettiin "
+        f"keksittyjen lukujen estämiseksi.",
+        "",
+        head,
+        "",
+        "**Mitä voit tehdä:**",
+        "- Tarkista yhtiön nimen kirjoitusasu (esim. *Sampo Oyj* → *Sampo*)",
+        "- Kokeile yhtiön Inderes-listattua nimeä — kaikkia pörssiyhtiöitä ei ole katalogissa",
+        "- Jos kysymys ei koske tiettyä yhtiötä, kokeile tarkennusta",
+    ]
+    if error_reasons:
+        body_parts.append("")
+        body_parts.append("**Syyt agenttien epäonnistumisille:**")
+        for reason in error_reasons[:3]:  # cap to keep the answer short
+            short = reason[:160] + ("…" if len(reason) > 160 else "")
+            body_parts.append(f"- `{short}`")
+
+    final_text = "\n".join(body_parts)
+
+    log.warning(
+        "synthesize() short-circuited: all %d subagents failed/fabricated, "
+        "returning no-data response for query=%r companies=%r",
+        len(workflow_result.subagent_results or []),
+        query[:80],
+        companies,
+    )
+
+    trace = SynthesisTrace(
+        conflict_report=ConflictReport(
+            skipped_reason="all_subagents_failed_or_fabricated",
+        ),
+        lead_seconds=0.0,
+        paattely=None,
+        paattely_raw=None,
+    )
+    return final_text, lead_model_when_skipped, trace
+
+
 async def synthesize(
     query: str,
     workflow_result: WorkflowResult,
@@ -736,6 +828,21 @@ async def synthesize(
     `synthesis_trace.lead_seconds` is the wall clock for the LEAD synthesis call.
     """
     from ..agents._common import today_prompt_prefix
+
+    # Short-circuit: if every subagent failed or got fabrication-guarded,
+    # there is no MCP-sourced data for LEAD to synthesise. Returning a
+    # fixed "no data" response is the only safe option — running LEAD on
+    # empty inputs has historically led it to fill the void with
+    # plausible-sounding but invented analysis (case_004 in
+    # evals/golden.yaml: "Vincit" returned a complete fabricated answer
+    # because the catalog miss was hidden from LEAD by 0-tool-call
+    # fabricated subagent text).
+    if _all_subagents_failed_or_fabricated(workflow_result):
+        return _no_data_response(
+            query, workflow_result, lead_model_when_skipped=(
+                "skipped_no_data" if not deep_lead else "skipped_no_data"
+            )
+        )
 
     conflict_report = await detect_conflicts(workflow_result, deep=deep_subagents)
 

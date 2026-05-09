@@ -39,6 +39,121 @@ class SubagentResult:
     duration_seconds: float = 0.0  # per-subagent wall clock from start to finish
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Fabrication detector
+#
+# Background: case_004 (evals/golden.yaml) caught a "trust killer" run
+# (20260502-205706-108, "mitäs vincitin osakkeesta..."). Vincit isn't in
+# the Inderes catalog — search-companies would have errored — but
+# instead of failing, all three subagents returned 0 tool calls AND
+# fabricated a complete narrative with target prices, margins, and even
+# a fake "Sources: get-fundamentals, ..." line. LEAD synthesised the
+# fabrications into one polished answer; the user has no way to know
+# the entire thing is invented.
+#
+# A subagent with MCP tools attached should NEVER produce a long
+# domain-loaded text without making at least one MCP call. If it does,
+# the text is by definition not grounded in retrieved data — it's the
+# model's training-time guess.
+#
+# This detector is the analogue of the valuation tool-call guard in
+# synthesis.py:354 (commit 045872e), generalised to all subagent
+# domains. Triggers REPLACE the text with empty + set the error field,
+# so LEAD's synthesis prompt sees the failure honestly and (with
+# `_all_subagents_fabricated_or_errored()` in synthesis.py) routes to
+# the no-data answer instead of synthesising on top of nothing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Length under which an empty-tool-calls response is excused as a
+# legitimate "I have nothing to say" reply. A real "I couldn't find
+# anything" answer is < ~300 chars; the Vincit fabrication was 1500+.
+_FABRICATION_MIN_TEXT_CHARS = 300
+
+# Phrases that strongly imply the agent claimed grounded output —
+# either a recommendation, a euro/percent figure, a target price, or a
+# fake "Sources:" line. If any appear in a 0-tool-call response, the
+# response is fabricated.
+#
+# Curation note: short English words like "buy"/"sell"/"hold" and short
+# Finnish stems like "lisää"/"osta"/"myy" caused false positives via
+# substring matches against legitimate prose ("yleisellä" contains
+# "sell", "kallista" contains nothing-but-could). The list below
+# focuses on UNAMBIGUOUS markers — multi-character stems that don't
+# coincide with everyday Finnish vocabulary plus literal symbols and
+# section headers that appear only in synthesised analysis. Real
+# fabrications hit 5+ of these simultaneously, so dropping the
+# ambiguous ones doesn't reduce sensitivity meaningfully.
+_FABRICATION_GROUNDED_MARKERS: tuple[str, ...] = (
+    "tavoitehint",      # tavoitehinta / tavoitehinnan / tavoitehintaa
+    "target price",
+    "vähennä",          # one of two Finnish recommendation verbs that's
+                        # not a common everyday word — kept; "lisää",
+                        # "osta", "myy" are too common, dropped
+    "p/e",
+    "ev/ebit",
+    "ebit-",            # ebit-marginaali, EBITA-, EBITDA-
+    "p/b",
+    "€",
+    "sources:",
+    "lähteet:",
+    "inderes view",
+    "inderesin näkemys",
+    "inderes näkemys",
+    "epv",              # Greenwald-Gordon engine output (not user vocab)
+    "turvamarginaal",
+)
+
+
+def _detect_fabrication(result: SubagentResult) -> str | None:
+    """Return an error reason if the result looks fabricated, else None.
+
+    Heuristic: long domain-loaded text WITH zero MCP tool calls = the
+    model wrote from training memory, not from retrieved data. We
+    exclude already-errored results (they have a real error already)
+    and very short responses (legitimately empty).
+    """
+    if result.error:
+        return None  # already failed — different problem
+    if result.tool_calls:
+        return None  # any tool call at all → not a pure fabrication
+    text = (result.text or "").strip()
+    if len(text) < _FABRICATION_MIN_TEXT_CHARS:
+        return None  # too short to confidently flag
+    text_lower = text.lower()
+    hit_markers = [m for m in _FABRICATION_GROUNDED_MARKERS if m in text_lower]
+    if not hit_markers:
+        return None  # no grounded-claim markers — could be a meta reply
+    return (
+        f"fabricated_no_tool_calls: agent emitted {len(text)} chars of "
+        f"domain-loaded text (markers: {hit_markers[:3]}) but made 0 "
+        f"MCP calls — output is not grounded in retrieved data"
+    )
+
+
+def _apply_fabrication_guard(result: SubagentResult) -> SubagentResult:
+    """If fabrication detected, replace text with empty + set error.
+
+    Returns a new SubagentResult — keeps SubagentResult dataclass
+    immutable from caller's view. Other fields (model_used,
+    duration_seconds, image_paths) are preserved so observability
+    still has the trace of what the agent did.
+    """
+    reason = _detect_fabrication(result)
+    if reason is None:
+        return result
+    return SubagentResult(
+        domain=result.domain,
+        company=result.company,
+        text="",
+        model_used=result.model_used,
+        error=reason,
+        image_paths=result.image_paths,
+        tool_calls=result.tool_calls,
+        duration_seconds=result.duration_seconds,
+    )
+
+
 @dataclass
 class WorkflowResult:
     classification: QueryClassification
@@ -105,7 +220,11 @@ async def _run_one(
                 text, image_paths, tool_calls = extract_parts(
                     result, run_dir=run_dir, agent_label=label
                 )
-                return SubagentResult(
+                # Run the fabrication guard at the boundary so every
+                # downstream consumer (LEAD synthesis, conflict detector,
+                # forensic logs) sees the same error. See
+                # `_detect_fabrication` for the rationale.
+                return _apply_fabrication_guard(SubagentResult(
                     domain=domain,
                     company=company,
                     text=text,
@@ -113,7 +232,7 @@ async def _run_one(
                     image_paths=image_paths,
                     tool_calls=tool_calls,
                     duration_seconds=time.time() - t_start,
-                )
+                ))
         except Exception as exc:
             return SubagentResult(
                 domain=domain,
