@@ -1029,6 +1029,45 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   .ia-paattely-slot:last-child { border-bottom: 0; }
 }
 
+/* ─────────────────────────  PLAN EXPANDER (plan-then-execute)  ─────────────
+   Renders the lead-planner's pre-dispatch plan as a stacked column inside
+   the same <details> shell as Päättely. Single-column layout (4-5 slots)
+   rather than 2x2 because per_subagent guidance can be long. */
+.ia-plan-expander .ia-plan-grid {
+  display: flex; flex-direction: column;
+}
+.ia-plan-slot {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-body);
+}
+.ia-plan-slot:last-child { border-bottom: 0; }
+.ia-plan-lab {
+  display: flex; align-items: center; gap: var(--s-1);
+  font-size: var(--t-micro); letter-spacing: var(--ls-caps); color: var(--ink-3);
+  font-weight: 600; margin-bottom: var(--s-1);
+}
+.ia-plan-lab .icn { font-size: var(--t-micro); }
+.ia-plan-thinking   .ia-plan-lab { color: var(--p-lead); }
+.ia-plan-axis       .ia-plan-lab { color: var(--p-quant); }
+.ia-plan-subagents  .ia-plan-lab { color: var(--p-research); }
+.ia-plan-watchouts  .ia-plan-lab { color: #ff9f9f; }
+.ia-plan-narrative  .ia-plan-lab { color: var(--ink-2); }
+.ia-plan-body { color: var(--ink-1); line-height: 1.55; }
+.ia-plan-row {
+  display: grid; grid-template-columns: 100px 1fr; gap: var(--s-2);
+  padding: var(--s-1) 0;
+}
+.ia-plan-row:not(:last-child) { border-bottom: 1px dashed var(--line); }
+.ia-plan-domain { font-weight: 600; font-size: var(--t-meta); text-transform: uppercase; }
+.ia-plan-guidance { color: var(--ink-1); }
+.ia-plan-watch-list { margin: 0; padding-left: var(--s-3); }
+.ia-plan-watch-list li { margin-bottom: var(--s-1); }
+.ia-plan-meta {
+  padding: var(--s-1) var(--s-3); font-size: var(--t-micro); color: var(--ink-3);
+  text-align: right; border-top: 1px solid var(--line);
+}
+
 /* ─────────────────────────  AIKAJANA STRIP (redesign timeline)  ────────────
    Single-line summary above the answer body. Replaces the live-status
    block once synthesis lands. Source: parts.jsx :: TimelineStrip. */

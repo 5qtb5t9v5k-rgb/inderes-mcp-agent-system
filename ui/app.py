@@ -110,6 +110,7 @@ from components import (  # noqa: E402
     render_followup_chips,
     render_recommendation_badge,
     render_paattely_b,
+    render_plan_expander,
     render_timeline_strip,
     render_activity_panel,
     build_conflict_html,
@@ -850,7 +851,14 @@ for msg in st.session_state.history:
             _lang_main = st.session_state.get("ui_lang", "fi")
             _cleaned_text, _perustelut_body = extract_perustelut(msg["content"])
 
-            # 1. 🧠 Päättely (deeper reasoning, expander; first because the
+            # 1a. 🧠 Suunnitelma (plan-then-execute output, expander).
+            #     Renders FIRST chronologically — the plan was the
+            #     pre-dispatch decision, before subagents fired. Silently
+            #     no-ops when plan.json is missing (= toggle was off).
+            if run_dir is not None:
+                render_plan_expander(run_dir, lang=_lang_main)
+
+            # 1b. 🧠 Päättely (deeper reasoning, expander; first because the
             #    user wants the work shown before the meta-summary).
             #    The conflict callout — when there are actual disagreements
             #    in conflicts.json — is embedded INSIDE this expander now,

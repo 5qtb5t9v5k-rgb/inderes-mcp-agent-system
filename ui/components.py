@@ -35,6 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import re
+from html import escape as escape_html
 from typing import Any
 
 import streamlit as st
@@ -1335,6 +1336,136 @@ def extract_perustelut(text: str) -> tuple[str, str | None]:
     body = m.group("body").strip()
     cleaned = (text[: m.start()] + text[m.end() :]).lstrip()
     return cleaned, body or None
+
+
+def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
+    """Render the lead-planner's pre-dispatch plan as a collapsed expander.
+
+    Reads ``plan.json`` from the run directory (only present when the user
+    enabled the "Käytä pidempää suunnittelua" sidebar toggle). Silently
+    no-ops when the file doesn't exist — i.e. when the toggle was off,
+    nothing renders.
+
+    Layout shows the four parts of the plan:
+      - thinking:    LEAD's reflection on what the user is really after
+      - axis:        the comparison axis (when applicable)
+      - per_subagent: per-domain guidance (the most actionable piece)
+      - watchouts:   things that could mislead the user
+
+    These are the FOUR fields LEAD's planner emits in its JSON. Plus the
+    free-text narrative shown in italics at the bottom.
+
+    Designed to sit ABOVE the Päättely expander chronologically: plan
+    comes BEFORE subagents fire, so it makes sense to show it before the
+    post-dispatch reasoning.
+    """
+    plan_path = run_dir / "plan.json"
+    if not plan_path.exists():
+        return  # Toggle was off — silent no-op
+
+    try:
+        plan_blob = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+
+    parsed = plan_blob.get("parsed") or {}
+    narrative = (plan_blob.get("narrative") or "").strip()
+    model_used = plan_blob.get("model_used") or ""
+
+    if not parsed and not narrative:
+        return
+
+    summary_label = "AVAA SUUNNITELMA ›" if lang == "fi" else "OPEN PLAN ›"
+
+    # Build the body of the expander
+    parts: list[str] = []
+
+    thinking = parsed.get("thinking")
+    if thinking:
+        thinking_lab = "AJATUS" if lang == "fi" else "THINKING"
+        parts.append(
+            f'<div class="ia-plan-slot ia-plan-thinking">'
+            f'<div class="ia-plan-lab"><span class="icn">🧠</span> {thinking_lab}</div>'
+            f'<div class="ia-plan-body">{escape_html(thinking)}</div>'
+            f"</div>"
+        )
+
+    axis = parsed.get("axis")
+    if axis:
+        axis_lab = "VERTAILUAKSELI" if lang == "fi" else "COMPARISON AXIS"
+        parts.append(
+            f'<div class="ia-plan-slot ia-plan-axis">'
+            f'<div class="ia-plan-lab"><span class="icn">⚖️</span> {axis_lab}</div>'
+            f'<div class="ia-plan-body">{escape_html(axis)}</div>'
+            f"</div>"
+        )
+
+    per_subagent = parsed.get("per_subagent") or {}
+    # Filter to non-null entries
+    active_guidance = {k: v for k, v in per_subagent.items() if v}
+    if active_guidance:
+        ps_lab = (
+            "OHJEET AGENTEILLE" if lang == "fi"
+            else "PER-AGENT GUIDANCE"
+        )
+        rows: list[str] = []
+        for domain, guidance in active_guidance.items():
+            chip = PERSONAS.get(domain.upper(), {})
+            glyph = chip.get("glyph", "•")
+            color = chip.get("color", "#bbb")
+            rows.append(
+                f'<div class="ia-plan-row">'
+                f'<span class="ia-plan-domain" style="color:{color}">{glyph} {domain}</span>'
+                f'<span class="ia-plan-guidance">{escape_html(guidance)}</span>'
+                f"</div>"
+            )
+        parts.append(
+            f'<div class="ia-plan-slot ia-plan-subagents">'
+            f'<div class="ia-plan-lab"><span class="icn">🎯</span> {ps_lab}</div>'
+            f'<div class="ia-plan-body">{"".join(rows)}</div>'
+            f"</div>"
+        )
+
+    watchouts = parsed.get("watchouts") or []
+    if watchouts:
+        wo_lab = "VAROITUKSET" if lang == "fi" else "WATCHOUTS"
+        items = "".join(
+            f"<li>{escape_html(str(w))}</li>" for w in watchouts
+        )
+        parts.append(
+            f'<div class="ia-plan-slot ia-plan-watchouts">'
+            f'<div class="ia-plan-lab"><span class="icn">⚠️</span> {wo_lab}</div>'
+            f'<div class="ia-plan-body"><ul class="ia-plan-watch-list">{items}</ul></div>'
+            f"</div>"
+        )
+
+    # Free-text narrative as a closer (italic)
+    if narrative:
+        narr_lab = "TIIVISTELMÄ" if lang == "fi" else "NARRATIVE"
+        parts.append(
+            f'<div class="ia-plan-slot ia-plan-narrative">'
+            f'<div class="ia-plan-lab"><span class="icn">📝</span> {narr_lab}</div>'
+            f'<div class="ia-plan-body" style="font-style:italic;color:var(--p-muted, #aaa)">{escape_html(narrative)}</div>'
+            f"</div>"
+        )
+
+    if not parts:
+        return
+
+    # Footer: which model was used
+    if model_used:
+        model_lab = "Suunnittelija:" if lang == "fi" else "Planner model:"
+        parts.append(
+            f'<div class="ia-plan-meta">{model_lab} <code>{escape_html(model_used)}</code></div>'
+        )
+
+    html = (
+        '<details class="ia-paattely-b ia-plan-expander">'
+        f'<summary class="ia-paattely-head">{summary_label}</summary>'
+        f'<div class="ia-plan-grid">{"".join(parts)}</div>'
+        "</details>"
+    )
+    st.html(html)
 
 
 def render_perustelut_box(body: str | None, lang: str = "fi") -> None:
