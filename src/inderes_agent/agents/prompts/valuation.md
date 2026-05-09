@@ -222,13 +222,26 @@ Käytössäsi on **inderes-valuation**-tool-setti:
 
 **Pakolliset tool-kutsut:**
 1. `search-companies(query)` — yhtiön ID
-2. `get-fundamentals(fields=["roe","sharePrice","pb","marketCap","sharesTotal"], startYear=Y-4, endYear=Y)`
+2. `get-fundamentals(fields=["roe","pb","marketCap","sharesTotal"], startYear=Y-4, endYear=Y)`
    — 5 vuoden ROE-historia + LFY:n marketCap + sharesTotal + pb. Näistä:
    - ROE-historia → mediaanit + trendi (ks. ROE-osio)
    - BVPS = (marketCap / sharesTotal) / pb (LFY)
-   - price = nykykurssi — käytä LFY:n `sharePrice` jos se on tuore (≤ 30 pv),
-     muuten pyydä erillisellä kutsulla viimeisin `sharePrice` ilman
-     vuosirajausta varmistaaksesi tuoreimman
+3. **`get-fundamentals(fields=["sharePrice"])` ILMAN vuosirajausta** —
+   pakollinen erillinen kutsu nykykurssin saamiseksi.
+
+   **MIKSI tämä on pakollinen erillinen kutsu:** vuosittainen `sharePrice`
+   per-year on **tilikauden lopun arvo** (esim. 31.12.LFY), ei tämän päivän
+   kurssi. Ero voi olla 10–20 % markkinaliikkeiden vuoksi muutamassa
+   kuukaudessa. Käyttäjä haluaa **tämänhetkisen** turvamarginaalin, ei
+   vuoden takaisen.
+
+   **`price_date` JSON-kentässä saa olla vain tämän kutsun palauttama
+   tuore päivämäärä** — ei tämän päivän pvm jos kutsua ei ajanut. Älä
+   keksi päivämäärää.
+
+   Jos tool ei palauta nykykurssia (poikkeustilanne), aseta
+   `"valid": false` ja warning *"nykykurssia ei saatu — vaihtoehtoinen
+   arvonmääritys ei ole luotettava ilman ajan tasalla olevaa hintaa"*.
 
 ## Output format — STRICT JSON
 

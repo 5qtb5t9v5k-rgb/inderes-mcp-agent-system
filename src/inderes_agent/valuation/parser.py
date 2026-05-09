@@ -156,6 +156,96 @@ def _ensure_str(blob: dict[str, Any], key: str, raw_text: str, *, allow_none: bo
     return str(val)
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Standard Levenshtein edit distance — small, no dependencies.
+
+    Used by ``_get_str_with_typo_tolerance`` to forgive single-character
+    typos in long key names (e.g. ``g_ratonale`` for ``g_rationale``).
+    """
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            curr[j] = min(
+                curr[j - 1] + 1,      # insertion
+                prev[j] + 1,          # deletion
+                prev[j - 1] + cost,   # substitution
+            )
+        prev = curr
+    return prev[-1]
+
+
+def _get_str_with_typo_tolerance(
+    blob: dict[str, Any],
+    key: str,
+    raw_text: str,
+    *,
+    max_distance: int = 2,
+) -> str:
+    """Fetch a string field, accepting near-misses (1–2 char typos).
+
+    When the agent emits ``g_ratonale`` instead of ``g_rationale``, the
+    rest of the JSON is fine — the engine inputs are valid, parameters
+    parse, and we can compute fair value. Discarding the whole run for a
+    single typo is hostile UX. So: if the exact key is missing but a
+    nearby key (Levenshtein ≤ 2) exists in the blob, use that and emit
+    a soft warning later via the orchestrator's logging.
+
+    Restrictions to keep this safe:
+      - only triggers when the EXACT key is absent (never overrides a
+        present field)
+      - candidate must be ≤ ``max_distance`` edits away (default 2)
+      - candidate must be > 6 chars (avoids matching short fields like
+        ``k`` ↔ ``g``)
+      - candidate must not be one of the OTHER required field names
+        (so ``k_rationale`` can't claim ``g_rationale``'s slot)
+
+    Raises ``ValuationParseError`` if no acceptable candidate is found.
+    """
+    if key in blob and blob[key] is not None:
+        return str(blob[key])
+
+    # Don't typo-match short keys — too risky.
+    if len(key) <= 6:
+        raise ValuationParseError(
+            f"Missing required string field {key!r}", raw_text=raw_text
+        )
+
+    # Other required keys we should NEVER mistakenly absorb.
+    siblings = {
+        "k_rationale", "g_rationale", "roe_rationale", "roe_version",
+        "company", "company_id", "ticker", "bvps_date", "price_date",
+    } - {key}
+
+    best_match: str | None = None
+    best_distance = max_distance + 1
+    for candidate in blob.keys():
+        if not isinstance(candidate, str):
+            continue
+        if candidate in siblings:
+            continue
+        if blob.get(candidate) is None:
+            continue
+        d = _levenshtein(candidate, key)
+        if d < best_distance and d > 0:  # >0 ensures not the exact same key
+            best_distance = d
+            best_match = candidate
+
+    if best_match is None:
+        raise ValuationParseError(
+            f"Missing required string field {key!r} (no near-match found)",
+            raw_text=raw_text,
+        )
+    return str(blob[best_match])
+
+
 def _validate_roe_against_rule(
     blob: dict[str, Any],
     roe_used: float,
@@ -334,8 +424,8 @@ def parse(
         g=g,
         roe_version=roe_version_raw,  # validated above
         roe_history=blob.get("roe_history") or {},
-        k_rationale=_ensure_str(blob, "k_rationale", raw_text) or "",
-        g_rationale=_ensure_str(blob, "g_rationale", raw_text) or "",
-        roe_rationale=_ensure_str(blob, "roe_rationale", raw_text) or "",
+        k_rationale=_get_str_with_typo_tolerance(blob, "k_rationale", raw_text),
+        g_rationale=_get_str_with_typo_tolerance(blob, "g_rationale", raw_text),
+        roe_rationale=_get_str_with_typo_tolerance(blob, "roe_rationale", raw_text),
         warnings=list(blob.get("warnings") or []),
     )

@@ -364,3 +364,88 @@ def test_parse_error_carries_raw_text_for_logging() -> None:
     with pytest.raises(ValuationParseError) as exc_info:
         parse(raw)
     assert exc_info.value.raw_text == raw
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Typo tolerance for *_rationale fields
+#
+# Background: Flash Lite occasionally typos these long key names (real
+# example from prod: ``g_ratonale`` — missing the 'i'). The rest of the
+# JSON is fine and engine inputs valid. Discarding the whole run for one
+# typo is hostile UX. The parser allows ≤ 2 Levenshtein-distance
+# near-misses, but only for keys longer than 6 chars and never for
+# sibling required keys (so ``g_rationale`` can't claim ``k_rationale``'s
+# slot).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _replace_in_text(text: str, old: str, new: str) -> str:
+    """Tiny helper — surface intent (key-rename in JSON blob)."""
+    assert old in text, f"replacement-target {old!r} not found in fixture"
+    return text.replace(old, new)
+
+
+def test_typo_g_ratonale_accepted() -> None:
+    """Real-world prod typo: agent emitted ``g_ratonale`` (missing 'i').
+
+    The rest of the JSON is fine. Parser should accept it and use the
+    typo'd field as g_rationale rather than failing the whole run.
+    """
+    text = _good_agent_text()
+    text = _replace_in_text(text, '"g_rationale"', '"g_ratonale"')
+    result = parse(text)
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.g_rationale == "test"
+
+
+def test_typo_roe_ratoinale_accepted() -> None:
+    """Different typo location — transposition + missing letter."""
+    text = _good_agent_text()
+    text = _replace_in_text(text, '"roe_rationale"', '"roe_ratoinale"')
+    result = parse(text)
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.roe_rationale == "test"
+
+
+def test_typo_in_k_rationale_accepted() -> None:
+    text = _good_agent_text()
+    text = _replace_in_text(text, '"k_rationale"', '"k_rationle"')  # missing 'a'
+    result = parse(text)
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.k_rationale == "test"
+
+
+def test_too_far_typo_still_rejected() -> None:
+    """Distance > 2 should NOT be silently absorbed. Protects against
+    the parser claiming an unrelated field as a rationale."""
+    text = _good_agent_text()
+    text = _replace_in_text(text, '"g_rationale"', '"comments"')
+    with pytest.raises(ValuationParseError, match="g_rationale"):
+        parse(text)
+
+
+def test_sibling_field_not_absorbed() -> None:
+    """If g_rationale missing, parser must NOT claim k_rationale's value.
+
+    Otherwise the user would see the same text in two unrelated fields
+    and downstream LEAD synthesis would surface k:n peruste under g:n.
+    """
+    import json as _json
+    blob = {
+        "company": "Test", "company_id": "C:1", "ticker": "T",
+        "bvps": 10.0, "bvps_date": "2025-12-31",
+        "price": 12.0, "price_date": "2026-05-08",
+        "roe_used": 0.15, "roe_version": "5y_median",
+        "roe_history": {
+            "raw": _DEFAULT_RAW, "lfy": 0.15, "3y_median": 0.15,
+            "5y_median": 0.15, "trend_weighted": 0.15, "trend_label": "vakaa",
+        },
+        "k": 0.09, "g": 0.05,
+        "k_rationale": "K_RATIONALE_TEXT",
+        # g_rationale OMITTED entirely — only sibling k_rationale exists
+        "roe_rationale": "ROE_RATIONALE_TEXT",
+        "warnings": [],
+    }
+    text = f"**Ajatus:** test.\n\n```json\n{_json.dumps(blob)}\n```"
+    with pytest.raises(ValuationParseError, match="g_rationale"):
+        parse(text)

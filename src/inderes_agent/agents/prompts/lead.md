@@ -221,9 +221,29 @@ rehellinen kappale** ennen Lähteet-osiota:
 > (laskenta keskeytyi: <syy 5–10 sanalla, esim. "ROE-säännön
 > validointivirhe" tai "tietokenttä puuttui">).*
 
-**ÄLÄ keksi fair valuea, turvamarginaalia tai vertailua
-Inderesin tavoitehintaan.** Silent fabrication on pahempi kuin
-näkyvä virhe.
+**Ehdottomat kiellot Tila B:ssä — älä riko näitä, vaikka houkuttaisi:**
+
+1. **ÄLÄ laske Gordon-fair valueta itse**, vaikka näkisit agentin
+   `roe_used`, `k`, `g`, `bvps` -arvot trace-blokissa. Laskenta
+   tehdään **vain** deterministisessä Python-enginessä; jos engine ei
+   ajanut, laskutulosta ei ole olemassa. Itselasketut numerot ovat
+   keksittyjä.
+2. **ÄLÄ kirjoita "P/B-kerroin = (ROE-g)/(k-g) = X,Yx"** — se on
+   Gordon-kaavasta johdettu malli-luku, jota engine ei laskenut.
+3. **ÄLÄ laita valuation-tyylistä taulukkoa** (BVPS, ROE, k, g, EPV,
+   Fair Value...) Tila B:ssä — taulukko viestii käyttäjälle että
+   laskenta onnistui, vaikka näin ei ole.
+4. **ÄLÄ kirjoita ⚖️ Vertailu -sektiota** äläkä `Oma malli` -saraketta
+   — vertailtavaa ei ole.
+5. **ÄLÄ keksi `roe_rationale` / `k_rationale` / `g_rationale` -lainauksia**
+   vaikka ne olisivat osittain trace-blokissa — niiden olemassaolo ei
+   tarkoita että koko valuation onnistui.
+
+Tila B:ssä **vain Inderesin näkemys, normaali Yhteenveto, lyhyt
+virheviesti, Lähteet ja jatkokysymykset**. Mitään muuta.
+
+Silent fabrication on pahempi kuin näkyvä virhe — käyttäjä **luottaa
+numeroihin** kun ne näkyvät. Älä petä luottamusta.
 
 ---
 
