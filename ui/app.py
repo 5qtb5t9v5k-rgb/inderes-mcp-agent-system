@@ -562,10 +562,26 @@ def render_trace_expander(run_dir: Path) -> None:
             cols[2].metric("Errors", m.get("subagent_errors", 0))
             cols[3].metric("Fallbacks", m.get("fallback_events", 0))
 
-            # Stage-level timing breakdown — fanout/conflict-detector/lead
+            # Stage-level timing breakdown — planner/fanout/conflict-detector/lead
             stage = m.get("stage_timings") or {}
             if stage:
                 bits: list[str] = []
+                # Planner timing comes from plan.json (run_log persists it
+                # there, not in stage_timings yet — read it here for the
+                # row when it exists).
+                _plan_path_for_timing = run_dir / "plan.json"
+                if _plan_path_for_timing.exists():
+                    try:
+                        _pblob = json.loads(_plan_path_for_timing.read_text(encoding="utf-8"))
+                        _plan_dur = _pblob.get("duration_seconds")
+                        if _plan_dur:
+                            bits.append(
+                                f"suunnitelma: <strong>{_plan_dur:.2f}s</strong>"
+                                if lang == "fi"
+                                else f"plan: <strong>{_plan_dur:.2f}s</strong>"
+                            )
+                    except (OSError, json.JSONDecodeError):
+                        pass
                 if (v := stage.get("fanout_seconds")) is not None:
                     bits.append(
                         f"fan-out: <strong>{v:.2f}s</strong>"
@@ -585,6 +601,21 @@ def render_trace_expander(run_dir: Path) -> None:
                         f'margin: 4px 0 8px 0;">{label}: ' + " · ".join(bits) + "</div>",
                         unsafe_allow_html=True,
                     )
+
+        # Lead planner card (when "Käytä pidempää suunnittelua" was on).
+        # Sits ABOVE the per-subagent rows because the planner runs
+        # FIRST chronologically. Silent no-op when plan.json missing.
+        plan_path = run_dir / "plan.json"
+        if plan_path.exists():
+            try:
+                _plan_blob = json.loads(plan_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                _plan_blob = None
+            if _plan_blob:
+                from components import _build_planner_card_html
+                _planner_html = _build_planner_card_html(_plan_blob, lang)
+                if _planner_html:
+                    st.html(_planner_html)
 
         for sub_path in sorted(run_dir.glob("subagent-*.json")):
             sa = json.loads(sub_path.read_text(encoding="utf-8"))

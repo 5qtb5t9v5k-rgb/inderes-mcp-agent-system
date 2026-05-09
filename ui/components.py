@@ -652,6 +652,109 @@ def _externalize_links(html: str) -> str:
     )
 
 
+def _read_plan_blob(run_dir: Path) -> dict | None:
+    """Read plan.json from run_dir if present. Returns the full blob dict
+    (keys: raw, parsed, narrative, model_used, duration_seconds) or None
+    if no plan was generated for this run (= "Käytä pidempää suunnittelua"
+    toggle was off)."""
+    plan_path = run_dir / "plan.json"
+    if not plan_path.exists():
+        return None
+    try:
+        return json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _build_planner_card_html(plan_blob: dict, lang: str = "fi") -> str:
+    """Build a compact planner card mirroring the agent-card layout used by
+    the right activity panel. Used both in the right panel (summary +
+    agents tabs) and the bottom trace expander.
+
+    Renders:
+      - LEAD-persona-styled head row (◆ glyph, amber color, role + duration)
+      - "Ajatus" preview (= the plan's "thinking" field, ≤240 chars)
+      - <details> block listing per-subagent guidance + axis + watchouts
+
+    Returns "" if the plan has no usable content (silent no-op).
+    """
+    if not plan_blob:
+        return ""
+    parsed = plan_blob.get("parsed") or {}
+    if not parsed and not plan_blob.get("narrative"):
+        return ""
+
+    fi = lang == "fi"
+    duration = plan_blob.get("duration_seconds") or 0
+    model = plan_blob.get("model_used") or ""
+
+    # Plan uses LEAD-persona styling (it IS LEAD's planning step)
+    p = PERSONAS.get("LEAD", {"glyph": "◆", "color": "#F5B942"})
+    role = "Suunnitelma" if fi else "Plan"
+    name_label = "LEAD-PLAN"
+    valmis_label = "valmis" if fi else "done"
+
+    thinking = parsed.get("thinking") or ""
+    if len(thinking) > 240:
+        thinking = thinking[:240].rstrip() + "…"
+    if not thinking and plan_blob.get("narrative"):
+        thinking = plan_blob["narrative"][:240]
+
+    # Per-subagent guidance + axis + watchouts as <details> body
+    detail_rows: list[str] = []
+
+    axis = parsed.get("axis")
+    if axis:
+        axis_lab = "VERTAILUAKSELI" if fi else "AXIS"
+        detail_rows.append(
+            f'<li><span class="tool" style="color:{p["color"]}">{axis_lab}</span>'
+            f' <span class="ret">→ {escape_html(str(axis))}</span></li>'
+        )
+
+    per_subagent = parsed.get("per_subagent") or {}
+    for domain, guidance in per_subagent.items():
+        if not guidance:
+            continue
+        sub_p = PERSONAS.get(domain.upper(), {"glyph": "•", "color": "#888"})
+        truncated = guidance if len(guidance) <= 140 else guidance[:140].rstrip() + "…"
+        detail_rows.append(
+            f'<li><span class="tool" style="color:{sub_p["color"]}">'
+            f'{sub_p["glyph"]} {domain.upper()}</span>'
+            f' <span class="ret">→ {escape_html(str(truncated))}</span></li>'
+        )
+
+    watchouts = parsed.get("watchouts") or []
+    for w in watchouts:
+        wo_lab = "VAROITUS" if fi else "WATCHOUT"
+        wo_str = w if len(w) <= 140 else w[:140].rstrip() + "…"
+        detail_rows.append(
+            f'<li><span class="tool" style="color:#ff9f9f">⚠ {wo_lab}</span>'
+            f' <span class="ret">→ {escape_html(str(wo_str))}</span></li>'
+        )
+
+    if not detail_rows:
+        detail_rows.append('<li style="color:var(--ink-3)">—</li>')
+
+    n_items = len(detail_rows)
+    detail_label = "SUUNNITELMA" if fi else "PLAN"
+
+    return (
+        f'<div class="ia-panel-agcard" style="border-left:2px solid {p["color"]}">'
+        f'<div class="head">'
+        f'<span class="glyph" style="color:{p["color"]}">{p["glyph"]}</span>'
+        f'<span class="nm" style="color:{p["color"]}">{name_label}</span>'
+        f'<span class="role">{role}</span>'
+        f'<span class="meta"><span class="ok">✓ {valmis_label}</span> '
+        f'<span>{duration:.1f}s</span> '
+        f'<span style="color:var(--ink-3)">{escape_html(model)}</span></span>'
+        f'</div>'
+        f'<div class="body"><div class="think"><b>Ajatus:</b> {escape_html(thinking)}</div></div>'
+        f'<details class="tools"><summary class="toolhead">▾ {detail_label} ({n_items})</summary>'
+        f'<ol>{"".join(detail_rows)}</ol></details>'
+        f'</div>'
+    )
+
+
 def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "summary") -> None:
     """Render the right-side activity panel as a position:fixed overlay.
 
@@ -775,9 +878,28 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
         '</div>'
     )
 
-    # Stage gantt bars: routing | QUANT | RESEARCH | ... | conflicts | LEAD
+    # Plan-then-execute (when toggle was on): read plan.json so we can
+    # render a planner stage bar AND a planner card in the body. Silently
+    # no-ops if plan.json is missing.
+    plan_blob = _read_plan_blob(run_dir)
+    plan_duration = (plan_blob or {}).get("duration_seconds") if plan_blob else None
+    planner_card_html = _build_planner_card_html(plan_blob, lang) if plan_blob else ""
+
+    # Stage gantt bars: planner | QUANT | RESEARCH | ... | conflicts | LEAD
     # Total wall-clock = duration. Each stage rendered as a colored bar.
     stages_html_parts: list[str] = ['<div class="ia-panel-stages">']
+    # Planner runs FIRST (before fan-out), so render it before the
+    # parallel subagent bars. Use LEAD persona color since the planner
+    # is LEAD's pre-dispatch reasoning.
+    if plan_duration:
+        plan_color = PERSONAS.get("LEAD", {}).get("color", "var(--p-lead)")
+        plan_width = (plan_duration / max(duration, 0.1)) * 100
+        plan_label = "PLAN" if lang != "fi" else "SUUNN."
+        stages_html_parts.append(
+            f'<div class="stage"><span class="nm">{plan_label}</span>'
+            f'<div class="bar"><i style="left:0%; width:{plan_width:.1f}%; background:{plan_color}; opacity:0.7"></i></div>'
+            f'<span class="v">{plan_duration:.1f}s</span></div>'
+        )
     if fanout_s is not None:
         # Per-subagent bars (parallel — all start near 0, vary in length)
         for ent in per_subagent:
@@ -878,7 +1000,10 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
     # tabs without losing context, and the URL ?panel_tab= keeps the choice
     # across reruns.
     if active_tab == "agents":
-        body_html = "".join(agent_cards) or '<div style="color:var(--ink-3)">—</div>'
+        # Planner card sits FIRST when present — chronologically the
+        # planner runs before the subagents, so the visual order matches
+        # the temporal one.
+        body_html = (planner_card_html + "".join(agent_cards)) or '<div style="color:var(--ink-3)">—</div>'
     elif active_tab == "tools":
         # Flat list of every tool call across all subagents, persona-colored.
         tool_rows: list[str] = []
@@ -940,10 +1065,11 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
                     )
             body_html = '<div class="ia-conflict" style="border:0; background:none; margin:0; padding:0">' + "".join(rows) + '</div>'
     else:
-        # "summary" — default: metric cards + stage bars + agent cards
+        # "summary" — default: metric cards + stage bars + planner card + agent cards
         body_html = (
             f'{metrics_html}'
             f'{"".join(stages_html_parts)}'
+            f'{planner_card_html}'
             f'{"".join(agent_cards)}'
         )
 
