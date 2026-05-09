@@ -113,6 +113,32 @@ cases:
         recommendation if no fair_value) is consistent within ±10 %.
         Score 1 if the answer flips; 5 if structurally identical.
 
+  - id: case_007_valuation_tila_c_renders
+    query_match: "arvonmääritys huhtamäki"
+    rationale: |
+      User reported on 2026-05-09 that 5 of 6 valuation runs failed,
+      and even on the one that "succeeded" the Tila C structure
+      (## 🔢 Oma arvonmääritys table) was missing — LEAD only mentioned
+      the engine numbers in päättely, not the answer body. Two flaky
+      bugs: (A) valuation agent sometimes makes 0 MCP calls and the
+      fabrication-guard rejects it, (B) LEAD sometimes drifts past
+      Tila C structure even when engine succeeded. Fix in commit X
+      adds a code-level Tila C banner pre-pended to the LEAD prompt
+      when valuation_records contain real engine output, AND tightens
+      the valuation agent prompt with a HARD GATE requiring MCP calls.
+    hard:
+      - "any('valuation' in d for d in routing.domains)"
+      # When valuation succeeded for at least one company in the run,
+      # the synthesis must include the Tila C section heading.
+      - "'🔢 Oma arvonmääritys' in synthesis or 'Vaihtoehtoinen arvonmääritys ei tällä kertaa onnistunut' in synthesis"
+    soft:
+      tila_c_completeness: |
+        When the valuation engine succeeded, the synthesis includes
+        the `## 🔢 Oma arvonmääritys` section with the perussetti
+        table (BVPS, ROE-used, k, g, EPV, Fair value, Nykykurssi,
+        Turvamarginaali). Score 1 if engine succeeded but no table
+        emitted; 5 if all rows present and explained.
+
   - id: case_006_latency_cap
     query_match: "selitä mistä Nordean kannattavuus oikeasti tulee"
     rationale: |

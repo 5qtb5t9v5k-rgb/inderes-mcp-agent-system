@@ -950,6 +950,39 @@ How to use the alternative valuation:
 Now synthesize a final answer for the user, following your instructions.
 """
 
+    # ── Tila C activation banner — code-level pre-pend ──
+    # When the valuation engine actually computed (block contains
+    # `Engine: quality=...` lines), prepend a high-visibility banner
+    # so Flash Lite can't drift past the Tila C structure. The lead.md
+    # spec has been in place for weeks but Flash Lite empirically
+    # produces the 4-section structure only ~2/3 of the time. The
+    # banner makes Tila C the FIRST instruction the model sees,
+    # before the 600 lines of detailed LEAD-prompt body. Eval case_007
+    # locks the contract: when engine succeeded, the synthesis MUST
+    # include `## 🔢 Oma arvonmääritys`.
+    tila_c_active = (
+        valuation_records
+        and any(rec.valuation is not None for rec in valuation_records)
+    )
+    if tila_c_active:
+        prompt = (
+            "⚠️ TILA C — VALUATION ENGINE COMPUTED SUCCESSFULLY ⚠️\n\n"
+            "The ALTERNATIVE VALUATION block below contains real engine\n"
+            "output (Engine: quality=..., fair_value=..., EPV=...).\n"
+            "You MUST emit the four-section Tila C structure:\n"
+            "  ## Yhteenveto\n"
+            "  ## 📌 Inderesin näkemys\n"
+            "  ## 🔢 Oma arvonmääritys (Greenwald-Gordon)\n"
+            "  ## ⚖️ Vertailu\n\n"
+            "Skipping the `## 🔢 Oma arvonmääritys` section is a\n"
+            "CRITICAL FAILURE — the user explicitly asked for the\n"
+            "alternative valuation and the engine succeeded. Build the\n"
+            "perussetti table from the engine numbers exactly as\n"
+            "specified in the lead.md §298 'Tila C' rules. Detailed\n"
+            "instructions follow.\n\n"
+            "─" * 60 + "\n\n"
+        ) + prompt
+
     t_lead = time.time()
     async with build_lead_agent(deep=deep_lead) as lead:
         result = await lead.run(prompt)
