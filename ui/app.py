@@ -626,6 +626,17 @@ def render_trace_expander(run_dir: Path) -> None:
                 render_agent_output(sa.get("text"))
                 _render_tool_calls(sa.get("tool_calls") or [], lang)
 
+        # LEAD synthesis card — chronological LAST step. Surfaces LEAD's
+        # "Ajatus" (= Perustelut callout) + "Yhteenveto" so the bottom
+        # log mirrors the right activity panel's full agent timeline:
+        # planner → subagents → LEAD synthesis. Silent no-op if synth
+        # is missing (very early-stage runs).
+        if (run_dir / "synthesis.txt").exists():
+            from components import _build_lead_synthesis_card_html
+            _lead_synth_html = _build_lead_synthesis_card_html(run_dir, lang)
+            if _lead_synth_html:
+                st.html(_lead_synth_html)
+
 
 def _render_tool_calls(tool_calls: list[dict], lang: str) -> None:
     """Render the subagent's tool calls — what the MCP tools actually returned.

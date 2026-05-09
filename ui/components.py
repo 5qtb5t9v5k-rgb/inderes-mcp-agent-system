@@ -755,6 +755,153 @@ def _build_planner_card_html(plan_blob: dict, lang: str = "fi") -> str:
     )
 
 
+def _extract_summary_from_agent_text(text: str) -> str | None:
+    """Pull the agent's own ``SUMMARY:`` line out of its structured output.
+
+    QUANT/RESEARCH/SENTIMENT/PORTFOLIO prompts all instruct the agent to
+    emit a ``SUMMARY:`` line near the end of its response (one or two
+    sentences distilling the key takeaway). Surfacing this in the right
+    activity panel gives the user a quick "what did this agent
+    conclude?" view without expanding the full output.
+
+    Returns None when no SUMMARY block was emitted (agent forgot, or
+    used a different format).
+    """
+    if not text:
+        return None
+    # Match SUMMARY: ... up to next double-newline / SOURCES: / end-of-string.
+    # Tolerates leading whitespace and either "SUMMARY:" or "SUMMARY (..):"
+    m = re.search(
+        r"^\s*SUMMARY(?:\s*\([^)]*\))?\s*[:\-]\s*(.+?)(?=\n\s*\n|\n\s*SOURCES:|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not m:
+        return None
+    summary = m.group(1).strip()
+    if not summary:
+        return None
+    # Strip leading "* " or "- " bullets that some agents prefix
+    summary = re.sub(r"^\s*[\*\-]\s*", "", summary)
+    if len(summary) > 360:
+        summary = summary[:360].rstrip() + "…"
+    return summary
+
+
+def _build_lead_synthesis_card_html(run_dir: Path, lang: str = "fi") -> str:
+    """Build a LEAD-synthesis card mirroring the agent-card layout.
+
+    Reads:
+      - ``synthesis.txt`` for the final answer body
+      - ``meta.json`` for `lead_model` and stage timing
+      - ``conflicts.json`` (optional) to mention how many conflicts LEAD resolved
+
+    Renders:
+      - LEAD-persona head (◆ glyph, amber color, "Synteesi" role)
+      - "Ajatus:" preview = the Perustelut callout content (LEAD's
+        meta-reflection on how it combined inputs)
+      - Expandable details body with the "Yhteenveto" section text +
+        a "Ratkaistu N ristiriitaa" line when relevant
+
+    Returns "" when no synthesis exists yet (graceful no-op).
+    """
+    syn_path = run_dir / "synthesis.txt"
+    meta_path = run_dir / "meta.json"
+    if not syn_path.exists():
+        return ""
+
+    try:
+        text = syn_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+    meta: dict = {}
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            meta = {}
+
+    fi = lang == "fi"
+    lead_model = meta.get("lead_model") or "?"
+    lead_seconds = (meta.get("stage_timings") or {}).get("lead_seconds") or 0
+
+    # "Ajatus" = Perustelut block (LEAD's meta-reasoning summary)
+    _, perustelut = extract_perustelut(text)
+    thought = (perustelut or "").strip()
+    if len(thought) > 360:
+        thought = thought[:360].rstrip() + "…"
+    if not thought:
+        # Fall back to first non-Perustelut paragraph
+        first_para = re.split(r"\n\s*\n", text.strip(), maxsplit=1)[0]
+        thought = first_para[:240].rstrip() + ("…" if len(first_para) > 240 else "")
+
+    # "Yhteenveto" = the ## Yhteenveto section body
+    yh_match = re.search(
+        r"^##\s*Yhteenveto\s*\n(.+?)(?=\n##\s|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    yhteenveto = yh_match.group(1).strip() if yh_match else ""
+    if len(yhteenveto) > 500:
+        yhteenveto = yhteenveto[:500].rstrip() + "…"
+
+    # Resolved conflicts count (optional badge)
+    conflict_count = 0
+    cpath = run_dir / "conflicts.json"
+    if cpath.exists():
+        try:
+            cblob = json.loads(cpath.read_text(encoding="utf-8"))
+            conflict_count = len((cblob.get("parsed") or {}).get("conflicts") or [])
+        except (OSError, json.JSONDecodeError):
+            conflict_count = 0
+
+    p = PERSONAS.get("LEAD", {"glyph": "◆", "color": "#F5B942"})
+    role = "Synteesi" if fi else "Synthesis"
+    name_label = "LEAD-SYNTH"
+    valmis_label = "valmis" if fi else "done"
+    yh_label = "YHTEENVETO" if fi else "SUMMARY"
+
+    # Body details: yhteenveto + conflict-resolution note
+    detail_rows: list[str] = []
+    if yhteenveto:
+        detail_rows.append(
+            f'<li><span class="tool" style="color:{p["color"]}">{yh_label}</span>'
+            f' <span class="ret">→ {escape_html(yhteenveto)}</span></li>'
+        )
+    if conflict_count > 0:
+        cf_label = (
+            f"Ratkaistu {conflict_count} erimielisyy{'ttä' if conflict_count == 1 else 'ttä'}"
+            if fi else
+            f"Resolved {conflict_count} conflict{'' if conflict_count == 1 else 's'}"
+        )
+        detail_rows.append(
+            f'<li><span class="tool" style="color:#ff9f9f">⚖</span>'
+            f' <span class="ret">→ {cf_label}</span></li>'
+        )
+    if not detail_rows:
+        detail_rows.append('<li style="color:var(--ink-3)">—</li>')
+
+    n_items = len(detail_rows)
+    detail_label = "SYNTEESI" if fi else "SYNTHESIS"
+
+    return (
+        f'<div class="ia-panel-agcard" style="border-left:2px solid {p["color"]}">'
+        f'<div class="head">'
+        f'<span class="glyph" style="color:{p["color"]}">{p["glyph"]}</span>'
+        f'<span class="nm" style="color:{p["color"]}">{name_label}</span>'
+        f'<span class="role">{role}</span>'
+        f'<span class="meta"><span class="ok">✓ {valmis_label}</span> '
+        f'<span>{lead_seconds:.1f}s</span> '
+        f'<span style="color:var(--ink-3)">{escape_html(lead_model)}</span></span>'
+        f'</div>'
+        f'<div class="body"><div class="think"><b>Ajatus:</b> {escape_html(thought)}</div></div>'
+        f'<details class="tools"><summary class="toolhead">▾ {detail_label} ({n_items})</summary>'
+        f'<ol>{"".join(detail_rows)}</ol></details>'
+        f'</div>'
+    )
+
+
 def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "summary") -> None:
     """Render the right-side activity panel as a position:fixed overlay.
 
@@ -885,6 +1032,13 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
     plan_duration = (plan_blob or {}).get("duration_seconds") if plan_blob else None
     planner_card_html = _build_planner_card_html(plan_blob, lang) if plan_blob else ""
 
+    # LEAD synthesis card — chronologically the LAST step. Surfaces
+    # LEAD's "Ajatus" (= the Perustelut callout) + "Yhteenveto" so the
+    # user can glance at the full agent timeline in one place: planner
+    # → subagents → LEAD synthesis. Always built when synthesis.txt
+    # exists; silent no-op otherwise.
+    lead_synth_card_html = _build_lead_synthesis_card_html(run_dir, lang)
+
     # Stage gantt bars: planner | QUANT | RESEARCH | ... | conflicts | LEAD
     # Total wall-clock = duration. Each stage rendered as a colored bar.
     stages_html_parts: list[str] = ['<div class="ia-panel-stages">']
@@ -958,6 +1112,22 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
         if len(thought) > 240:
             thought = thought[:240].rstrip() + "…"
 
+        # SUMMARY block (the agent's own one-line takeaway, when emitted).
+        # Surface this in the body alongside Ajatus so the right panel
+        # tells "what the agent thought TO DO" + "what it CONCLUDED" at
+        # a glance, without expanding the tools details.
+        summary = _extract_summary_from_agent_text(text)
+        summary_html = ""
+        if summary:
+            yh_lab = "Yhteenveto" if fi else "Summary"
+            summary_html = (
+                f'<div class="agcard-summary" style="margin-top: var(--s-1); '
+                f'padding-top: var(--s-1); border-top: 1px dashed var(--line); '
+                f'font-size: var(--t-meta); color: var(--ink-1); line-height: 1.55;">'
+                f'<b style="color:{persona["color"]}">{yh_lab}:</b> '
+                f'{escape_html(summary)}</div>'
+            )
+
         # Tool list (compact)
         tool_list = ""
         for tc in (blob.get("tool_calls") or [])[:6]:
@@ -986,7 +1156,9 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
             f'<span class="meta"><span class="ok">✓ {t("valmis")}</span> '
             f'<span>{ds:.1f}s</span> <span>{n_calls} {t("kutsua")}</span></span>'
             f'</div>'
-            f'<div class="body"><div class="think"><b>Ajatus:</b> {thought}</div></div>'
+            f'<div class="body"><div class="think"><b>Ajatus:</b> {thought}</div>'
+            f'{summary_html}'
+            f'</div>'
             # Tool list as native <details> — click summary to expand. Default
             # closed so a fan-out with 10 agents × 4 tools doesn't dump 40
             # rows on the user. They click to drill in.
@@ -1000,10 +1172,14 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
     # tabs without losing context, and the URL ?panel_tab= keeps the choice
     # across reruns.
     if active_tab == "agents":
-        # Planner card sits FIRST when present — chronologically the
-        # planner runs before the subagents, so the visual order matches
-        # the temporal one.
-        body_html = (planner_card_html + "".join(agent_cards)) or '<div style="color:var(--ink-3)">—</div>'
+        # Order matches temporal flow:
+        #   planner (pre-dispatch) → subagents (parallel) → LEAD (synthesis)
+        # Planner first when present, agents in middle, LEAD synth last.
+        body_html = (
+            planner_card_html
+            + "".join(agent_cards)
+            + lead_synth_card_html
+        ) or '<div style="color:var(--ink-3)">—</div>'
     elif active_tab == "tools":
         # Flat list of every tool call across all subagents, persona-colored.
         tool_rows: list[str] = []
@@ -1065,12 +1241,13 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
                     )
             body_html = '<div class="ia-conflict" style="border:0; background:none; margin:0; padding:0">' + "".join(rows) + '</div>'
     else:
-        # "summary" — default: metric cards + stage bars + planner card + agent cards
+        # "summary" — default: metrics + stage bars + planner + agents + LEAD synth
         body_html = (
             f'{metrics_html}'
             f'{"".join(stages_html_parts)}'
             f'{planner_card_html}'
             f'{"".join(agent_cards)}'
+            f'{lead_synth_card_html}'
         )
 
     panel_html = (
