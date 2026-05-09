@@ -22,5 +22,6 @@ def build_quant_agent(deep: bool = False) -> Agent:
         instructions=load_prompt("quant.md"),
         tools=with_code_execution(
             build_mcp_tool(name="inderes-quant", allowed=QUANT_TOOLS),
+            deep=deep,
         ),
     )

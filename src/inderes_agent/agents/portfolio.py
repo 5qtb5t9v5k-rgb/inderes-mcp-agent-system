@@ -16,5 +16,6 @@ def build_portfolio_agent(deep: bool = False) -> Agent:
         instructions=load_prompt("portfolio.md"),
         tools=with_code_execution(
             build_mcp_tool(name="inderes-portfolio", allowed=PORTFOLIO_TOOLS),
+            deep=deep,
         ),
     )

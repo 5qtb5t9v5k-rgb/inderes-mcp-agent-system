@@ -79,12 +79,30 @@ def resolve_deep_model_override(deep: bool) -> str | None:
     return get_settings().LEAD_MODEL_DEEP
 
 
-def with_code_execution(*tools: Any) -> list[Any]:
+def with_code_execution(*tools: Any, deep: bool = False) -> list[Any]:
     """Append Gemini's sandboxed code-execution tool to a list of tools.
 
     Use this for agents that benefit from real Python computation (pandas/numpy
     in a sandbox) rather than the LLM doing arithmetic in its head. See
     `gemini_with_code_execution.py` in agent_framework_gemini's samples for the
     canonical pattern.
+
+    **Pro mode caveat (deep=True):** Gemini 2.5 Pro rejects requests
+    that include the code-execution tool with the error
+    ``"Tool call context circulation is not enabled for models/
+    gemini-2.5-pro"``. The "Tool call context circulation" plumbing
+    is a Flash-only feature in google-genai's current SDK. To keep
+    "Tarkka kaikki" (all-Pro) tier functional, we omit the
+    code-interpreter tool when ``deep=True`` — agents fall back to
+    LLM-side arithmetic. Pro's reasoning is strong enough that simple
+    CAGR / ratio computations don't need a sandbox; complex stats
+    work would warrant a separate solution anyway.
+
+    Pure-Flash callers (``deep=False``, default) get the unchanged
+    behaviour with the code interpreter attached.
     """
+    if deep:
+        # Pro mode: skip code-interpreter to avoid the context-circulation
+        # rejection. Agent runs MCP tools only; LLM does arithmetic itself.
+        return list(tools)
     return [*tools, GeminiChatClient.get_code_interpreter_tool()]
