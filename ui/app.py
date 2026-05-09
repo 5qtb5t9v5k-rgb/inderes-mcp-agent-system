@@ -874,14 +874,28 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             classification.companies = state.last_companies
 
         # Alternative-valuation opt-in: when the user has the sidebar toggle
-        # on AND the query targets a real company, append VALUATION to the
-        # dispatch list. We also force-include QUANT (Inderes' target/recommendation)
-        # so LEAD has both sides for the "Oma malli vs Inderes" comparison.
+        # on AND the query targets a real company AND the query has clear
+        # valuation intent, append VALUATION to the dispatch list. We also
+        # force-include QUANT (Inderes' target/recommendation) so LEAD has
+        # both sides for the "Oma malli vs Inderes" comparison.
+        #
+        # The valuation-intent gate (added 2026-05-09) prevents toggle
+        # leakage: previously, ANY company-mentioning query would fire
+        # valuation when the toggle was on, including purely qualitative
+        # questions like "selitä mistä Nordean kannattavuus tulee" — the
+        # user got an unwanted Greenwald-Gordon table. The heuristic in
+        # router.query_has_valuation_intent() restricts firing to queries
+        # that actually ask for valuation (sensitivity, multiples, "mitä
+        # jos…", "tavoitehinta", explicit "arvonmääritys", etc.).
+        from inderes_agent.orchestration.router import (
+            Domain as _Dom,
+            query_has_valuation_intent,
+        )
         if (
             st.session_state.get("valuation_mode_on")
             and classification.companies
+            and query_has_valuation_intent(query)
         ):
-            from inderes_agent.orchestration.router import Domain as _Dom
             if _Dom.VALUATION not in classification.domains:
                 classification.domains.append(_Dom.VALUATION)
             if _Dom.QUANT not in classification.domains:

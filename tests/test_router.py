@@ -8,6 +8,7 @@ from inderes_agent.orchestration.router import (
     Domain,
     QueryClassification,
     _extract_json,
+    query_has_valuation_intent,
 )
 
 
@@ -46,3 +47,92 @@ def test_query_classification_rejects_invalid_domain():
             is_comparison=False,
             reasoning="",
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# query_has_valuation_intent — gate for the alternative-valuation toggle
+#
+# The toggle MUST NOT add VALUATION to qualitative-only queries. The
+# heuristic is intentionally conservative: false negatives (no Greenwald
+# table when one might've helped) are much better UX than false positives
+# (table appears for "explain why X" questions).
+#
+# Surfaced from production run 20260508-220611-207 ("selitä mistä Nordean
+# kannattavuus oikeasti tulee") where the toggle force-added valuation and
+# the user got a fair-value table with no quantitative context to it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("query", [
+    # Explicit valuation requests
+    "tee arvonmääritys Nordeasta",
+    "Anna Sampolle arvonmääritys",
+    "mikä on Nordean fair value",
+    "Nordean valuation tällä hetkellä",
+    # Sensitivity / scenario probes (the canonical Q2 wording variants)
+    "entäs jos roe olisi 13%",
+    "mitä jos ROE olisi 11%",
+    "jos ROE olisi 13%, mikä on arvostus",
+    "jos roe laskee, paljonko vaikutus",
+    # Multiples / market relations
+    "Nordean P/B-kerroin verrattuna sektoriin",
+    "Bittium P/E nyt",
+    # Verdict-style
+    "onko Nordea aliarvostettu",
+    "kannattaako ostaa nyt",
+    "Inderesin tavoitehinta Nordealle",
+    # Greenwald / model-specific
+    "implied growth Nordealle",
+    "EPV Sampolle",
+    "turvamarginaali nyt",
+])
+def test_valuation_intent_true_for_explicit_queries(query: str):
+    """Gate fires for queries that clearly want valuation output."""
+    assert query_has_valuation_intent(query), (
+        f"Expected True for {query!r} but got False — heuristic is too narrow."
+    )
+
+
+@pytest.mark.parametrize("query", [
+    # Pure qualitative — no numbers, no model
+    "selitä mistä Nordean kannattavuus oikeasti tulee",
+    "miksi Nordea on niin vahva pohjoismaissa",
+    "kerro Nordean strategiasta",
+    "miten korkotaso vaikuttaa pankkeihin",
+    "Nokian kasvunäkymät 2027",
+    # Comparisons that don't ask for valuation
+    "miten Nordea eroaa SEB:stä strategisesti",
+    "vertaile Nordean ja Swedbankin liiketoimintamalleja",
+    # Insider / sentiment / corporate actions
+    "onko Nordeassa insider-ostoja viime kuussa",
+    "mitä Inderesin foorumilla puhutaan Nokiasta",
+    "milloin Nordea julkaisee Q2-tuloksen",
+    # General market commentary
+    "miten OMXH on kehittynyt tänä vuonna",
+])
+def test_valuation_intent_false_for_qualitative_queries(query: str):
+    """Gate must NOT fire for purely qualitative questions — the user
+    asked about strategy/sentiment/timing, not numerical valuation."""
+    assert not query_has_valuation_intent(query), (
+        f"Expected False for {query!r} but got True — heuristic too aggressive."
+    )
+
+
+def test_valuation_intent_case_insensitive():
+    """Match should be case-insensitive — UI doesn't normalize input."""
+    assert query_has_valuation_intent("ARVONMÄÄRITYS Nordealle")
+    assert query_has_valuation_intent("ENTÄS JOS ROE OLISI 13%")
+    assert query_has_valuation_intent("Mikä on Nordean Fair Value")
+
+
+def test_valuation_intent_handles_typos_and_morphology():
+    """Finnish morphology: stem-based matches absorb partitive/genitive.
+
+    Pin a few real morphology variants we expect to hit.
+    """
+    # "arvostuksen" → matches "arvostuks"
+    assert query_has_valuation_intent("Sammon arvostuksen muutos")
+    # "arvostusta" → matches "arvostust"
+    assert query_has_valuation_intent("anna arvostusta Nordealle")
+    # "tavoitehinnasta" → matches "tavoitehint"
+    assert query_has_valuation_intent("kerro tavoitehinnasta")
