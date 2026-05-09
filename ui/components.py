@@ -756,36 +756,86 @@ def _build_planner_card_html(plan_blob: dict, lang: str = "fi") -> str:
 
 
 def _extract_summary_from_agent_text(text: str) -> str | None:
-    """Pull the agent's own ``SUMMARY:`` line out of its structured output.
+    """Pull a one-paragraph "what did this agent conclude" summary from
+    its structured output. Each agent uses a different keyword:
 
-    QUANT/RESEARCH/SENTIMENT/PORTFOLIO prompts all instruct the agent to
-    emit a ``SUMMARY:`` line near the end of its response (one or two
-    sentences distilling the key takeaway). Surfacing this in the right
-    activity panel gives the user a quick "what did this agent
-    conclude?" view without expanding the full output.
+      QUANT:     ``SUMMARY: <one-two sentences>``
+      RESEARCH:  ``KEY THEMES (3-5 bullets):`` (we take the first bullet)
+                 or ``EARNINGS CALL HIGHLIGHTS:``
+      VALUATION: structured JSON + post-summary block; we take the
+                 ``ROE-VALINTA:`` line (the most actionable single line)
+      SENTIMENT/PORTFOLIO: no formal SUMMARY keyword — fall back to the
+                 LAST non-trivial paragraph before ``SOURCES:`` or EOF.
 
-    Returns None when no SUMMARY block was emitted (agent forgot, or
-    used a different format).
+    Returns None when nothing meaningful can be extracted.
     """
     if not text:
         return None
-    # Match SUMMARY: ... up to next double-newline / SOURCES: / end-of-string.
-    # Tolerates leading whitespace and either "SUMMARY:" or "SUMMARY (..):"
+
+    # Pattern 1 — QUANT-style "SUMMARY:" block
     m = re.search(
         r"^\s*SUMMARY(?:\s*\([^)]*\))?\s*[:\-]\s*(.+?)(?=\n\s*\n|\n\s*SOURCES:|\Z)",
         text,
         re.MULTILINE | re.DOTALL,
     )
-    if not m:
+    if m and m.group(1).strip():
+        return _trim_summary(m.group(1).strip())
+
+    # Pattern 2 — RESEARCH "KEY THEMES" first bullet (or paragraph)
+    m = re.search(
+        r"^\s*KEY THEMES[^\n:]*[:\-]\s*\n?(.+?)(?=\n\s*\n|\n\s*[A-Z][A-Z ]+[:\-]|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if m and m.group(1).strip():
+        # Take the first bullet only if it's bulleted
+        first = m.group(1).strip()
+        bullet_match = re.match(r"^[\*\-•]\s*(.+?)(?:\n|\Z)", first, re.DOTALL)
+        if bullet_match:
+            return _trim_summary(bullet_match.group(1).strip())
+        return _trim_summary(first)
+
+    # Pattern 3 — VALUATION "ROE-VALINTA:" line (most actionable)
+    m = re.search(
+        r"^\s*ROE-VALINTA\s*[:\-]\s*(.+?)(?=\n\s*\n|\n\s*[A-ZÄÖ][A-ZÄÖ ]+[:\-]|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if m and m.group(1).strip():
+        return _trim_summary(m.group(1).strip())
+
+    # Pattern 4 — generic "Yhteenveto:" or "TIIVISTELMÄ:"
+    m = re.search(
+        r"^\s*(?:Yhteenveto|TIIVISTELMÄ|TIIVISTELMA)\s*[:\-]\s*(.+?)(?=\n\s*\n|\n\s*[A-ZÄÖ][A-ZÄÖ ]+[:\-]|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if m and m.group(1).strip():
+        return _trim_summary(m.group(1).strip())
+
+    # Pattern 5 — fallback: last meaningful paragraph before SOURCES:/end.
+    # Strip the SOURCES: trailer first, then take the LAST non-empty
+    # paragraph.
+    body = re.split(r"\n\s*SOURCES?\s*:", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    if not paragraphs:
         return None
-    summary = m.group(1).strip()
-    if not summary:
-        return None
-    # Strip leading "* " or "- " bullets that some agents prefix
-    summary = re.sub(r"^\s*[\*\-]\s*", "", summary)
-    if len(summary) > 360:
-        summary = summary[:360].rstrip() + "…"
-    return summary
+    last = paragraphs[-1]
+    # Skip if last "paragraph" is just a header line (all-caps short)
+    if re.match(r"^[A-ZÄÖ][A-ZÄÖ \-/]{0,40}[:\-]?\s*$", last):
+        if len(paragraphs) >= 2:
+            last = paragraphs[-2]
+    # Strip a single leading bullet if present
+    last = re.sub(r"^\s*[\*\-•]\s*", "", last)
+    return _trim_summary(last)
+
+
+def _trim_summary(s: str) -> str:
+    """Helper: cap summary at 360 chars with ellipsis."""
+    s = s.strip()
+    if len(s) > 360:
+        s = s[:360].rstrip() + "…"
+    return s
 
 
 def _build_lead_synthesis_card_html(run_dir: Path, lang: str = "fi") -> str:
@@ -1128,7 +1178,34 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
                 f'{escape_html(summary)}</div>'
             )
 
-        # Tool list (compact)
+        # Tool-name chips — surface the actual tool names directly in the
+        # card body so the user sees at a glance which MCP tools the
+        # agent called. Previously these lived only inside the closed
+        # <details> expander; per user feedback ("työkalukäytöt eivät
+        # näy") we also show them inline. The expander remains for the
+        # full per-tool details (args, item_names, count).
+        used_tool_names = []
+        for tc in (blob.get("tool_calls") or []):
+            nm = tc.get("name")
+            if nm and nm not in used_tool_names:
+                used_tool_names.append(nm)
+        tool_chips_html = ""
+        if used_tool_names:
+            chips = " · ".join(
+                f'<code style="color:{persona["color"]}; '
+                f'background:rgba(255,255,255,0.04); padding: 0 4px; '
+                f'border-radius: var(--r-sm);">{escape_html(n)}</code>'
+                for n in used_tool_names
+            )
+            tools_lab = "Työkalut" if fi else "Tools"
+            tool_chips_html = (
+                f'<div class="agcard-tools-chips" style="margin-top: var(--s-1); '
+                f'font-size: var(--t-micro); color: var(--ink-2); line-height: 1.7;">'
+                f'<b style="color:var(--ink-3); letter-spacing: var(--ls-caps); '
+                f'font-size: var(--t-micro);">{tools_lab}:</b> {chips}</div>'
+            )
+
+        # Tool list (full details — expandable)
         tool_list = ""
         for tc in (blob.get("tool_calls") or [])[:6]:
             tname = tc.get("name") or "?"
@@ -1158,10 +1235,12 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
             f'</div>'
             f'<div class="body"><div class="think"><b>Ajatus:</b> {thought}</div>'
             f'{summary_html}'
+            f'{tool_chips_html}'
             f'</div>'
             # Tool list as native <details> — click summary to expand. Default
             # closed so a fan-out with 10 agents × 4 tools doesn't dump 40
-            # rows on the user. They click to drill in.
+            # rows on the user. They click to drill in for full args + item
+            # names. The compact tool chips above are always visible.
             f'<details class="tools"><summary class="toolhead">▾ TYÖKALUT ({n_calls})</summary>'
             f'<ol>{tool_list}</ol></details>'
             f'</div>'
