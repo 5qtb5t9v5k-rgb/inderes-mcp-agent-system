@@ -648,20 +648,85 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   color: var(--p-lead) !important;
 }
 
-/* The native radio label inside the body — "Mallin laatu" — gets
-   the same caps-micro treatment our hand-rolled .ia-toggle-cap had,
-   so the model-tier section reads visually like a sub-heading. The
-   native ? help icon next to it stays as-is (Streamlit handles it). */
+/* —— BODY TEXT INSIDE THE EXPANDER ——
+   User feedback (2026-05-09): native Streamlit checkbox/radio labels
+   were rendering at ~14–16px sans-serif, blowing up the expander
+   vertically and clashing with the hero box's compact mono style.
+   Force EVERY <p> inside the body to mono-meta (~11px) ink-1, then
+   handle the widget-label exception below. */
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] p,
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] p {
+  font-family: var(--ia-mono) !important;
+  font-size: var(--t-meta) !important;
+  color: var(--ink-1) !important;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+  font-weight: 400 !important;
+}
+
+/* Widget label ("Mallin laatu") — sub-heading caps-micro ink-3.
+   Two selectors because Streamlit's testid for the widget label has
+   shifted across versions; the second `> label p` form catches the
+   newer structure where the label is a direct child of stRadio. */
 [data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p,
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stRadio"] > label p,
 .element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p {
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p,
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stRadio"] > label p {
   font-family: var(--ia-mono) !important;
   font-size: var(--t-micro) !important;
   font-weight: 600 !important;
   letter-spacing: var(--ls-caps) !important;
   color: var(--ink-3) !important;
-  text-transform: uppercase;
+  text-transform: uppercase !important;
+  margin-bottom: var(--s-1) !important;
+}
+
+/* Tighten checkbox / radio spacing — defaults are airy, we want the
+   three rows (2× checkbox + radio) to fit without scrolling on a
+   phone-sized viewport. */
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stCheckbox"],
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stCheckbox"] {
+  margin-bottom: var(--s-1) !important;
+  min-height: 0 !important;
+}
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label,
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label {
+  align-items: center !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label,
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label {
+  padding: 2px 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  align-items: center !important;
+}
+
+/* Shrink the checkbox/radio markers themselves so they match the
+   smaller text. Default Streamlit markers are sized for body text. */
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label > div:first-child,
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label > div:first-child,
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label > div:first-child,
+.element-container:has(.ia-hero-toggles-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+  transform: scale(0.85) !important;
+  transform-origin: center !important;
 }
 
 [data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
@@ -697,25 +762,14 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   color: var(--p-lead) !important;
 }
 
-/* Body — match Päättely slot rhythm. */
+/* Body padding — tight, matching the hero box's compact rhythm. */
 [data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"],
 .element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] {
   padding: var(--s-2) var(--s-3) !important;
-  font-size: var(--t-body);
+  font-size: var(--t-meta);
   color: var(--ink-1);
-}
-
-/* Caps mini-label above the model-tier radio inside the expander. */
-.ia-toggle-cap {
-  font-family: var(--ia-mono);
-  font-size: var(--t-micro);
-  letter-spacing: var(--ls-caps);
-  color: var(--ink-3);
-  font-weight: 600;
-  margin-top: var(--s-2);
-  margin-bottom: var(--s-1);
 }
 
 /* SIDEBAR DISCLAIMER — red-bordered fine print at the very top */
