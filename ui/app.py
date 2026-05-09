@@ -218,9 +218,15 @@ render_titlebar(_lang)
 
 # Hero / equation block: shown ONLY on the empty state (Grok-like clean entry).
 # Once the user has asked anything, the hero collapses to keep the chat the
-# focus and avoid repeating the marketing on every page.
+# focus and avoid repeating the marketing on every page. The feature toggles
+# (valuation, plan-then-execute, model tier) are rendered INLINE here so
+# first-time users can configure them without hunting in the sidebar — the
+# sidebar version of the same controls is rendered only after the first
+# query (see sidebar block below) to avoid Streamlit duplicate-key errors.
 if not st.session_state.get("history"):
     render_disclaimer(_lang)
+    from components import render_feature_toggles
+    render_feature_toggles(_lang)
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +726,14 @@ with st.sidebar:
     # decides k/g with rationale, and a deterministic Python engine
     # computes the user's own fair value. LEAD's synthesis includes a
     # `Oma malli vs Inderes` comparison section.
+    # Feature toggles — rendered ONLY after the user has asked their
+    # first question. On the idle screen the same controls live in the
+    # hero (see `render_feature_toggles`), so we'd hit Streamlit's
+    # duplicate-key error if we rendered both unconditionally. The hero
+    # is the natural first-time-config affordance; the sidebar takes
+    # over once the chat is active.
+    _show_sidebar_toggles = bool(st.session_state.get("history"))
+
     _val_h = "MOODI" if _lang_side == "fi" else "MODE"
     _val_label = (
         "Käytä vaihtoehtoista arvonmääritystä"
@@ -734,12 +748,13 @@ with st.sidebar:
         else "Adds a Greenwald-Gordon model alongside the answer. "
         "Works for company queries. Adds ~3–5 s per query."
     )
-    st.markdown(f'<div class="ia-side-h">{_val_h}</div>', unsafe_allow_html=True)
-    st.checkbox(
-        _val_label,
-        key="valuation_mode_on",
-        help=_val_help,
-    )
+    if _show_sidebar_toggles:
+        st.markdown(f'<div class="ia-side-h">{_val_h}</div>', unsafe_allow_html=True)
+        st.checkbox(
+            _val_label,
+            key="valuation_mode_on",
+            help=_val_help,
+        )
 
     # Plan-then-execute toggle — adds a strategic planning step before
     # subagent dispatch. The planner reads the routing decision and
@@ -767,11 +782,12 @@ with st.sidebar:
         "Useful for complex queries (comparisons, nuanced questions, "
         "exploratory 'why' questions)."
     )
-    st.checkbox(
-        _plan_label,
-        key="plan_then_execute_on",
-        help=_plan_help,
-    )
+    if _show_sidebar_toggles:
+        st.checkbox(
+            _plan_label,
+            key="plan_then_execute_on",
+            help=_plan_help,
+        )
 
     # LEAD-tier selector — opt-in upgrade for synthesis quality.
     # Default "Vakio" keeps everything on Flash Lite (paid tier base
@@ -802,14 +818,15 @@ with st.sidebar:
         "thesis writing, due diligence, complex comparisons where "
         "subagent tone is load-bearing."
     )
-    st.markdown(f'<div class="ia-side-h">{_tier_h}</div>', unsafe_allow_html=True)
-    st.radio(
-        _tier_h,
-        options=_tier_options,
-        key="lead_tier",
-        help=_tier_help,
-        label_visibility="collapsed",
-    )
+    if _show_sidebar_toggles:
+        st.markdown(f'<div class="ia-side-h">{_tier_h}</div>', unsafe_allow_html=True)
+        st.radio(
+            _tier_h,
+            options=_tier_options,
+            key="lead_tier",
+            help=_tier_help,
+            label_visibility="collapsed",
+        )
 
     # Recent runs
     _runs_h = "VIIMEISIMMÄT AJOT" if _lang_side == "fi" else "RECENT RUNS"

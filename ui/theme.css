@@ -533,56 +533,35 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
 .ia-hero .ia-hero-eq .eq { color: var(--ink-3); font-weight: 400; }
 .ia-hero .ia-hero-eq .result { color: var(--p-lead); }
 .ia-hero .ia-hero-agents {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--s-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
   font-size: var(--t-meta);
   letter-spacing: var(--ls-tight);
-  margin-bottom: var(--s-3);
+  margin-bottom: var(--s-2);
 }
 .ia-hero .ia-hero-agents .ag {
-  display: grid;
-  grid-template-columns: 18px 90px 1fr;
-  align-items: baseline;
+  display: inline-flex;
+  align-items: center;
   gap: var(--s-1);
-  padding: var(--s-1) 0;
-  border-bottom: 1px dashed var(--line);
+  font-weight: 600;
 }
-.ia-hero .ia-hero-agents .ag:last-child { border-bottom: 0; }
-.ia-hero .ia-hero-agents .ag .glyph { font-weight: 700; }
-.ia-hero .ia-hero-agents .ag .code { font-weight: 600; letter-spacing: var(--ls-caps); }
-.ia-hero .ia-hero-agents .ag .role {
-  color: var(--ink-2);
-  font-weight: 400;
-  font-size: var(--t-micro);
-}
-/* Example queries inside the hero — readable italic chips. */
-.ia-hero .ia-hero-examples {
-  margin-top: var(--s-3);
-  padding-top: var(--s-3);
-  border-top: 1px dashed var(--line);
-}
-.ia-hero .ia-hero-examples .ex-lab {
+
+/* Hero feature-toggles section — minimal heading + 3 inline controls.
+   Renders below the agent roster on the idle hero only. The controls
+   themselves are native Streamlit checkboxes/radio, so we just style
+   the section header and the surrounding spacing here. */
+.ia-hero-toggles-h {
   font-size: var(--t-micro);
   letter-spacing: var(--ls-caps);
   color: var(--ink-3);
   font-weight: 600;
+  margin-top: var(--s-3);
   margin-bottom: var(--s-1);
+  padding-top: var(--s-2);
+  border-top: 1px dashed var(--line);
 }
-.ia-hero .ia-hero-examples .ex-item {
-  font-style: italic;
-  color: var(--ink-1);
-  padding: 4px 0;
-  font-size: var(--t-meta);
-  line-height: 1.55;
-}
-.ia-hero .ia-hero-examples .ex-item::before {
-  content: "→ ";
-  color: var(--p-lead);
-  font-style: normal;
-  font-weight: 600;
-  margin-right: var(--s-1);
-}
+
 /* SIDEBAR DISCLAIMER — red-bordered fine print at the very top */
 .ia-side-disclaimer {
   background: rgba(248, 113, 113, 0.06);  /* ia-red @ 6% */

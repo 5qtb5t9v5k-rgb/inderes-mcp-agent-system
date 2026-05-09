@@ -217,42 +217,23 @@ GITHUB_URL = "https://github.com/5qtb5t9v5k-rgb/inderes-mcp-agent-system"
 
 
 def render_disclaimer(lang: str = "fi") -> None:
-    """Hero panel: brand equation + one-line tagline + agent roster + sample
-    queries. Designed as an inviting intro for first-time visitors —
-    the not-affiliated legal notice lives in the sidebar disclaimer.
+    """Hero panel: brand equation + tagline + core-agent roster.
 
-    Includes 3 example queries the user can click into the chat box to
-    showcase what the system can do at different levels of complexity:
-      - simple metric lookup       (entry-level)
-      - comparison-with-context    (multi-agent, opt-in valuation)
-      - decision support           (plan-then-execute + Pro-LEAD shines)
+    Minimalist by design. The not-affiliated legal notice lives in the
+    sidebar disclaimer, not here, so this panel reads as an inviting
+    intro instead of a legal one.
+
+    VALUATION is intentionally NOT in the default agent list — it's an
+    opt-in feature toggled from ``render_feature_toggles``. Listing it
+    as one of the "always-on" agents would mislead first-time users
+    into thinking it runs by default.
     """
     if lang == "fi":
         tag = "MULTI-AGENT RESEARCH"
-        tagline = (
-            "Pohjoismaisten osakkeiden tutkimusta — yksi päätoimittaja "
-            "koordinoi viittä erikoisagenttia, jotka kaikki tekevät omat "
-            "MCP-haut ja palauttavat strukturoituja tuloksia."
-        )
-        examples_label = "Kokeile esimerkiksi"
-        examples = [
-            "Mikä on Sammon P/E ja Inderesin näkemys?",
-            "Vertaile Nordean ja Aktian kannattavuutta",
-            "Tee Sampolle arvonmääritys ja kerro kannattaako se ostaa",
-        ]
+        tagline = "Tutki pohjoismaisia osakkeita viiden erikoistuneen agentin kautta."
     else:
         tag = "MULTI-AGENT RESEARCH"
-        tagline = (
-            "Nordic-equity research — a lead orchestrator coordinates "
-            "five specialist agents, each making their own MCP queries "
-            "and returning structured results."
-        )
-        examples_label = "Try for example"
-        examples = [
-            "What is Sampo's P/E and Inderes' view?",
-            "Compare Nordea and Aktia on profitability",
-            "Value Sampo and tell me whether it's worth buying",
-        ]
+        tagline = "Research Nordic equities through five specialised agents."
 
     # Equation — INDERES + MCP + AGENTIT = INSIGHTS — captures what this is
     # at a glance. Operators and the equals sign get colored separately so
@@ -267,34 +248,16 @@ def render_disclaimer(lang: str = "fi") -> None:
         '<span class="result">INSIGHTS</span>'
     )
 
-    # Per-agent roster with role description so user knows what each does.
-    # Two-column layout: glyph+CODE on left, role on right.
+    # Default agent roster: skip VALUATION because it's opt-in. Showing
+    # it here as a regular agent would mislead users who didn't enable
+    # the toggle. The toggle row below makes opt-in features explicit.
+    DEFAULT_AGENTS = ("LEAD", "QUANT", "RESEARCH", "SENTIMENT", "PORTFOLIO")
     agents_html = ""
-    for code, p in PERSONAS.items():
-        role = p.get("role_fi" if lang == "fi" else "role_en", "—")
+    for code in DEFAULT_AGENTS:
+        p = PERSONAS.get(code, {"glyph": "•", "color": "#888"})
         agents_html += (
-            f'<div class="ag" style="color:{p["color"]}">'
-            f'<span class="glyph">{p["glyph"]}</span>'
-            f'<span class="code">{code}</span>'
-            f'<span class="role">{role}</span>'
-            f'</div>'
-        )
-
-    # Example query chips — clickable buttons would need st.button (which
-    # would force a rerun). For the idle-hero, render them as styled
-    # readonly chips that the user can copy-paste; the chat input is right
-    # below them. Future improvement: make them clickable to populate the
-    # input directly.
-    examples_html = ""
-    if examples:
-        items = "".join(
-            f'<div class="ex-item">"{q}"</div>' for q in examples
-        )
-        examples_html = (
-            f'<div class="ia-hero-examples">'
-            f'<div class="ex-lab">{examples_label}:</div>'
-            f'{items}'
-            f'</div>'
+            f'<span class="ag" style="color:{p["color"]}">'
+            f'{p["glyph"]} {code}</span>'
         )
 
     html = (
@@ -303,10 +266,105 @@ def render_disclaimer(lang: str = "fi") -> None:
         f'<div class="ia-hero-eq">{eq_html}</div>'
         f'<div class="ia-hero-text">{tagline}</div>'
         f'<div class="ia-hero-agents">{agents_html}</div>'
-        f'{examples_html}'
         '</div>'
     )
     st.markdown(html, unsafe_allow_html=True)
+
+
+def render_feature_toggles(lang: str = "fi") -> None:
+    """Render the 3 feature controls (valuation toggle, plan-then-execute
+    toggle, model-tier radio) inline on the idle hero.
+
+    Same controls as the sidebar version, same session_state keys —
+    a value set on the hero persists when the user navigates to the
+    sidebar after their first query, and vice versa. To avoid Streamlit
+    duplicate-key errors, the sidebar version is rendered only AFTER
+    the chat starts (see ``ui/app.py`` — sidebar toggles are gated by
+    ``st.session_state.get("history")``).
+
+    Help text uses Streamlit's native ``help=`` parameter, which renders
+    a small ``?`` icon with hover tooltip — same affordance as in the
+    sidebar.
+    """
+    fi = lang == "fi"
+
+    # Section header — minimal label, all-caps, persona-amber accent
+    label = "ASETUKSET" if fi else "SETTINGS"
+    st.markdown(
+        f'<div class="ia-hero-toggles-h">{label}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Wrap the three controls in a styled container — Streamlit renders
+    # checkboxes / radio with native widgets, but we want them inside
+    # the same minimalist container as the rest of the hero.
+    cols = st.columns([1, 1, 1])
+
+    with cols[0]:
+        st.checkbox(
+            "Vaihtoehtoinen arvonmääritys" if fi else "Alternative valuation",
+            key="valuation_mode_on",
+            help=(
+                "Lisää oma Greenwald-Gordon -malli vastauksen rinnalle. "
+                "Toimii yhtiökyselyihin (esim. 'tee arvonmääritys "
+                "Sammosta'). Lisää yhden agentin ajon — kasvattaa "
+                "kestoa ~3–5 s."
+                if fi
+                else "Adds a Greenwald-Gordon model alongside the answer. "
+                "Works for company queries. Adds ~3–5 s per query."
+            ),
+        )
+
+    with cols[1]:
+        st.checkbox(
+            "🧠 Pidempi suunnittelu" if fi else "🧠 Deeper planning",
+            key="plan_then_execute_on",
+            help=(
+                "LEAD kirjoittaa lyhyen strukturoidun suunnitelman "
+                "ennen subagenttien dispatchia. Subagentit saavat "
+                "tämän kontekstin promptiinsa, joten haut ovat "
+                "tarkempia. Lisää ~5–10 s + ~20 % kustannus.\n\n"
+                "Hyödyllinen monimutkaisille kyselyille (vertailut, "
+                "vivahteikkaat kysymykset, tutkimukselliset 'miksi' "
+                "-kysymykset)."
+                if fi
+                else "LEAD writes a short structured plan before "
+                "subagents are dispatched. Subagents receive this "
+                "context in their prompts, so their fetches are more "
+                "focused. Adds ~5–10 s + ~20 % cost.\n\n"
+                "Useful for complex queries (comparisons, nuanced "
+                "questions, exploratory 'why' questions)."
+            ),
+        )
+
+    with cols[2]:
+        tier_options_fi = ["Vakio", "Tarkka LEAD", "Tarkka kaikki"]
+        tier_options_en = ["Standard", "Premium LEAD", "Premium all"]
+        tier_options = tier_options_fi if fi else tier_options_en
+        st.radio(
+            "Mallin laatu" if fi else "Model tier",
+            options=tier_options,
+            key="lead_tier",
+            help=(
+                "Vakio = Flash Lite kaikkialla (~$0,015 / kysely).\n\n"
+                "Tarkka LEAD = synteesi Gemini 2.5 Pro:lla (~$0,07 "
+                "lisää / kysely). Subagentit Flash Litellä. "
+                "Suositeltu vivahteikkaisiin kysymyksiin.\n\n"
+                "Tarkka kaikki = KAIKKI agentit Pro:lla — subagentit, "
+                "conflict-detector, planner, LEAD. ~$0,30 lisää / "
+                "kysely (~20x vakio). Latenssi +15–25 s."
+                if fi
+                else "Standard = Flash Lite throughout (~$0.015/query).\n\n"
+                "Premium LEAD = synthesis on Gemini 2.5 Pro (~$0.07 "
+                "extra/query). Subagents on Flash Lite. Recommended "
+                "for nuanced queries.\n\n"
+                "Premium all = ALL agents on Pro — subagents, "
+                "conflict-detector, planner, LEAD. ~$0.30 extra/query "
+                "(~20x baseline). Latency +15–25 s."
+            ),
+            horizontal=False,
+            label_visibility="collapsed",
+        )
 
 
 def render_sidebar_disclaimer(lang: str = "fi") -> None:
