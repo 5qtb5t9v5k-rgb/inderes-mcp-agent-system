@@ -341,6 +341,45 @@ def _process_valuation_subagents(
             ))
             continue
 
+        # ── Tool-call guard: reject hallucinated outputs at the boundary ──
+        # The valuation agent's whole job is to fetch data from MCP and emit
+        # JSON. Without ≥1 get-fundamentals call there is no MCP-sourced data
+        # in the output — by definition the JSON is invented. We saw this in
+        # run 20260508-205057-769 ("entäs jos roe olisi 13%"): Flash Lite
+        # decided the prior turn's context was "enough" and emitted a fully
+        # hallucinated bundle (wrong company_id COMPANY:345 instead of 382,
+        # invented price 12.85€ vs actual 16.09€, invented ROE history).
+        #
+        # Engine math is deterministic but garbage-in → garbage-out: the
+        # +18.2% safety margin shown to the user was the visible artifact of
+        # a 100% fabricated input price. Catching this BEFORE parser.parse()
+        # routes the run cleanly into Tila B (LEAD shows the honest
+        # "valuation skipped" message instead of fabricated numbers).
+        #
+        # Why count get-fundamentals specifically (not search-companies):
+        # search-companies returns only IDs, not the BVPS/ROE/price needed.
+        # An agent that did only search-companies still couldn't produce a
+        # real valuation. get-fundamentals is the load-bearing call.
+        fundamentals_calls = sum(
+            1 for tc in (sr.tool_calls or [])
+            if getattr(tc, "name", "") == "get-fundamentals"
+        )
+        if fundamentals_calls == 0:
+            log.warning(
+                "valuation tool-call guard rejected %s: 0 get-fundamentals calls "
+                "(agent skipped MCP — output is hallucinated)",
+                company,
+            )
+            records.append(ValuationRecord(
+                company=company,
+                parse_error=(
+                    "agentti ei tehnyt yhtään get-fundamentals-kutsua — "
+                    "output ei perustu MCP-dataan, todennäköisesti hallusinoitu"
+                ),
+                raw_text=sr.text,
+            ))
+            continue
+
         try:
             parsed = parse_valuation_agent(sr.text)
         except ValuationParseError as exc:
@@ -468,6 +507,36 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
         )
         lines.append(f"  Entry-tasot: aloitus {v.entry_aloitus:.2f}€, "
                      f"nosto {v.entry_nosto:.2f}€, täysi {v.entry_taysi:.2f}€")
+
+        # ── Sanity-check: extreme safety margins are a red flag ──
+        # When |safety_margin| > 100% the model says price differs from FV
+        # by more than the entire FV — almost always a sign of mismatched
+        # parameters (e.g. manual_override ROE 5% on a stock priced for
+        # 13%, run 20260508-221645-249 had Bittium showing -3155 %).
+        # Flag it so LEAD softens the takeaway in synthesis instead of
+        # presenting the absurd number as a confident verdict.
+        if abs(v.safety_margin_to_fv_pct) > 100.0:
+            lines.append(
+                f"  ⚠️ HUOM REUNATAPAUS: turvamarginaali ({v.safety_margin_to_fv_pct:+.1f}%) "
+                f"on poikkeuksellisen suuri. Tämä viittaa siihen että annetut "
+                f"parametrit (ROE {a.roe_used:.1%}, k {a.k:.1%}, g {a.g:.1%}) "
+                f"ovat kaukana siitä mitä markkina hinnoittelee — joko "
+                f"manuaalinen oletus on epärealistinen tai parametrit "
+                f"keskenään epäsuhdassa. **Mainitse tämä epävarmuus käyttäjälle**, "
+                f"älä esitä lukua varmana tuomiona."
+            )
+        elif v.quality == "tuhoutuva" and a.roe_version == "manual_override":
+            # Subtler case: tuhoutuva-luokka manual override:lla. ROE < k
+            # tarkoittaa että kasvu syö arvoa — käyttäjän on tärkeää tietää
+            # että manuaalinen ROE-arvo aiheutti tämän tuomion, ei objektii-
+            # vinen havainto yhtiön kannattavuudesta.
+            lines.append(
+                f"  ⚠️ HUOM: 'tuhoutuva'-luokitus johtuu **manuaalisesta "
+                f"ROE-overridesta** ({a.roe_used:.1%}), ei agentin tekemästä "
+                f"havainnosta. Mainitse käyttäjälle että tämä on skenaario, "
+                f"ei ennuste."
+            )
+
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
