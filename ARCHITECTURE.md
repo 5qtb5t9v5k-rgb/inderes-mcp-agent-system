@@ -15,6 +15,7 @@ covers.
   - [Gemini client with fallback](#gemini-client-with-fallback)
   - [CLI](#cli)
   - [Observability](#observability)
+  - [Valuation engine (opt-in feature)](#valuation-engine-opt-in-feature)
 - [Run lifecycle](#run-lifecycle)
 - [Key design decisions](#key-design-decisions)
 - [What this is and isn't](#what-this-is-and-isnt)
@@ -25,9 +26,11 @@ covers.
 ## Mental model
 
 A user asks a natural-language question about a Nordic stock. A **router** classifies
-it. A **fan-out workflow** spawns 1–4 **specialized subagents** in parallel, each
+it. A **fan-out workflow** spawns 1–5 **specialized subagents** in parallel, each
 with its own focused subset of Inderes MCP tools. Each subagent runs an LLM
 tool-calling loop, gathers data from Inderes, and returns a structured text block.
+The **valuation subagent** is a special case: it emits structured JSON which a
+**deterministic Python engine** consumes to compute fair value (no LLM math).
 A **conflict-detector** then reads all subagent outputs and emits a structured map
 of where they agree, disagree, and which claims only one subagent made.
 Finally, a **lead** synthesizes the subagent outputs *and* the conflict report
@@ -40,20 +43,26 @@ User question
     ▼
 Router (Gemini, structured-output JSON)
     │
-    ▼
+    ▼ + valuation-intent gate (UI-controlled toggle)
 Workflow (asyncio.gather + semaphore on MAX_CONCURRENT_AGENTS)
     │
     ├──→ aino-quant     ─┐
     ├──→ aino-research  ─┤  each: own chat client, own filtered MCP tool set,
     ├──→ aino-sentiment ─┤        own AFC tool-calling loop, own structured output
-    └──→ aino-portfolio ─┘
-                         │
+    ├──→ aino-portfolio ─┤
+    └──→ aino-valuation ─┘  emits JSON → tool-call guard → deterministic engine
+                         │                (valuation/engine.py: pure Python,
+                         │                 Greenwald-Gordon math, no LLM)
                          ▼
               aino-conflict-detector (Gemini, no tools, strict JSON)
               → agreements / conflicts / isolated_claims
                          │
                          ▼
               Lead synthesis (Gemini, no tools)
+              → respects 3-state output:
+                A) toggle off → default flow unchanged
+                B) toggle on, parse_error → honest "skipped" message
+                C) toggle on, success → 4-section structure
                          │
                          ▼
               Final answer + persisted run directory
@@ -73,9 +82,9 @@ Files: [`src/inderes_agent/orchestration/`](src/inderes_agent/orchestration/)
 
 | File | Role |
 |---|---|
-| `router.py` | One Gemini call with a structured-output JSON prompt → `QueryClassification(domains, companies, is_comparison, reasoning)`. Few-shot examples in the prompt drive consistency. Includes tolerant JSON extraction (handles code fences, prose leaks). |
-| `workflows.py` | Spawns subagents per the classification. `asyncio.Semaphore(MAX_CONCURRENT_AGENTS)` caps parallelism. For comparisons (N>1 companies × multi-domain non-portfolio), fans out per-company. Records `last_used_model` and any errors per subagent in `SubagentResult`. |
-| `synthesis.py` | Builds a structured prompt from subagent outputs and feeds it to the lead agent. Returns `(answer_text, lead_model_used)`. |
+| `router.py` | One Gemini call with a structured-output JSON prompt → `QueryClassification(domains, companies, is_comparison, reasoning)`. Few-shot examples in the prompt drive consistency. Includes tolerant JSON extraction (handles code fences, prose leaks). Also exposes `query_has_valuation_intent()` — keyword heuristic used by the UI to decide whether to extend the router's output with VALUATION when the toggle is on. |
+| `workflows.py` | Spawns subagents per the classification. `asyncio.Semaphore(MAX_CONCURRENT_AGENTS)` caps parallelism. For comparisons (N>1 companies × multi-domain non-portfolio), fans out per-company. Records `last_used_model` and any errors per subagent in `SubagentResult` along with the full `tool_calls` list (used downstream by the valuation tool-call guard). |
+| `synthesis.py` | Builds a structured prompt from subagent outputs and feeds it to the lead agent. Returns `(answer_text, lead_model_used, trace)`. Also runs `_process_valuation_subagents()` which (a) tool-call-guards every VALUATION subagent (rejecting outputs with zero `get-fundamentals` calls as hallucinations), (b) parses agent JSON, (c) feeds parsed parameters to the deterministic engine. The resulting `Valuation` records are formatted into a block that LEAD's prompt consumes. |
 
 **Why `asyncio.gather` instead of MAF's `ConcurrentBuilder`?**
 
@@ -106,6 +115,8 @@ Five `agent_framework.Agent` instances built via factory functions. Each gets:
 | `aino-research` | Qualitative content: analyst reports, transcripts, filings | `search-companies`, `list-content`, `get-content`, `list-transcripts`, `get-transcript`, `list-company-documents`, `get-document`, `read-document-sections` |
 | `aino-sentiment` | Market signals: insider trades, forum, calendar | `search-companies`, `list-insider-transactions`, `search-forum-topics`, `get-forum-posts`, `list-calendar-events` |
 | `aino-portfolio` | Inderes' own model portfolio | `get-model-portfolio-content`, `get-model-portfolio-price`, `search-companies` |
+| `aino-valuation` *(opt-in)* | Fetches BVPS, ROE history, current price; emits structured JSON for the deterministic Greenwald-Gordon engine. **Never does math itself** — the agent's job is parameter extraction with rationale, not calculation. | `search-companies`, `get-fundamentals` |
+| `aino-conflict-detector` | Reads all subagent outputs and emits agreements / conflicts / isolated_claims as structured JSON | — |
 | `aino-lead` | Synthesizes subagent outputs (no tools, just an LLM call over a structured prompt) | — |
 
 **Why partition tools per agent?** A monolithic agent with all 16 MCP tools would
@@ -148,7 +159,7 @@ connection-time `initialize` call. The 401 happens during `initialize`, before a
 tool call. So we attach auth via `httpx.AsyncClient.auth=` instead — every request
 including `initialize` carries the Bearer token.
 
-**Why eagerly trigger OAuth in `__main__.py`?** The 4 subagents are built
+**Why eagerly trigger OAuth in `__main__.py`?** The 4–5 subagents are built
 concurrently inside `asyncio.gather`. If we let OAuth trigger inside one of them,
 the other three might race to start their own OAuth flows (browser opening 4
 times). Calling `prefetch_token()` once at startup ensures the browser opens
@@ -231,10 +242,73 @@ Per-run output structure at `~/.inderes_agent/runs/<timestamp>/`:
 ├── routing.json           # {domains, companies, is_comparison, reasoning}
 ├── subagent-NN-<domain>.json   # {index, domain, company, model_used, error, text}
 ├── synthesis.txt          # plain text, lead's final answer
+├── conflicts.json         # conflict-detector output (when run): agreements, conflicts, isolated_claims
+├── valuation.json         # only when toggle was on: parsed agent JSON + computed Valuation per company
+├── paattely.json          # LEAD's reasoning callout (when present)
 ├── meta.json              # {lead_model, duration_seconds, fallback_events, subagent_count, subagent_errors}
 ├── console.log            # HTTP/MCP/fallback log lines with ISO timestamps
 └── narrative.md           # human-readable timeline (auto-generated post-run)
 ```
+
+---
+
+### Valuation engine (opt-in feature)
+
+Files: [`src/inderes_agent/valuation/`](src/inderes_agent/valuation/) and the
+`aino-valuation` agent in `agents/valuation.py`.
+
+A deterministic Python module implementing the user's own Greenwald-Gordon hybrid
+fair-value methodology. Activates when the user enables the *"Käytä vaihtoehtoista
+arvonmääritystä"* sidebar toggle AND the query has explicit valuation intent
+(`router.query_has_valuation_intent()`). Layered separation:
+
+| File | Role |
+|---|---|
+| `engine.py` | Pure-Python valuation. Same `(BVPS, ROE, k, g, price)` always produces the same `Valuation` dataclass — no LLM dependency, no randomness, no external calls. Implements: FCF/share, FV (Gordon), EPV (Greenwald), growth multiplier (GM), Rock Bottom, dual implied values (`implied_g` holds ROE, `implied_roe` holds g), quality classification (laatu / keskinkertainen / tuhoutuva) with ±2% buffer around k, entry levels (90/80/75% of FV), safety margin. |
+| `roe_selection.py` | The single source of truth for the **sustainable-ROE rule**. Trend classification (`nouseva` / `laskeva` / `vakaa` / `insufficient_history`) plus a deterministic decision: 5y_median for stable/rising trends, `min(3y_median, trend_weighted)` for falling. Used both by the agent prompt (documentation) and by the parser (validation). |
+| `parser.py` | Validates `aino-valuation`'s emitted JSON before it reaches the engine. Strict on numeric ranges, `k > g` precondition, allowed `roe_version` values, and the sustainable-ROE rule (recomputed from raw history; agent can't silently mis-compute medians). Includes Levenshtein-≤2 typo tolerance for `*_rationale` fields with sibling protection (so `g_rationale` cannot absorb `k_rationale`'s value). |
+
+The agent is intentionally minimal: fetch data via MCP, choose `k` and `g` with
+written rationale, declare which ROE rule applies, and emit JSON. **All math
+happens in the deterministic engine** — this prevents LLM arithmetic errors from
+reaching the user. Validated against `Arvonmääritys2023.xlsx` for 10 hand-picked
+Finnish companies (laatu / tuhoutuva mix), with FV/EPV/GV matching to within
+0.02€ (`tests/valuation/test_excel_parity.py`).
+
+**Tool-call guard at the orchestration boundary**
+
+Production run `20260508-205057-769` ("entäs jos roe olisi 13%") demonstrated a
+trust-killer failure mode: Flash Lite decided the prior conversation turn was
+"enough context" and emitted a fully-formed JSON output with **zero MCP calls**
+— hallucinating company_id, current price, and ROE history. Engine math then
+operated on phantom inputs and produced a confident but fabricated +18.2 %
+safety margin.
+
+Defense: in `synthesis._process_valuation_subagents`, count `get-fundamentals`
+calls *before* invoking the parser. Zero calls → reject as hallucination,
+route to the LEAD-prompt's *Tila B* with an honest error message. Prompt-level
+"always fetch fresh data" instructions don't suffice — Flash Lite occasionally
+skips MCP regardless. Structural enforcement at the boundary is the only
+reliable defense.
+
+**Three-state LEAD synthesis**
+
+The LEAD prompt has three explicit modes for how to integrate valuation
+output (selected by inspecting the formatted block):
+
+- **A — Toggle off**: block is the placeholder `_user did not enable...`.
+  LEAD ignores the valuation guidance entirely, default flow unchanged.
+- **B — Toggle on, parse error**: block contains `parse_error` text. LEAD
+  emits a brief honest "skipped" message, **never** hand-computes Gordon
+  math from agent's parameters even when visible in the trace.
+- **C — Toggle on, success**: block contains `Engine: ...` lines. LEAD
+  produces a 4-section structure (Yhteenveto / Inderesin näkemys / Oma
+  arvonmääritys / Vertailu) plus a static methodology infobox.
+
+Edge-case warnings are injected into the block when |safety_margin| > 100%
+(parameters are clearly mismatched with market price) or when quality is
+*tuhoutuva* due to manual_override (LEAD softens the verdict, presenting it
+as a scenario rather than a verdict).
 
 ---
 

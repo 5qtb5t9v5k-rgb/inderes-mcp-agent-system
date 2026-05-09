@@ -4,7 +4,92 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com); the project does not yet follow
 [SemVer](https://semver.org) strictly.
 
-## [unreleased] — 2026-05-06
+## [unreleased] — 2026-05-09
+
+### Added — alternative valuation feature (opt-in Greenwald-Gordon)
+
+A user-controlled fifth specialist subagent (`aino-valuation`) plus a
+deterministic Python valuation engine, integrated end-to-end through the
+LEAD synthesis. Activated via the *"Käytä vaihtoehtoista arvonmääritystä"*
+sidebar toggle. Default flow remains unchanged — when the toggle is off,
+no new code paths execute (verified via the LEAD prompt's *Tila A* mode
+which explicitly tells the model to ignore valuation guidance).
+
+**Methodology**: an 8-step Greenwald-Gordon hybrid. `FV = ((ROE−g)/(k−g)) ×
+BVPS`, EPV = `(ROE/k) × BVPS`, growth value = `FV − EPV` for laatuyhtiöt
+(ROE > k) and 0 otherwise. Quality classification with a ±2% buffer around
+k (laatu / keskinkertainen / tuhoutuva). Dual implied values surface that
+Gordon's equation has two unknowns (ROE, g) but one constraint (price):
+`implied_g` (holds ROE) and `implied_roe` (holds g), shown side-by-side so
+neither dimension is presented as "the" market reading.
+
+**Components**:
+- `src/inderes_agent/valuation/engine.py` — pure-Python deterministic
+  computation, validated against the user's `Arvonmääritys2023.xlsx`
+  Data-sheet outputs for 10 hand-picked Finnish companies (laatu /
+  tuhoutuva mix), within 0.02€ tolerance per cell
+- `src/inderes_agent/valuation/roe_selection.py` — single source of truth
+  for the **sustainable-ROE rule** (median dominates the mean for "typical
+  year" thinking; 5y_median for vakaa/nouseva, min(3y_median,
+  trend_weighted) for laskeva). Used both by the agent prompt
+  (documentation) and by the parser (validation; agent can't silently
+  mis-compute medians)
+- `src/inderes_agent/valuation/parser.py` — strict JSON validator with
+  Levenshtein-≤2 fuzzy match for `*_rationale` field typos (sibling
+  protection: `g_rationale` cannot absorb `k_rationale`'s value)
+- `src/inderes_agent/agents/valuation.py` + `prompts/valuation.md` —
+  `aino-valuation` agent that fetches BVPS, ROE history, and current
+  share price via `get-fundamentals` and emits structured JSON. The
+  agent **never does math** — it extracts parameters and rationale; the
+  deterministic engine handles all computation
+- `src/inderes_agent/orchestration/synthesis.py` —
+  `_process_valuation_subagents()` runs the agent JSON through parser
+  and engine; `_format_valuation_block()` renders results for the LEAD
+  prompt with edge-case warnings for absurd safety-margins
+- `src/inderes_agent/orchestration/router.py` —
+  `query_has_valuation_intent()` heuristic gates the toggle, so purely
+  qualitative questions ("explain why...") don't trigger an unwanted
+  Greenwald-Gordon table. Conservatively biased — false negatives are
+  far less damaging than false positives
+- `src/inderes_agent/agents/prompts/lead.md` — three-state synthesis
+  guide: A (toggle off, default flow unchanged), B (parse error,
+  honest skip with explicit "do not hand-compute Gordon" guards), C
+  (success, 4-section structure: Yhteenveto / Inderesin näkemys / Oma
+  arvonmääritys / Vertailu, plus a static methodology infobox)
+
+**Tool-call guard at the orchestration boundary**
+
+Production run `20260508-205057-769` ("entäs jos roe olisi 13%")
+demonstrated a trust-killer hallucination: Flash Lite emitted a
+fully-formed JSON output with **zero MCP calls**, inventing
+`company_id`, current price, and ROE history from conversation context.
+Engine math then produced a confident but fabricated +18.2% safety
+margin shown to the user.
+
+Defense: `_process_valuation_subagents` counts `get-fundamentals` calls
+*before* parsing. Zero calls → reject as hallucination, route into
+LEAD's Tila B with an honest "agent did not query MCP" message.
+Prompt-level "always fetch fresh data" instructions don't suffice —
+structural enforcement at the orchestration boundary is the only
+reliable defense.
+
+**Test coverage** (108 new tests, 146 total green):
+- 26 engine unit tests (math, edge cases, dual implied)
+- 20 Excel-parity tests (10 companies × 2 assertion sets)
+- 21 sustainable-ROE rule tests (medians, trend, validation)
+- 35 parser tests (validation, typo tolerance, sibling protection)
+- 10 tool-guard + edge-case warning tests
+- 33 router intent-gate tests (explicit valuation queries fire,
+  qualitative queries don't, Finnish morphology variants)
+
+**Known limitation** (deferred to follow-up): per-company fan-out for
+multi-company comparisons currently produces JSON arrays from each
+subagent (each agent thinks the whole comparison is its scope) — parser
+expects single objects, so all three companies' valuations fail to
+parse and LEAD falls into Tila B for the whole query. Single-company
+valuations work correctly. Tracked in `BACKLOG.md`.
+
+## [previous] — 2026-05-06
 
 ### Added — pre-synthesis conflict detection
 

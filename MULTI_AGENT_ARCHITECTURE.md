@@ -224,17 +224,28 @@ system trustworthy.
 ### Current state in this project
 
 - `orchestration/router.py` — Gemini structured-output call returns
-  `QueryClassification(domains, companies, is_comparison, reasoning)`
-- `orchestration/synthesis.py` — two-step:
+  `QueryClassification(domains, companies, is_comparison, reasoning)`.
+  Also exposes `query_has_valuation_intent()`, a keyword heuristic
+  used by the UI to gate the valuation toggle (so qualitative-only
+  queries don't get an unwanted Greenwald-Gordon table)
+- `orchestration/synthesis.py` — three-step:
+  - **`_process_valuation_subagents()`** runs first if any VALUATION
+    subagent fired. Tool-call guard rejects outputs with zero
+    `get-fundamentals` calls (closing the hallucination path), then
+    parser validates the JSON, then the deterministic
+    `valuation.engine.value_stock()` computes fair value etc. Runs
+    structurally — no LLM call here.
   - **`detect_conflicts()`** runs a separate LLM call (the
     `aino-conflict-detector` agent) over all subagent outputs and
     emits strict JSON: `agreements / conflicts / isolated_claims`.
     Skipped when only one non-error subagent ran.
-  - **`synthesize()`** runs LEAD over both the raw subagent outputs
-    and the structured conflict report, with explicit instructions on
-    how to use it (don't silently pick a conflict side, treat
-    isolated single-source claims as risky, treat agreements as
-    load-bearing).
+  - **`synthesize()`** runs LEAD over the raw subagent outputs, the
+    structured conflict report, and the formatted valuation block
+    (placeholder when toggle off, engine output when on), with
+    explicit instructions on how to use each (don't silently pick a
+    conflict side, treat isolated single-source claims as risky,
+    treat agreements as load-bearing; respect 3-state valuation
+    rendering — A/B/C).
 - LEAD also generates the `**💭 Perustelut**` callout — the brain
   showing *why* it synthesized the way it did, now able to cite the
   conflict report explicitly (observed: *"Ratkaisin ristiriidat
@@ -726,12 +737,12 @@ Snapshot of where current code sits:
 | Model layer | Current implementation |
 |---|---|
 | Surface | `cli/repl.py`, `cli/render.py`, `ui/app.py`, `ui/components.py`, `ui/theme.css` |
-| Brain | `orchestration/router.py`, `orchestration/synthesis.py` |
+| Brain | `orchestration/router.py` (incl. `query_has_valuation_intent` heuristic), `orchestration/synthesis.py` (incl. tool-call guard for valuation hallucinations), `valuation/engine.py` (deterministic Python — pure-Brain, no LLM) |
 | Action | `orchestration/workflows.py` |
 | Data (external) | `mcp/inderes_client.py`, `mcp/oauth.py` |
 | Data (state) | filesystem (`~/.inderes_agent/runs/`, gist for tokens) |
-| Harness | `agents/prompts/*.md`, `agents/_common.py`, tool subsets in `mcp/inderes_client.py` |
-| Evals plane | `observability/run_log.py`, `observability/narrate.py` (forensic only — no feedback, no golden, no smoke tests) |
+| Harness | `agents/prompts/*.md`, `agents/_common.py`, tool subsets in `mcp/inderes_client.py`, `valuation/parser.py` (validates LLM output before deterministic engine consumes it), `valuation/roe_selection.py` (single source of truth for the sustainable-ROE rule, used both by prompt and by parser) |
+| Evals plane | `observability/run_log.py`, `observability/narrate.py` (forensic only — no feedback, no golden, no smoke tests), `tests/valuation/test_excel_parity.py` (deterministic engine pinned to user's spreadsheet — closest thing to a regression test in this project) |
 | Governance plane | `MAX_CONCURRENT_AGENTS`, `DAILY_QUERY_CAP`, password-gate (minimal) |
 | Memory | tier 1 (in LLM context) only; conversation state in REPL is partial tier 2 |
 
@@ -803,7 +814,10 @@ Concrete current state vs. plausible future state of this project:
 
 - Single user, single Inderes Premium subscription
 - Read-only MCP tools (16 of them)
-- Static fan-out workflow (router → 4 subagents → synthesis)
+- Static fan-out workflow (router → 4 subagents → conflict detector
+  → synthesis), with an opt-in 5th subagent (`aino-valuation`) that
+  feeds a deterministic Python valuation engine when the user enables
+  the alternative-valuation toggle
 - Filesystem-based state (per-run logs, gist for tokens)
 - No persistent user-specific state
 - No automated evaluation; manual inspection only

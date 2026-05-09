@@ -8,15 +8,18 @@ A multi-agent stock-research conversation system for Nordic equities. Built on *
 $ python -m inderes_agent "Mitä Sammon nykytilanteesta tulisi ajatella?"
 ```
 
-A lead orchestrator classifies the question, fans out to 1–4 specialized subagents
-(quant, research, sentiment, portfolio) running in parallel, each making targeted
-calls into Inderes MCP and returning structured findings. The lead then synthesizes
-a single answer in the same language as the question. Every run is persisted to disk
-as a forensic record (routing decision, per-subagent outputs, full tool-call timeline).
+A lead orchestrator classifies the question, fans out to 1–5 specialized subagents
+(quant, research, sentiment, portfolio, valuation) running in parallel, each making
+targeted calls into Inderes MCP and returning structured findings. The lead then
+synthesizes a single answer in the same language as the question. Every run is
+persisted to disk as a forensic record (routing decision, per-subagent outputs,
+full tool-call timeline).
 
 The system **surfaces signals** — Inderes' own recommendation, target price, insider
-activity, analyst notes, forum sentiment — and **never** issues a buy/sell call of
-its own. The user makes the decision; the agent shows them the data.
+activity, analyst notes, forum sentiment — and optionally an **alternative valuation**
+(deterministic Greenwald-Gordon hybrid run on the user's own methodology, opt-in via
+sidebar toggle). It **never** issues a buy/sell call of its own. The user makes the
+decision; the agent shows them the data.
 
 > **About this project.** A *learning project*, not a product. The goal is
 > to develop in practice a working understanding of how multi-agent systems
@@ -264,19 +267,28 @@ In the REPL: `/explain` does the same for the current session's last run.
                     │  Router LLM │  Gemini, structured-output JSON
                     └─────┬───────┘
                           │
-                ┌─────────┼─────────┬──────────┐
-                ▼         ▼         ▼          ▼
-           aino-quant  aino-research  aino-sentiment  aino-portfolio
-                │         │         │          │
-                └─────────┴─────────┴──────────┘
+                ┌─────────┼─────────┬──────────┬──────────┐
+                ▼         ▼         ▼          ▼          ▼
+           aino-quant  aino-research  aino-sentiment  aino-portfolio  aino-valuation
+                │         │         │          │          │
+                └─────────┴─────────┴──────────┴──────────┘
                           │
                           ▼     bounded by MAX_CONCURRENT_AGENTS
                     Inderes MCP (16 tools, partitioned)
                           │
+                          ▼     ┌─ valuation/ ──── deterministic engine
+                          │     │  (pure Python, Greenwald-Gordon
+                          │     │   formulas, no LLM dependency)
+                          │     └─ runs after agent emits JSON
+                          ▼
+                ┌──────────────────────┐
+                │ Conflict detector    │  flags disagreements between
+                │ (Gemini, JSON output)│  subagents before synthesis
+                └─────────┬────────────┘
                           ▼
                     ┌─────────────┐
-                    │  aino-lead  │  reads subagent outputs, synthesizes
-                    └─────┬───────┘
+                    │  aino-lead  │  reads subagent outputs +
+                    └─────┬───────┘  conflict report, synthesizes
                           ▼
                      Final answer
 ```
@@ -289,13 +301,24 @@ In the REPL: `/explain` does the same for the current session's last run.
 | `aino-research` | Inderes' analyst content, transcripts, filings | `search-companies`, `list-content`, `get-content`, `list-transcripts`, `get-transcript`, `list-company-documents`, `get-document`, `read-document-sections` |
 | `aino-sentiment` | Insider trades, forum, calendar | `search-companies`, `list-insider-transactions`, `search-forum-topics`, `get-forum-posts`, `list-calendar-events` |
 | `aino-portfolio` | Inderes' own model portfolio | `get-model-portfolio-content`, `get-model-portfolio-price`, `search-companies` |
+| `aino-valuation` *(opt-in)* | Alternative valuation: fetches BVPS, ROE history, current price; emits parameters for the deterministic Greenwald-Gordon engine | `search-companies`, `get-fundamentals` |
 | `aino-lead` | Synthesizes subagent outputs (no tools) | — |
 
 Each subagent only sees its allowed subset (enforced via `MCPStreamableHTTPTool(allowed_tools=...)`).
 
+The **valuation subagent** is opt-in — it runs only when the sidebar toggle *"Käytä
+vaihtoehtoista arvonmääritystä"* is enabled AND the query has clear valuation intent
+(checked via a keyword heuristic so that purely qualitative questions like *"explain
+why X is profitable"* don't trigger an unwanted Greenwald-Gordon table). The deterministic
+engine in `inderes_agent/valuation/` consumes the agent's structured JSON output and
+computes fair value, EPV, growth value, quality classification, and dual implied
+metrics — the agent itself never does math. A tool-call guard at the orchestration
+boundary rejects any valuation output that didn't actually fetch data from MCP, closing
+the hallucination path where an LLM might invent numbers from conversation context.
+
 For a full architectural walkthrough including the OAuth flow, the schema-sanitization
-shim, the Gemini fallback wrapper, and per-tool-call observability, see
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+shim, the Gemini fallback wrapper, the valuation engine, and per-tool-call observability,
+see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 
@@ -429,11 +452,13 @@ uv pip install -e '.[dev]'
 pytest -q
 ```
 
-38 unit tests across:
+146+ unit tests across:
 
 - **Router** (`test_router.py`): JSON parsing with code fences, prose leaks,
   plain JSON; `QueryClassification` Pydantic validation incl. invalid-domain
-  rejection.
+  rejection; valuation-intent gate (33 parametrized cases covering explicit
+  valuation queries, qualitative queries that must not fire, case-insensitivity,
+  and Finnish morphology variants).
 - **Fallback client** (`test_fallback.py`): 503 retry → fallback model,
   429 → `QuotaExhaustedError`, success-without-fallback, hybrid tool-config
   injection for server-side tools.
@@ -447,6 +472,27 @@ pytest -q
   cold-start ordering, refresh-token rotation, env-bridge fallback.
 - **Per-agent specs** (`tests/test_agents/`): prompt/tool-set sanity checks
   per subagent (lead, quant, research, sentiment, portfolio).
+- **Valuation engine** (`tests/valuation/test_engine.py`): 26 tests on
+  Greenwald-Gordon math correctness (FV, EPV, growth value, GM, dual
+  implied), edge cases (P/B≈1 degeneracy, implied_g≥k explosion, negative
+  ROE rejection), quality classification thresholds with ±2% buffer.
+- **Excel parity** (`tests/valuation/test_excel_parity.py`): 20 tests on
+  10 Finnish companies (laatu / tuhoutuva mix) reproducing the user's
+  `Arvonmääritys2023.xlsx` Data-sheet outputs to within 0.02€ tolerance.
+- **ROE selection rule** (`tests/valuation/test_roe_selection.py`): 21
+  tests on the deterministic sustainable-ROE rule (medians, trend
+  classification, validation tolerances, agent-choice validation against
+  the rule).
+- **Valuation parser** (`tests/valuation/test_parser.py`): 35 tests on
+  agent-output JSON validation (happy path, malformed/short outputs,
+  percentage-vs-decimal mistakes, k≤g rejection, sustainable-ROE rule
+  enforcement, Levenshtein-≤2 typo tolerance for `*_rationale` fields,
+  sibling-protection so `g_rationale` cannot absorb `k_rationale`'s value).
+- **Tool-call guard + edge-case warnings** (`test_valuation_tool_guard.py`):
+  10 tests on the orchestration-boundary guard that rejects valuation
+  outputs with zero `get-fundamentals` calls (closing the hallucination
+  path), plus warnings for absurd safety-margins and manual-override-
+  tuhoutuva combinations.
 
 End-to-end tests against the real Gemini API and Inderes MCP are not in CI
 (they require live credentials and consume quota). Run them manually:
@@ -473,17 +519,24 @@ src/inderes_agent/
 │   ├── research.py    # aino-research
 │   ├── sentiment.py   # aino-sentiment
 │   ├── portfolio.py   # aino-portfolio
+│   ├── valuation.py   # aino-valuation (opt-in, fetches BVPS/ROE for engine)
+│   ├── conflict_detector.py  # pre-synthesis disagreement detector
 │   ├── _common.py     # load_prompt() + today_prompt_prefix() (date-aware)
 │   └── prompts/       # system prompts for each agent (markdown)
+├── valuation/
+│   ├── engine.py            # deterministic Greenwald-Gordon + EPV math
+│   ├── parser.py            # validates agent JSON before engine consumes it
+│   ├── roe_selection.py     # sustainable-ROE rule (single source of truth)
+│   └── __init__.py          # public API: value_stock, parse, ValuationParseError
 ├── llm/
 │   └── gemini_client.py    # FallbackGeminiChatClient + hybrid tool-config fix
 ├── mcp/
 │   ├── inderes_client.py   # MCP tool factory + schema sanitization
 │   └── oauth.py            # OAuth Authorization Code + PKCE flow + gist mirror
 ├── orchestration/
-│   ├── router.py      # query classification (structured-output Gemini call)
+│   ├── router.py      # query classification + valuation-intent gate
 │   ├── workflows.py   # asyncio.gather + semaphore fan-out
-│   └── synthesis.py   # lead synthesis
+│   └── synthesis.py   # lead synthesis + tool-call guard for valuation
 ├── cli/
 │   ├── repl.py        # interactive mode + slash commands
 │   └── render.py      # rich-formatted output
