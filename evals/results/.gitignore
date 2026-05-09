@@ -1,0 +1,11 @@
+# Eval result directories pile up — every run creates a new
+# timestamped subdir under here. Keep them locally for debugging but
+# don't commit each run.
+#
+# We DO commit one baseline directory (the first Tier-1 run, kept as
+# `baseline_*/`) so reviewers can see the expected report shape
+# without having to run the eval themselves.
+*
+!.gitignore
+!baseline_*/
+!baseline_*/**

@@ -1,0 +1,276 @@
+{
+  "ts": "20260509-201747",
+  "judge": "gemini-2.5-pro",
+  "cases": [
+    {
+      "case_id": "case_001_comparison_routing",
+      "query_match": "Vertaile Sammon ja Nordean kannattavuutta",
+      "matched_run_ids": [
+        "20260509-132147-922"
+      ],
+      "hard_pass": 4,
+      "hard_fail": 2,
+      "hard_results": [
+        {
+          "expression": "routing.is_comparison == True",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "'Sampo' in routing.companies",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "'Nordea' in routing.companies",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "len(routing.domains) >= 3",
+          "passed": false,
+          "error": null
+        },
+        {
+          "expression": "'quant' in routing.domains",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "'research' in routing.domains",
+          "passed": false,
+          "error": null
+        }
+      ],
+      "soft_judgment": {
+        "scores": {
+          "factuality": {
+            "score": 5,
+            "rationale": "The numerical data in the comparison table for ROE and EBIT-% is directly supported by the `get-inderes-estimates` tool call."
+          },
+          "hallucination": {
+            "score": 1,
+            "rationale": "The synthesis makes several claims about the companies' business models, but the `routing` artifact shows only the `quant` agent was called, meaning these qualitative claims are not grounded in any tool output."
+          },
+          "structure": {
+            "score": 5,
+            "rationale": "The synthesis contains a clear, scannable markdown table that directly compares profitability metrics for both companies over time."
+          }
+        },
+        "global_flags": {
+          "hallucination_suspected": true,
+          "conflict_resolution_visible": true,
+          "warning_appropriate": true
+        },
+        "overall_quality": 2,
+        "overall_rationale": "While the answer was well-structured and factually correct on the numbers, it failed the core task of grounding its qualitative business model analysis by not routing to the research agent, resulting in hallucinated reasoning.",
+        "_judge": "gemini-2.5-pro",
+        "_model": "gemini-2.5-pro"
+      },
+      "skipped": false,
+      "skip_reason": null
+    },
+    {
+      "case_id": "case_002_paattely_schema",
+      "query_match": "tee arvonmääritys Sampolle",
+      "matched_run_ids": [
+        "20260508-221547-968"
+      ],
+      "hard_pass": 0,
+      "hard_fail": 1,
+      "hard_results": [
+        {
+          "expression": "paattely_kind == 'structured'",
+          "passed": false,
+          "error": null
+        }
+      ],
+      "soft_judgment": {
+        "scores": {
+          "reasoning_completeness": {
+            "score": 1,
+            "rationale": "The `Päättely` is a generic prose statement that does not mention the single conflict found by the `conflict_detector` or explain how it was resolved."
+          }
+        },
+        "global_flags": {
+          "hallucination_suspected": false,
+          "conflict_resolution_visible": false,
+          "warning_appropriate": false
+        },
+        "overall_quality": 1,
+        "overall_rationale": "The run failed the case's primary objective by producing a generic prose `Päättely` instead of a structured one, and it completely ignored the conflict identified by the conflict detector.",
+        "_judge": "gemini-2.5-pro",
+        "_model": "gemini-2.5-pro"
+      },
+      "skipped": false,
+      "skip_reason": null
+    },
+    {
+      "case_id": "case_003_conflict_coverage",
+      "query_match": "Bittiumille",
+      "matched_run_ids": [
+        "20260509-094219-578"
+      ],
+      "hard_pass": 2,
+      "hard_fail": 0,
+      "hard_results": [
+        {
+          "expression": "conflicts_count >= 1 or isolated_count >= 1",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "has_warning_phrase == True",
+          "passed": true,
+          "error": null
+        }
+      ],
+      "soft_judgment": {
+        "scores": {
+          "conflict_resolution": {
+            "score": 1,
+            "rationale": "The `päättely` prose makes a generic statement about combining agent outputs but fails to mention the specific conflict that the `conflict_detector` identified (`conflicts_count`: 1), nor does it explain why one agent's value was chosen over another."
+          }
+        },
+        "global_flags": {
+          "hallucination_suspected": false,
+          "conflict_resolution_visible": false,
+          "warning_appropriate": true
+        },
+        "overall_quality": 1,
+        "overall_rationale": "The run failed the case's primary objective, as the LEAD agent completely ignored the conflict identified by the conflict detector in its reasoning.",
+        "_judge": "gemini-2.5-pro",
+        "_model": "gemini-2.5-pro"
+      },
+      "skipped": false,
+      "skip_reason": null
+    },
+    {
+      "case_id": "case_004_search_robustness",
+      "query_match": "Vincit",
+      "matched_run_ids": [
+        "20260502-205706-108"
+      ],
+      "hard_pass": 1,
+      "hard_fail": 1,
+      "hard_results": [
+        {
+          "expression": "duration_s < 90",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "subagent_errors > 0 or 'ei löyty' in (synthesis or '').lower() or 'not found' in (synthesis or '').lower()",
+          "passed": false,
+          "error": null
+        }
+      ],
+      "soft_judgment": {
+        "scores": {
+          "graceful_failure": {
+            "score": 1,
+            "rationale": "The synthesis fabricates numerous specific data points (e.g., \"tavoitehinta 1,25 €\", \"Q1'26 EBITA-marginaali 1,8 %\") despite the `tool_calls` artifact being empty, indicating a complete failure to retrieve any real data."
+          }
+        },
+        "global_flags": {
+          "hallucination_suspected": true,
+          "conflict_resolution_visible": false,
+          "warning_appropriate": false
+        },
+        "overall_quality": 1,
+        "overall_rationale": "The system completely failed the test case by hallucinating a detailed financial report for a company it could not find, as evidenced by the empty `tool_calls` list.",
+        "_judge": "gemini-2.5-pro",
+        "_model": "gemini-2.5-pro"
+      },
+      "skipped": false,
+      "skip_reason": null
+    },
+    {
+      "case_id": "case_005_reproducibility",
+      "query_match": "tee arvonmääritys Nordealle",
+      "matched_run_ids": [
+        "20260509-122319-629",
+        "20260509-120700-205",
+        "20260509-120433-948"
+      ],
+      "hard_pass": 3,
+      "hard_fail": 0,
+      "hard_results": [
+        {
+          "expression": "all(r.routing.domains == runs[0].routing.domains for r in runs)",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "all(r.has_synthesis for r in runs)",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "max(r.duration_s for r in runs) < 2 * median(r.duration_s for r in runs)",
+          "passed": true,
+          "error": null
+        }
+      ],
+      "soft_judgment": {
+        "scores": {
+          "reproducibility": {
+            "score": 5,
+            "rationale": "While only one run was provided for a multi-run comparison, the synthesis presents a clear, internally consistent valuation structure with an explicit target price of 16.50 € and a model-implied value near 14.85 €, making it a strong candidate for reproducibility."
+          }
+        },
+        "global_flags": {
+          "hallucination_suspected": false,
+          "conflict_resolution_visible": true,
+          "warning_appropriate": false
+        },
+        "overall_quality": 5,
+        "overall_rationale": "The agent produced a well-structured and nuanced valuation, correctly identifying and transparently resolving conflicts between historical data and analyst forecasts as noted in the päättely.",
+        "_judge": "gemini-2.5-pro",
+        "_model": "gemini-2.5-pro"
+      },
+      "skipped": false,
+      "skip_reason": null
+    },
+    {
+      "case_id": "case_006_latency_cap",
+      "query_match": "selitä mistä Nordean kannattavuus oikeasti tulee",
+      "matched_run_ids": [
+        "20260509-094050-902"
+      ],
+      "hard_pass": 2,
+      "hard_fail": 0,
+      "hard_results": [
+        {
+          "expression": "duration_s < 120",
+          "passed": true,
+          "error": null
+        },
+        {
+          "expression": "max(tc_count_per_agent.values(), default=0) <= 12",
+          "passed": true,
+          "error": null
+        }
+      ],
+      "soft_judgment": {
+        "scores": {
+          "depth_quality": {
+            "score": 5,
+            "rationale": "The synthesis provides a detailed breakdown of specific profitability drivers like net interest income, operational efficiency from IT, and credit loss provisions, directly addressing the query beyond generic points."
+          }
+        },
+        "global_flags": {
+          "hallucination_suspected": true,
+          "conflict_resolution_visible": false,
+          "warning_appropriate": false
+        },
+        "overall_quality": 3,
+        "overall_rationale": "The answer correctly identifies and explains specific profitability drivers, but the synthesis contains multiple hallucinated dates (2026), which is a major factual error that undermines the response's credibility.",
+        "_judge": "gemini-2.5-pro",
+        "_model": "gemini-2.5-pro"
+      },
+      "skipped": false,
+      "skip_reason": null
+    }
+  ]
+}

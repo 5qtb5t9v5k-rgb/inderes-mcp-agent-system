@@ -574,6 +574,57 @@ main; cloud deployment live. 146 tests green.
 `evals/known-cases.md` is already started — every case there is a
 potential golden row. Case 001 + Case 002 are the obvious first ones.
 
+### ✅ Tier 0 + Tier 1 shipped (2026-05-09)
+
+- ✅ **`scripts/build_runs_index.py`** — SQLite index over
+  `~/.inderes_agent/runs/`. 183 runs, 457 tool calls, idempotent rebuild.
+- ✅ **`evals/sample_queries.sql`** — 10 diagnostic SQL queries
+  surfacing real weaknesses (comparison routing too thin, päättely
+  structured form dead, conflict-detector under-firing, etc.).
+- ✅ **`evals/findings_2026-05-09.md`** — first systematic analysis
+  against the indexed run data. Seven concrete weaknesses ranked
+  by severity.
+- ✅ **`evals/judge_selection.md`** — benchmark-backed model choice.
+  Gemini 2.5 Pro picked over Sonnet 4.5 / GPT-5 because the Vectara
+  HHEM v2 leaderboard shows reasoning models hallucinate >10 % on
+  grounded summarisation — exactly the failure mode we cannot import
+  into the judge for a finance-research pipeline.
+- ✅ **`evals/golden.yaml`** — 6 starter cases, each one mapping to a
+  finding from the diagnostic pass. Hard + soft assertions per case.
+- ✅ **`evals/judge.py`** — `JudgeBackend` Protocol + `GeminiJudge`
+  impl using the new `google-genai` SDK. Same API key as the
+  pipeline. Output via `response_mime_type=application/json`.
+- ✅ **`evals/runner.py`** — orchestrator. Picks most-recent matching
+  run from the index, runs hard expressions in a sandboxed `eval()`
+  scope, calls the judge for soft criteria, writes a timestamped
+  report.md + results.json. `--hard-only`, `--case`, `--backend`
+  flags supported.
+- ✅ **`evals/rubric.md`** — judge prompt with explicit JSON-output
+  contract.
+- ✅ **`evals/README.md`** + **`evals/results/baseline_tier1/`** as
+  the committed reference report.
+
+**Tier 1 baseline result (12 pass / 4 fail across 6 cases, 16 hard
+assertions total):**
+- case_001 comparison routing: hard fails confirm router under-routes
+  (only `quant`); judge soft 2/5 — *"hallucinated business model
+  reasoning because no research agent ran"*
+- case_002 päättely schema: 0/1 — structured form is dead, prose
+  fallback only. Judge confirms LEAD ignored conflict-detector finding
+- case_003 conflict coverage: 2/2 — Bittium ROE 5% case fires
+  conflict + warning correctly, but judge flags LEAD's päättely as
+  generic
+- case_004 search robustness: 1/2 — Vincit fabricated data with empty
+  tool_calls. Judge soft 1/5 — *"complete failure, hallucinated entire
+  analysis"*. Highest-priority fix.
+- case_005 reproducibility: 3/3 — three Nordea-arvonmääritys runs are
+  structurally consistent. ✓
+- case_006 latency cap: 2/2 — Nordea kannattavuus deep-dive stayed
+  under 120 s, ≤12 tool calls per agent. ✓
+
+These results ARE the new regression baseline. Any prompt change that
+moves a passing case to fail will be caught on the next run.
+
 ### Strategic evaluations
 
 - 💭 **Trajectory eval** — Phoenix or LangSmith. For step 4 progression

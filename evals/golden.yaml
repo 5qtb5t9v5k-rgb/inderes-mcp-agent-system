@@ -1,0 +1,130 @@
+# Golden eval cases — Tier 1 baseline.
+#
+# Each case is one regression test. The runner picks the most recent
+# matching run from the SQLite index (~/.inderes_agent/evals/runs_index.sqlite)
+# and evaluates it. To re-evaluate a fresh run, rebuild the index first
+# (scripts/build_runs_index.py) then run evals/runner.py.
+#
+# Two assertion families per case:
+#   - hard:   structural, deterministic. Run without an LLM. Pass/fail.
+#   - soft:   qualitative, graded 1-5 by the LLM-judge. Skipped if no
+#             API key is configured.
+#
+# Each case ties to a specific weakness surfaced in
+# evals/findings_2026-05-09.md so that adding a fix is something we
+# can MEASURE rather than something we hope for.
+
+cases:
+  - id: case_001_comparison_routing
+    query_match: "Vertaile Sammon ja Nordean kannattavuutta"
+    rationale: |
+      Profitability comparisons need quant + research + sentiment to
+      avoid LEAD speculating about business model differences without
+      evidence. The diagnostic Q1 found 19 comparison runs got only
+      ["quant"] in routing; this case is the canary for that bug.
+    hard:
+      - "routing.is_comparison == True"
+      - "'Sampo' in routing.companies"
+      - "'Nordea' in routing.companies"
+      - "len(routing.domains) >= 3"
+      - "'quant' in routing.domains"
+      - "'research' in routing.domains"
+    soft:
+      factuality: |
+        All numerical comparisons trace to a tool result captured in
+        the run. Score 1 if claims appear without backing tool calls;
+        5 if every number can be located in tool_calls or sources.
+      hallucination: |
+        Business-model claims (e.g., "Sampo's profitability is more
+        volatile because of investment income") are backed by a
+        research-agent output, not pulled from the model's general
+        knowledge. Score 1 if synthesized speculation; 5 if grounded.
+      structure: |
+        Has a side-by-side comparison table or paired metrics for
+        both companies. Score 1 if narrative-only; 5 if scannable.
+
+  - id: case_002_paattely_schema
+    query_match: "tee arvonmääritys Sampolle"
+    rationale: |
+      Spec says LEAD emits a structured Päättely with disagree /
+      resolution / uncertain / skipped slots. Diagnostic Q4 found 0
+      structured outputs in 183 runs; only prose fallback exists.
+      Either fix the prompt to make structured the default, or drop
+      the structured branch. This case is the canary.
+    hard:
+      - "paattely_kind == 'structured'"
+    soft:
+      reasoning_completeness: |
+        Päättely surfaces what the subagents disagreed about and how
+        LEAD resolved it. Score 1 if generic restatement; 5 if a
+        reader can see exactly which claim was kept and why.
+
+  - id: case_003_conflict_coverage
+    query_match: "Bittiumille"  # the actual run has a comma; loose match
+    rationale: |
+      Known conflict case from run 20260509-094219-578: quant used
+      k=9%, valuation used k=11% — extreme safety_margin -3146% should
+      both flag a conflict and surface a warning. Diagnostic Q5 showed
+      conflict-detector finds nothing on 55% of multi-agent runs; this
+      one MUST find something or the detector is dead.
+    hard:
+      - "conflicts_count >= 1 or isolated_count >= 1"
+      - "has_warning_phrase == True"
+    soft:
+      conflict_resolution: |
+        LEAD's päättely cites which conflict was resolved and how
+        (e.g., "I went with valuation's k=11% because the engine is
+        deterministic"). Score 1 if conflict ignored; 5 if explicit
+        resolution narrated.
+
+  - id: case_004_search_robustness
+    query_match: "Vincit"
+    rationale: |
+      Vincit appeared in a 308 s outlier run with 2 subagent errors
+      (diagnostic Q10) — the company is not in the MCP catalog and
+      search-companies fails. The system should fail gracefully (no
+      308 s loop, no fabricated data) and the synthesis should
+      acknowledge the catalog miss.
+    hard:
+      - "duration_s < 90"
+      - "subagent_errors > 0 or 'ei löyty' in (synthesis or '').lower() or 'not found' in (synthesis or '').lower()"
+    soft:
+      graceful_failure: |
+        Synthesis acknowledges the company was not found in the MCP
+        catalog and does not invent fundamentals. Score 1 if numbers
+        are fabricated; 5 if the limit is honestly stated.
+
+  - id: case_005_reproducibility
+    query_match: "tee arvonmääritys Nordealle"
+    rationale: |
+      Diagnostic Q3 showed this query was run 6 times in 24 hours.
+      The runner picks the 3 most recent matching runs and asserts
+      structural consistency: same domains, has_synthesis on all,
+      duration within 2x of the median. Drift on these is a model
+      drift signal that warrants a regression flag.
+    n_runs_to_compare: 3
+    hard:
+      - "all(r.routing.domains == runs[0].routing.domains for r in runs)"
+      - "all(r.has_synthesis for r in runs)"
+      - "max(r.duration_s for r in runs) < 2 * median(r.duration_s for r in runs)"
+    soft:
+      reproducibility: |
+        Across the 3 runs, the synthesised fair_value (or the implied
+        recommendation if no fair_value) is consistent within ±10 %.
+        Score 1 if the answer flips; 5 if structurally identical.
+
+  - id: case_006_latency_cap
+    query_match: "selitä mistä Nordean kannattavuus oikeasti tulee"
+    rationale: |
+      Diagnostic Q10 found this query hitting 239 s and 70 s — single-
+      domain "miksi" question where research does too many sequential
+      read-document-sections calls without a cap. Hard limit
+      max_tool_calls_per_subagent should be enforced (BACKLOG §0).
+    hard:
+      - "duration_s < 120"
+      - "max(tc_count_per_agent.values(), default=0) <= 12"
+    soft:
+      depth_quality: |
+        Answer references concrete drivers (NIM, fees, costs) tied to
+        data, not generic talking points. Score 1 if encyclopedic /
+        generic; 5 if Nordea-specific with sourced numbers.
