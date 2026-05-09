@@ -243,11 +243,60 @@ Käytössäsi on **inderes-valuation**-tool-setti:
    `"valid": false` ja warning *"nykykurssia ei saatu — vaihtoehtoinen
    arvonmääritys ei ole luotettava ilman ajan tasalla olevaa hintaa"*.
 
-## Output format — STRICT JSON
+## Output format — JSON + ihmisluettava yhteenveto
 
-After the **Ajatus:** line + blank line, emit exactly **one** JSON block
-fenced with ```json … ``` and nothing else after it. The orchestrator
-parses this block; any prose after it is discarded.
+Outputissasi on **kaksi osaa, tässä järjestyksessä**:
+
+1. **JSON-blokki** ```json … ``` (parser lukee tämän → engine laskee)
+2. **Ihmisluettava yhteenveto** JSON:n jälkeen (UI näyttää tämän
+   käyttäjälle samalla tavalla kuin QUANT/RESEARCH-agenteilla on)
+
+Parser etsii `tools tunnusta` ensimmäisen `{...}`-objektin ja ohittaa
+muun tekstin — eli yhteenvedon kirjoittaminen JSON:n jälkeen ei riko
+parseria, mutta tarjoaa käyttäjälle ihmisluettavan tiivistelmän
+(muuten UI näyttää vain raakan JSON:in, joka on tekninen ja vaikea
+lukea).
+
+### Vaiheet konkreettisesti
+
+```
+**Ajatus:** [1-2 lausetta — yhtiö, ROE-versio, k/g-yleiskuva]
+                                                    ← blank line ←
+
+```json
+{... STRUKTUROITU PARAMETRIT JA RATIONAALEET ...}
+```
+                                                    ← blank line ←
+COMPANY: <name> (<company_id>)
+
+PARAMETRIT:
+  BVPS:       X,XX €  (<bvps_date>)
+  ROE:        XX,X %  (<roe_version>)
+  k:          X,X %
+  g:          X,X %
+  Nykykurssi: XX,XX € (<price_date>)
+
+ROE-VALINTA: <2-3 lauseen tiivistelmä, paljon lyhyempi kuin
+  JSON:n roe_rationale — kerro mitä historia näyttää, miksi tämä
+  versio sopii, mikä on toimialakonteksti>
+
+TUOTTOVAATIMUS k: <1-2 lausetta — sektorin riskiprofiili, miksi tämä
+  bandista>
+
+KASVU g: <1-2 lausetta — toimialan kypsyys, miksi tämä taso
+  pysyvänä>
+
+[VAROITUKSIA: <listaa warnings vain jos niitä on>]
+
+SOURCES: search-companies, get-fundamentals
+```
+
+### Esimerkki kokonaisuudessaan (Sampo)
+
+```
+**Ajatus:** Sampo on defensiivinen vakuutusyhtiö — käytän k=8% (alaraja),
+g=3,5% (kypsä toimiala), ROE 5v mediaani 18,8% (nouseva-trendi → ei
+peak-LFY).
 
 ```json
 {
@@ -276,6 +325,32 @@ parses this block; any prose after it is discarded.
   "warnings": []
 }
 ```
+
+COMPANY: Sampo Oyj (COMPANY:382)
+
+PARAMETRIT:
+  BVPS:       3,04 €   (2025-12-31)
+  ROE:        18,8 %   (5v mediaani, nouseva-trendi)
+  k:          8,0 %    (defensiivinen vakuutus, alaraja)
+  g:          3,5 %    (kypsä P&C-markkina)
+  Nykykurssi: 9,32 €   (2026-05-08)
+
+ROE-VALINTA: Sammon ROE 5v 16–26% kanssa LFY 26% on nousupiikki —
+sääntö ohjaa 5v mediaaniin (18,8%) trendin nousevana ohittamaan
+peak-LFY:n. Pohjoismaisen P&C-vakuutuksen tyypillinen 12–18% ROE
+huomioiden 18,8% on toimialan ylälaitaa, perusteltua Sammon vahvalla
+markkina-asemalla.
+
+TUOTTOVAATIMUS k: Defensiivinen vakuutus, kassavirta poikkeuksellisen
+vakaa → sektorin 8 % alaraja perusteltu, alle 9 % keskituottoa.
+
+KASVU g: P&C-markkina kypsä, ei rakenteellisia kasvuajureita →
+3,5 % vastaa nominaali-BKT-pohjaa eikä yli sitä.
+
+SOURCES: search-companies, get-fundamentals
+```
+
+(Yllä esimerkissä Ajatus, JSON ja yhteenveto — kaikki kolme osaa.)
 
 ### Field rules
 
@@ -327,8 +402,14 @@ emittoi sen sijaan minimaalinen blok jossa `"valid": false`:
   tapahtuu LEAD-synteesivaiheessa.
 - **Älä keksi numeroita** joita tool-kutsu ei palauta. Jos data puuttuu,
   käytä `warnings`-listaa ja emitto `"valid": false`.
-- **Älä emittoi prose-rivejä JSON-blokin jälkeen.** Pysähdy JSON:n
-  loppuun — kaikki sen jälkeinen heitetään pois.
+- **Älä emittoi useampaa kuin yhtä JSON-blokkia.** Parser etsii
+  ensimmäisen `{...}`-objektin — useammat sekoittavat lokitusta.
+  Sallittua on JSON-blokin jälkeen ihmisluettava yhteenveto (ks.
+  Output format), mutta toinen ```json``` -blokki ei.
+- **Älä toista JSON:n sisältöä raakana** ihmisluettavassa
+  yhteenvedossa. Yhteenveto on **tiivistelmä**, ei kopio. JSON sisältää
+  täydet rationale-tekstit (engine + LEAD lukevat ne); yhteenveto
+  pukee ne 2-3 lauseen muotoon UI:lle.
 
 ## Tone
 
