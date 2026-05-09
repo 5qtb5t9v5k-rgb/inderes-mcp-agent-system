@@ -369,39 +369,66 @@ def render_feature_toggles(lang: str = "fi") -> None:
             ),
         )
 
-        # Caps mini-label above the radio so the tier choice reads as
-        # its own row, matching the rhythm of the Päättely slot labels.
-        cap = "MALLIN LAATU" if fi else "MODEL TIER"
-        st.markdown(
-            f'<div class="ia-toggle-cap">{cap}</div>',
-            unsafe_allow_html=True,
-        )
-        tier_options_fi = ["Vakio", "Tarkka LEAD", "Tarkka kaikki"]
-        tier_options_en = ["Standard", "Premium LEAD", "Premium all"]
+        # Model-tier radio. Native Streamlit label is shown (not collapsed)
+        # so the `?` help icon sits next to it — same affordance as the
+        # checkboxes above. Options name the actual model so the user
+        # knows what they're switching to (Gemini 2.5 Pro vs Flash Lite).
+        tier_options_fi = [
+            "Vakio (Flash Lite)",
+            "Pro LEAD (Gemini 2.5 Pro)",
+            "Pro kaikki (Gemini 2.5 Pro)",
+        ]
+        tier_options_en = [
+            "Standard (Flash Lite)",
+            "Pro LEAD (Gemini 2.5 Pro)",
+            "Pro all (Gemini 2.5 Pro)",
+        ]
         tier_options = tier_options_fi if fi else tier_options_en
         st.radio(
             "Mallin laatu" if fi else "Model tier",
             options=tier_options,
             key="lead_tier",
             help=(
-                "Vakio = Flash Lite kaikkialla (~$0,015 / kysely).\n\n"
-                "Tarkka LEAD = synteesi Gemini 2.5 Pro:lla (~$0,07 "
-                "lisää / kysely). Subagentit Flash Litellä. "
-                "Suositeltu vivahteikkaisiin kysymyksiin.\n\n"
-                "Tarkka kaikki = KAIKKI agentit Pro:lla — subagentit, "
-                "conflict-detector, planner, LEAD. ~$0,30 lisää / "
-                "kysely (~20x vakio). Latenssi +15–25 s."
+                "**Miksi vaihtaa Pro-malliin?**\n\n"
+                "Pro (Gemini 2.5 Pro) on Flash Liteä huomattavasti "
+                "vivahteikkaampi vertailussa, syy-seuraus-päättelyssä "
+                "ja monimutkaisten kysymysten purkamisessa. Vakio "
+                "(Flash Lite) on nopeampi ja halvempi, riittää "
+                "useimpiin yhtiökyselyihin.\n\n"
+                "**Vaikutukset:**\n\n"
+                "• **Vakio (Flash Lite):** ~$0,015/kysely, latenssi "
+                "10–20 s. Suositeltu peruskäyttöön.\n\n"
+                "• **Pro LEAD:** vain LEAD-synteesi + suunnittelija "
+                "Pro:lla, subagentit Flash Litellä. ~$0,07 lisää/"
+                "kysely, +5–10 s. Suositeltu vivahteikkaisiin "
+                "kysymyksiin (vertailut, tutkimuksellinen 'miksi').\n\n"
+                "• **Pro kaikki:** KAIKKI agentit Pro:lla — "
+                "subagentit, conflict-detector, suunnittelija, LEAD. "
+                "~$0,30 lisää/kysely (~20× vakio), latenssi +15–25 s. "
+                "Käytä kun jokaisella sanalla on merkitystä: "
+                "sijoitusteesin kirjoitus, due diligence, "
+                "monimutkaiset vertailut."
                 if fi
-                else "Standard = Flash Lite throughout (~$0.015/query).\n\n"
-                "Premium LEAD = synthesis on Gemini 2.5 Pro (~$0.07 "
-                "extra/query). Subagents on Flash Lite. Recommended "
-                "for nuanced queries.\n\n"
-                "Premium all = ALL agents on Pro — subagents, "
-                "conflict-detector, planner, LEAD. ~$0.30 extra/query "
-                "(~20x baseline). Latency +15–25 s."
+                else "**Why switch to Pro?**\n\n"
+                "Pro (Gemini 2.5 Pro) is significantly more nuanced "
+                "than Flash Lite at comparison, causal reasoning, "
+                "and unpacking complex questions. Standard (Flash "
+                "Lite) is faster and cheaper, sufficient for most "
+                "company queries.\n\n"
+                "**Impact:**\n\n"
+                "• **Standard (Flash Lite):** ~$0.015/query, "
+                "latency 10–20 s. Recommended for everyday use.\n\n"
+                "• **Pro LEAD:** only LEAD synthesis + planner on "
+                "Pro, subagents on Flash Lite. ~$0.07 extra/query, "
+                "+5–10 s. Recommended for nuanced queries "
+                "(comparisons, exploratory 'why' questions).\n\n"
+                "• **Pro all:** ALL agents on Pro — subagents, "
+                "conflict-detector, planner, LEAD. ~$0.30 "
+                "extra/query (~20× baseline), latency +15–25 s. "
+                "Use when every word matters: investment thesis "
+                "writing, due diligence, complex comparisons."
             ),
-            horizontal=True,
-            label_visibility="collapsed",
+            horizontal=False,
         )
 
 

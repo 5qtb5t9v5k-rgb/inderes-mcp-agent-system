@@ -810,27 +810,46 @@ with st.sidebar:
     # extra per query). Subagents stay on Flash Lite either way —
     # they're data-gathering agents, Flash handles tool-calling well.
     _tier_h = "MALLIN LAATU" if _lang_side == "fi" else "MODEL TIER"
-    _tier_options_fi = ["Vakio", "Tarkka LEAD", "Tarkka kaikki"]
-    _tier_options_en = ["Standard", "Premium LEAD", "Premium all"]
+    _tier_options_fi = [
+        "Vakio (Flash Lite)",
+        "Pro LEAD (Gemini 2.5 Pro)",
+        "Pro kaikki (Gemini 2.5 Pro)",
+    ]
+    _tier_options_en = [
+        "Standard (Flash Lite)",
+        "Pro LEAD (Gemini 2.5 Pro)",
+        "Pro all (Gemini 2.5 Pro)",
+    ]
     _tier_options = _tier_options_fi if _lang_side == "fi" else _tier_options_en
     _tier_help = (
-        "Vakio = Flash Lite kaikkialla (~$0,015 / kysely).\n\n"
-        "Tarkka LEAD = synteesi Gemini 2.5 Pro:lla (~$0,07 lisää / kysely). "
-        "Subagentit Flash Litellä. Suositeltu vivahteikkaisiin kysymyksiin.\n\n"
-        "Tarkka kaikki = KAIKKI agentit Pro:lla — subagentit, conflict-"
-        "detector, planner, LEAD. ~$0,30 lisää / kysely (~20x vakio). "
-        "Latenssi +15–25 s. Käytä kun jokainen sana matters: investointi-"
-        "teesin kirjoitus, due diligence, monimutkainen vertailu jossa "
-        "subagentin sävy ratkaisee."
+        "**Miksi vaihtaa Pro-malliin?**\n\n"
+        "Pro (Gemini 2.5 Pro) on Flash Liteä huomattavasti vivahteikkaampi "
+        "vertailussa, syy-seuraus-päättelyssä ja monimutkaisten kysymysten "
+        "purkamisessa. Vakio (Flash Lite) on nopeampi ja halvempi, riittää "
+        "useimpiin yhtiökyselyihin.\n\n"
+        "**Vaikutukset:**\n\n"
+        "• **Vakio (Flash Lite):** ~$0,015/kysely, latenssi 10–20 s.\n\n"
+        "• **Pro LEAD:** vain LEAD-synteesi + suunnittelija Pro:lla, "
+        "subagentit Flash Litellä. ~$0,07 lisää/kysely, +5–10 s. "
+        "Suositeltu vivahteikkaisiin kysymyksiin.\n\n"
+        "• **Pro kaikki:** KAIKKI agentit Pro:lla — subagentit, "
+        "conflict-detector, suunnittelija, LEAD. ~$0,30 lisää/kysely "
+        "(~20× vakio), latenssi +15–25 s. Käytä kun jokainen sana "
+        "ratkaisee."
         if _lang_side == "fi"
-        else "Standard = Flash Lite throughout (~$0.015/query).\n\n"
-        "Premium LEAD = synthesis on Gemini 2.5 Pro (~$0.07 extra/query). "
-        "Subagents on Flash Lite. Recommended for nuanced queries.\n\n"
-        "Premium all = ALL agents on Pro — subagents, conflict-detector, "
-        "planner, LEAD. ~$0.30 extra/query (~20x baseline). "
-        "Latency +15–25 s. Use when every word matters: investment "
-        "thesis writing, due diligence, complex comparisons where "
-        "subagent tone is load-bearing."
+        else "**Why switch to Pro?**\n\n"
+        "Pro (Gemini 2.5 Pro) is significantly more nuanced than Flash "
+        "Lite at comparison, causal reasoning, and unpacking complex "
+        "questions. Standard (Flash Lite) is faster and cheaper, "
+        "sufficient for most company queries.\n\n"
+        "**Impact:**\n\n"
+        "• **Standard (Flash Lite):** ~$0.015/query, latency 10–20 s.\n\n"
+        "• **Pro LEAD:** only LEAD synthesis + planner on Pro, "
+        "subagents on Flash Lite. ~$0.07 extra/query, +5–10 s. "
+        "Recommended for nuanced queries.\n\n"
+        "• **Pro all:** ALL agents on Pro — subagents, conflict-"
+        "detector, planner, LEAD. ~$0.30 extra/query (~20× baseline), "
+        "latency +15–25 s. Use when every word matters."
     )
     if _show_sidebar_toggles:
         st.markdown(f'<div class="ia-side-h">{_tier_h}</div>', unsafe_allow_html=True)
@@ -1100,16 +1119,30 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             augmented_query = ctx_line + query
 
         # Resolve model-tier early — used by planner, workflow, and
-        # synthesis. Three tiers map to two booleans:
-        #   "Vakio" / "Standard"          → all False (Flash Lite)
-        #   "Tarkka LEAD" / "Premium LEAD" → only LEAD + planner on Pro
-        #   "Tarkka kaikki" / "Premium all" → everything on Pro
+        # synthesis. Three tiers map to two booleans. We accept both the
+        # current option labels (with model name) AND legacy labels
+        # (without) so a session cached on the old labels keeps working
+        # through one redeploy.
+        #   "Vakio (Flash Lite)" / "Standard (Flash Lite)"        → all False
+        #   "Pro LEAD (Gemini 2.5 Pro)"                           → LEAD + planner on Pro
+        #   "Pro kaikki (Gemini 2.5 Pro)" / "Pro all (Gemini …)"  → everything on Pro
         _selected_tier = st.session_state.get("lead_tier", "")
         deep_lead = _selected_tier in (
+            # current
+            "Pro LEAD (Gemini 2.5 Pro)",
+            "Pro kaikki (Gemini 2.5 Pro)",
+            "Pro all (Gemini 2.5 Pro)",
+            # legacy
             "Tarkka LEAD", "Premium LEAD",
             "Tarkka kaikki", "Premium all",
         )
-        deep_subagents = _selected_tier in ("Tarkka kaikki", "Premium all")
+        deep_subagents = _selected_tier in (
+            # current
+            "Pro kaikki (Gemini 2.5 Pro)",
+            "Pro all (Gemini 2.5 Pro)",
+            # legacy
+            "Tarkka kaikki", "Premium all",
+        )
 
         # Plan-then-execute step (only when toggle is on). Adds one
         # LLM call before the workflow; the resulting plan is embedded

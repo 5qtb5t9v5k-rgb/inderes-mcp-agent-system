@@ -634,6 +634,36 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   user-select: none;
   background: transparent !important;
 }
+/* Force the same size onto the inner text node — Streamlit wraps the
+   summary label in <p>/<span>/<div> with its own font-size that the
+   summary-level rule above does not propagate to. Without this the
+   header reads ~16px instead of micro. */
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary *,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details > summary * {
+  font-size: var(--t-micro) !important;
+  font-family: var(--ia-mono) !important;
+  letter-spacing: var(--ls-caps) !important;
+  font-weight: 600 !important;
+  color: var(--p-lead) !important;
+}
+
+/* The native radio label inside the body — "Mallin laatu" — gets
+   the same caps-micro treatment our hand-rolled .ia-toggle-cap had,
+   so the model-tier section reads visually like a sub-heading. The
+   native ? help icon next to it stays as-is (Streamlit handles it). */
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p {
+  font-family: var(--ia-mono) !important;
+  font-size: var(--t-micro) !important;
+  font-weight: 600 !important;
+  letter-spacing: var(--ls-caps) !important;
+  color: var(--ink-3) !important;
+  text-transform: uppercase;
+}
 
 [data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary::-webkit-details-marker,
