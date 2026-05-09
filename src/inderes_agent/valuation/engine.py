@@ -139,7 +139,29 @@ class Valuation:
     # actually adds value.
     growth_paid_for_pct: float | None
 
-    # ── Entry levels (per methodology/formulas.md) ──
+    # ── Entry levels — two parallel anchorings ──
+    #
+    # The 90/80/75 % FV thresholds (`entry_aloitus / nosto / taysi`) come
+    # from the user's original Excel methodology. They're well-defined and
+    # have Excel-parity tests pinning them, so we keep them.
+    #
+    # For LAATU companies (ROE > k), there's a much more meaningful
+    # anchoring: the three semantically interpretable price points along
+    # the EPV → FV spectrum. We surface the midpoint here; EPV-taso is
+    # `epv_pure` and FV-taso is `fair_value` (already exposed as fields).
+    #
+    #   EPV-taso (epv_pure)                        → 0 % growth priced
+    #   Kasvun puoliväli (entry_growth_midpoint)   → 50 % growth priced
+    #   Fair value (fair_value)                    → 100 % growth priced
+    #
+    # For tuhoutuva and keskinkertainen the EPV-anchor framing inverts
+    # (growth ≤ 0), so the midpoint is None and the synthesis renderer
+    # falls back to the 90/80/75 % FV thresholds for those cases.
+    entry_growth_midpoint: float | None
+
+    # 90/80/75 % FV thresholds — kept for tuhoutuva / keskinkertainen
+    # rendering, plus Excel-parity testing. Synthesis hides them for
+    # laatu companies where the EPV-anchored levels above are clearer.
     entry_aloitus: float             # 0.90 × fair_value
     entry_nosto: float               # 0.80 × fair_value
     entry_taysi: float               # 0.75 × fair_value
@@ -305,6 +327,16 @@ def value_stock(
     else:
         growth_paid_for_pct = None
 
+    # Kasvun puoliväli — the price at which exactly 50 % of the model's
+    # expected growth value has been priced in. Equivalent to (EPV + FV)/2
+    # but expressed as "EPV plus half of growth value" makes the meaning
+    # explicit. Only meaningful for laatuyhtiöitä; None for the others.
+    entry_growth_midpoint: float | None
+    if quality == "laatu" and growth_value_pure > 1e-6:
+        entry_growth_midpoint = epv_pure + 0.5 * growth_value_pure
+    else:
+        entry_growth_midpoint = None
+
     return Valuation(
         bvps=bvps,
         roe=roe,
@@ -330,6 +362,7 @@ def value_stock(
         implied_roe=implied_roe,
         safety_margin_to_fv_pct=safety_margin_to_fv_pct,
         growth_paid_for_pct=growth_paid_for_pct,
+        entry_growth_midpoint=entry_growth_midpoint,
         entry_aloitus=0.90 * fair_value,
         entry_nosto=0.80 * fair_value,
         entry_taysi=0.75 * fair_value,

@@ -410,8 +410,31 @@ tai keskinkertainen yhtiö), älä keksi tätä sektiota — kasvu ei lisää
 arvoa, joten kysymys "kuinka paljon kasvusta on hinnoiteltu" ei ole
 mielekkäs.
 
-**Entry-tasot taulukkona** (säilyy myös laatuyhtiöllä toissijaisena
-viittauksena, EPV-ankkuri on pääviitekehys):
+**Entry-tasot — kaksi rinnakkaista renderöintiä riippuen laatuluokasta**
+
+Engine-blokki kertoo kummalla logiikalla mennä:
+
+**(a) Laatuyhtiö** — engine-blokissa rivi *"EPV-ankkuroidut entry-tasot"*.
+Tee tämä taulukko (kolme semanttisesti merkityksellistä hintatasoa
+EPV → FV -spektrillä):
+
+```
+| Taso              | Hinta    | Tulkinta                              |
+|-------------------|----------|---------------------------------------|
+| EPV-taso          | X,XX €   | Maksat vain tulosvoimasta (lattia)   |
+| Kasvun puoliväli  | Y,YY €   | Maksat 50 % odotetusta kasvusta      |
+| Fair value        | Z,ZZ €   | Maksat kaiken odotetun kasvun        |
+```
+
+Käytä engine-blokin antamia eksaktejä numeroita (`EPV-taso`, `kasvun
+puoliväli`, `fair value`). Mainitse 1 lauseella mihin nykykurssi
+sijoittuu suhteessa näihin (esim. *"Nykykurssi 16,09 € on lähellä
+EPV-tasoa, eli yli 80 % odotetusta kasvusta tulee mallin mukaan
+'kaupan päälle'"*).
+
+**(b) Tuhoutuva tai keskinkertainen yhtiö** — engine-blokissa rivi
+*"Entry-tasot (90/80/75 % FV)"*. Tee tämä taulukko (Excel-pohjaiset
+tasot, koska EPV-ankkuri ei sovi yhtiölle jossa kasvu syö arvoa):
 
 ```
 | Taso     | Hinta    | Kuvaus                                  |
@@ -421,8 +444,10 @@ viittauksena, EPV-ankkuri on pääviitekehys):
 | Täysi    | C,CC €   | 75 % — vahva turvamarginaali           |
 ```
 
-Mainitse 1 lauseella mihin näistä nykykurssi sijoittuu — tämä
-on käyttäjälle konkreettinen ostosignaali.
+Mainitse 1 lauseella mihin näistä nykykurssi sijoittuu.
+
+**Älä emittoi molempia taulukkoja samanaikaisesti.** Engine-blokki
+sanoo tarkalleen kumpi kuuluu — käytä sitä sellaisenaan.
 
 ##### ⚖️ Vertailu
 

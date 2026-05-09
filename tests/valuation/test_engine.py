@@ -534,3 +534,86 @@ def test_growth_paid_for_pct_relates_to_safety_margin() -> None:
     assert v_over.safety_margin_to_fv_pct < 0
     assert v_over.growth_paid_for_pct is not None
     assert v_over.growth_paid_for_pct > 100.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# entry_growth_midpoint — EPV-anchored entry levels for laatuyhtiöitä
+#
+# Replaces the arbitrary 90/80/75 % of FV thresholds for quality
+# companies with a semantically meaningful three-tier scale:
+#
+#   EPV-taso (= epv_pure)                  → 0 % of growth priced in
+#   Kasvun puoliväli (= entry_growth_midpoint) → 50 % of growth priced in
+#   Fair value (= fair_value)              → 100 % of growth priced in
+#
+# The midpoint = epv_pure + 0.5 × growth_value_pure (algebraically same
+# as (epv + fv) / 2, but the additive form makes the semantic intent
+# explicit). None for tuhoutuva / keskinkertainen — those still get the
+# 90/80/75 % FV thresholds in synthesis rendering.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_entry_growth_midpoint_for_laatu() -> None:
+    """For a quality company, midpoint = (EPV + FV) / 2."""
+    v = value_stock(bvps=10.0, roe=0.15, k=0.09, g=0.05, price=20.0)
+    assert v.quality == "laatu"
+    assert v.entry_growth_midpoint is not None
+    expected_mid = (v.epv_pure + v.fair_value) / 2.0
+    assert v.entry_growth_midpoint == pytest.approx(expected_mid, abs=1e-9)
+
+
+def test_entry_growth_midpoint_equals_epv_plus_half_growth() -> None:
+    """The semantic formulation: midpoint = EPV + 0.5 × growth_value.
+    Same number as (EPV + FV) / 2, but framed for the user's mental
+    model: 'pay for EPV plus half of expected growth'."""
+    v = value_stock(bvps=10.0, roe=0.20, k=0.09, g=0.05, price=20.0)
+    assert v.quality == "laatu"
+    expected = v.epv_pure + 0.5 * v.growth_value_pure
+    assert v.entry_growth_midpoint == pytest.approx(expected, abs=1e-9)
+
+
+def test_entry_growth_midpoint_at_50pct_growth_paid() -> None:
+    """When price equals the midpoint, growth_paid_for_pct should be 50 %.
+    This is the inverse-consistency test that ties midpoint and the
+    EPV-ankkuri framing together."""
+    bvps, roe, k, g = 10.0, 0.15, 0.09, 0.05
+    epv = (roe / k) * bvps
+    fv = ((roe - g) / (k - g)) * bvps
+    midpoint = (epv + fv) / 2.0
+    v = value_stock(bvps=bvps, roe=roe, k=k, g=g, price=midpoint)
+    assert v.entry_growth_midpoint == pytest.approx(midpoint, abs=1e-9)
+    assert v.growth_paid_for_pct == pytest.approx(50.0, abs=0.01)
+
+
+def test_entry_growth_midpoint_none_for_tuhoutuva() -> None:
+    """For tuhoutuva, growth ≤ 0, EPV-anchor framing doesn't apply →
+    None. Synthesis falls back to 90/80/75 % FV entry thresholds."""
+    v = value_stock(bvps=10.17, roe=0.091, k=0.10, g=0.05, price=9.58)
+    assert v.quality == "tuhoutuva"
+    assert v.entry_growth_midpoint is None
+
+
+def test_entry_growth_midpoint_none_for_keskinkertainen() -> None:
+    """For keskinkertainen, growth_value ≈ 0 → midpoint would be near EPV.
+    Returning None keeps the framing consistent with growth_paid_for_pct
+    (also None for keskinkertainen)."""
+    v = value_stock(bvps=10.0, roe=0.091, k=0.09, g=0.05, price=10.0)
+    assert v.quality == "keskinkertainen"
+    assert v.entry_growth_midpoint is None
+
+
+def test_entry_growth_midpoint_between_epv_and_fv() -> None:
+    """Sanity: midpoint must lie strictly between EPV and FV for laatu."""
+    v = value_stock(bvps=10.0, roe=0.20, k=0.09, g=0.05, price=20.0)
+    assert v.quality == "laatu"
+    assert v.epv_pure < v.entry_growth_midpoint < v.fair_value
+
+
+def test_entry_levels_still_present_for_laatu() -> None:
+    """The 90/80/75 % FV entry levels remain populated even for laatu;
+    synthesis just chooses which set to display. Excel-parity tests
+    depend on these being present unconditionally."""
+    v = value_stock(bvps=10.0, roe=0.15, k=0.09, g=0.05, price=20.0)
+    assert v.entry_aloitus == pytest.approx(0.90 * v.fair_value)
+    assert v.entry_nosto == pytest.approx(0.80 * v.fair_value)
+    assert v.entry_taysi == pytest.approx(0.75 * v.fair_value)

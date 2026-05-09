@@ -523,8 +523,32 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
                 f"kasvusta tulee 'kaupan päälle' jos malli oikeaan."
             )
 
-        lines.append(f"  Entry-tasot: aloitus {v.entry_aloitus:.2f}€, "
-                     f"nosto {v.entry_nosto:.2f}€, täysi {v.entry_taysi:.2f}€")
+        # Entry-tasot — two parallel anchorings (engine carries both):
+        #   - For LAATU companies, surface the EPV-anchored 3-tier scale.
+        #     EPV-taso = "pay only for current earning power, all growth
+        #     free", midpoint = "pay 50 % of expected growth", FV =
+        #     "pay 100 % of expected growth". Semantically richer than the
+        #     arbitrary 90/80/75 % thresholds.
+        #   - For tuhoutuva / keskinkertainen, the EPV-anchor framing
+        #     doesn't apply (growth_value ≤ 0), so fall back to the
+        #     90/80/75 % FV thresholds from the original Excel methodology.
+        if v.entry_growth_midpoint is not None:
+            lines.append(
+                f"  EPV-ankkuroidut entry-tasot: "
+                f"EPV-taso {v.epv_pure:.2f}€ (0 % kasvua hinnoiteltu), "
+                f"kasvun puoliväli {v.entry_growth_midpoint:.2f}€ "
+                f"(50 % kasvua), fair value {v.fair_value:.2f}€ "
+                f"(100 % kasvua). Tulkinta: pörssin nykyhinta "
+                f"({v.price:.2f}€) vastaa "
+                f"{v.growth_paid_for_pct:.0f} % maksettua kasvua "
+                f"(loput tulisi mallin mukaan 'ilmaiseksi')."
+            )
+        else:
+            lines.append(
+                f"  Entry-tasot (90/80/75 % FV): "
+                f"aloitus {v.entry_aloitus:.2f}€, "
+                f"nosto {v.entry_nosto:.2f}€, täysi {v.entry_taysi:.2f}€"
+            )
 
         # ── Sanity-check: extreme safety margins are a red flag ──
         # When |safety_margin| > 100% the model says price differs from FV
