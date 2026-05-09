@@ -51,26 +51,38 @@ phase lives elsewhere in the backlog as its own item; this section is the
   needs to render is concrete. Doing the rewrite earlier means coding
   features twice; doing it later means accepting Streamlit's UX ceiling.
 
-### Timeline
+### Timeline (2026-05-10 re-prioritisation — see `docs/sprint_lessons_2026-05-09.md`)
 
-| Wk | Phase | Items |
-|---|---|---|
-| 1 | **Devil's advocate + hard limits** | §1 → "Devil's advocate toggle" (~2 h); new "hard limits" item in §4 (max iterations, max tool calls, max cost, max duration, kill switch) (~0.5 d) |
-| 1 | **Reflexion / self-correction** | §1 → "#2 Reflection + retry on weird output" promoted to next-up. LEAD post-synthesis self-critique loop (~1 d) |
-| 2 | **Footnotes + per-claim confidence** | §1 → "Footnote markers `[1]`, `[2]`" + "Confidence scoring" combined (~1 d). Activates the dead `.ia-fn` CSS |
-| 2 | **Eval bridge** | §6 → 👍/👎 + smoke test + `golden.yaml` shipped as plain pytest scaffold (~1 d total). Manual today; foundation for autonomous nightly (§10) |
-| 3–4 | **Frontend rewrite (Polku B / hybrid)** | §8 → FastAPI wrapping of orchestration + Next.js + Vercel AI SDK frontend on Vercel; Python backend on Fly.io / Render. SSE streaming, generative UI, mobile UX |
-| 5+ | **Bull/Bear debate** | §1 → "#8 Bull/Bear debate architecture". Built natively in the new Next.js frontend, with judge always seeing original tool trace |
-| 5+ | **Auto-orchestrator (Magentic outer/inner ledger)** | §1 + §9 → meta-router decides tier + features. Outer Task Ledger + inner Progress Ledger, hard-limit-bounded |
-| 6+ | **Autonomous nightly eval + self-repair loop** | §10 → cron-driven, no human approval. 20–30 cases nightly, LLM-judge, prompt-only auto-fixes pushed to `auto-fixes` branch |
+| Wk | Phase | Items | Why now |
+|---|---|---|---|
+| 1 | **Plotly charts for QUANT** *(1 d)* | §3 → ROE/P/E timeline + peer comparison. `st.plotly_chart` natively. | User-stated top priority; biggest visible-delta-per-hour. Promoted from §3 strategic-large. |
+| 1 | **Hard limits at orchestration boundary** *(0.5 d)* | §4 → max_iter / max_tool_calls / max_cost / max_duration / kill switch | OWASP T1 — prerequisite for all multi-agent expansion. Belt to today's HARD-GATE prompt-side enforcement. |
+| 1 | **👍 / 👎 feedback in UI** *(0.5 d)* | §6 step 1 — `feedback.json` per run | Seeds golden.yaml with real labels; one evening, paid back by every subsequent eval cycle |
+| 2 | **Reflexion / retry on weird output** *(1 d)* | §1 → "#2 Reflection + retry" — per-subagent + pipeline-level | User asked explicitly. Would have prevented 4/5 of today's bugs structurally. |
+| 2 | **Footnote markers + sources panel** *(1 d)* | §1 → activates dead `.ia-fn` CSS. Per-claim `[¹]` → tool call provenance | User asked explicitly. BCBS 239 lineage in user-visible form. |
+| 3 | **Per-claim confidence scoring** *(0.5 d)* | §1 → 🟢🟡🔴 markers. Subagents report 1–5/claim, LEAD propagates | Extends footnotes; user-visible "how much should I trust this number" signal |
+| 3 | **Smoke test in pytest CI** *(0.5 d)* | §6 step 2 — 5–10 known-good queries gated by CI | Locks regressions automatically |
+| 3 | **Tier 2 Supabase migration** *(1–2 h)* | §8 — runs + judgments queryable cross-device | Solo-developer-ergonomics priority surfaced today (relogin from phone blocked) |
+| 4+ | **Devil's advocate** *(2 h)* | §1 — was Wk 1, demoted | Reflexion covers similar trust territory more deeply |
+| 4+ | **Frontend rewrite (Polku B / hybrid)** *(1.5–2 wk)* | §8 → FastAPI + Next.js + Vercel AI SDK | After visible features in Streamlit; rewrite when the contract is clear |
+| 5+ | **Bull/Bear debate** | §1 → "#8 Bull/Bear" + judge | Depends on hard limits + eval foundation locked |
+| 5+ | **Auto-orchestrator (Magentic ledger)** | §1 + §9 — meta-router decides tier + features | Depends on all above |
+| 6+ | **Autonomous nightly eval + self-repair** | §10 — cron, prompts-only auto-fixes | Needs Tier 2 + smoke test foundation first |
 
 ### Decision log
 
-- **2026-05-09 (this update)**: User chose the *visible-feature-first*
-  sequencing over the eval-first ordering proposed by the assistant.
-  Reasoning: 2-day "invisible" eval work would kill momentum.
-  Counter-balanced by parallel manual eval scaffold + autonomous
-  nightly system as the long-term destination.
+- **2026-05-10 (this re-prioritisation)**: After 14 commits in one
+  sprint, user explicitly stated priorities: *charts > retry >
+  sources/footnotes > evals*. Re-ordered Wk 1–3 to match. Devil's
+  advocate demoted from Wk 1 to Wk 4+ because today's experience
+  showed Reflexion is the more pressing trust-amplifier. Tier 2
+  Supabase promoted into Wk 3 because pushing-from-phone friction
+  was a real blocker today. See `docs/sprint_lessons_2026-05-09.md`
+  for the full rationale + 14-commit lesson breakdown.
+- **2026-05-09 (initial roadmap)**: User chose the *visible-feature-first*
+  sequencing over the eval-first ordering. Counter-balanced by
+  parallel manual eval scaffold + autonomous nightly system as the
+  long-term destination.
 - **Earlier**: Plan-then-execute shipped as a toggle, not default.
   LEAD Pro tier toggle shipped (Pro tool_config bug fixed in
   `gemini_client.py`).
