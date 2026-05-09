@@ -600,14 +600,15 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
    - .element-container                 (legacy fallback)
    - [data-testid="stExpander"]         (the actual expander wrapper)
 */
-.ia-hero-toggles-anchor { display: none; }
+.ia-hero-toggles-anchor,
+.ia-plan-anchor { display: none; }
 
 /* —— FAMILY 1: modern testid-based selectors (Streamlit ≥1.40) —— */
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details,
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) details {
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details {
   border: 1px solid var(--line) !important;
   border-radius: var(--r) !important;
   background: var(--bg-1) !important;
@@ -617,10 +618,10 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   box-shadow: none !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary,
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) details > summary {
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details > summary {
   list-style: none;
   cursor: pointer;
   padding: var(--s-1) var(--s-3) !important;
@@ -634,42 +635,44 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   background: transparent !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary::-webkit-details-marker,
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) details > summary::-webkit-details-marker {
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary::-webkit-details-marker,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details > summary::-webkit-details-marker {
   display: none;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details[open] > summary,
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) details[open] > summary {
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details[open] > summary,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details[open] > summary {
   border-bottom: 1px solid var(--line) !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary:hover,
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) details > summary:hover {
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary:hover,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details > summary:hover {
   background: var(--bg-2) !important;
 }
 
-/* Hide Streamlit's default chevron SVG inside the summary — the "›"
-   glyph in our label is the open/close indicator, matching AVAA
-   PÄÄTTELY ›. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary svg,
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) details > summary svg {
-  display: none !important;
+/* Streamlit's native chevron SVG kept — it rotates correctly on
+   open/close and gives the "this is interactive" cue without us
+   needing to script anything. We just tint it amber to match the
+   summary text color. */
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary svg,
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) details > summary svg {
+  fill: var(--p-lead) !important;
+  color: var(--p-lead) !important;
 }
 
 /* Body — match Päättely slot rhythm. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  ~ [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"],
-.element-container:has(.ia-hero-toggles-anchor)
-  ~ .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] {
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"],
+.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+  + .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] {
   padding: var(--s-2) var(--s-3) !important;
   font-size: var(--t-body);
   color: var(--ink-1);

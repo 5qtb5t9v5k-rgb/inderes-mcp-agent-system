@@ -318,9 +318,10 @@ def render_feature_toggles(lang: str = "fi") -> None:
     sidebar.
     """
     fi = lang == "fi"
-    # Gear glyph + caps label + chevron — same affordance language as
-    # "AVAA PÄÄTTELY ›" in results.
-    label = "⚙ ASETUKSET ›" if fi else "⚙ SETTINGS ›"
+    # Gear + caps label. We let Streamlit's native expander chevron be
+    # the open/close indicator (it rotates correctly); a second "›"
+    # would just duplicate the affordance.
+    label = "⚙ ASETUKSET" if fi else "⚙ SETTINGS"
 
     # CSS-scoping anchor: an empty marker placed immediately BEFORE the
     # st.expander. theme.css uses :has() + sibling combinator to find the
@@ -1903,7 +1904,9 @@ def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
     if not parsed and not narrative:
         return
 
-    summary_label = "AVAA SUUNNITELMA ›" if lang == "fi" else "OPEN PLAN ›"
+    # Streamlit's native chevron renders open/close — the trailing "›"
+    # is omitted to match the ASETUKSET label and avoid a double indicator.
+    summary_label = "🧠 SUUNNITELMA" if lang == "fi" else "🧠 PLAN"
 
     # Build the body of the expander
     parts: list[str] = []
@@ -1987,18 +1990,21 @@ def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
             f'<div class="ia-plan-meta">{model_lab} <code>{escape_html(model_used)}</code></div>'
         )
 
-    html = (
-        '<details class="ia-paattely-b ia-plan-expander">'
-        f'<summary class="ia-paattely-head">{summary_label}</summary>'
-        f'<div class="ia-plan-grid">{"".join(parts)}</div>'
-        "</details>"
+    # Use Streamlit's native st.expander instead of a hand-rolled
+    # <details> block. Reason: when we used `st.markdown(<details>...)`
+    # the click events didn't fire on first render — the expander only
+    # became interactive after a subsequent rerun (user reported:
+    # "avaa suunnitelma aukeaa vasta kun painan avaa loki"). Switching
+    # to st.expander lets Streamlit handle the open/close JS, and we
+    # restyle it to match the Päättely look via the `.ia-plan-anchor`
+    # marker + `:has()` CSS scoping (same pattern as ⚙ ASETUKSET).
+    st.markdown(
+        '<div class="ia-plan-anchor" aria-hidden="true"></div>',
+        unsafe_allow_html=True,
     )
-    # Use st.markdown(unsafe_allow_html=True) instead of st.html() so the
-    # <details> element renders into the parent DOM. st.html() sandboxes
-    # in an iframe which broke <details> click interactivity until a
-    # subsequent Streamlit rerun (user reported: "avaa suunnitelma aukeaa
-    # vasta kun painan avaa loki"). markdown route works on first render.
-    st.markdown(html, unsafe_allow_html=True)
+    with st.expander(summary_label, expanded=False):
+        body_html = f'<div class="ia-plan-grid">{"".join(parts)}</div>'
+        st.markdown(body_html, unsafe_allow_html=True)
 
 
 def render_perustelut_box(body: str | None, lang: str = "fi") -> None:
