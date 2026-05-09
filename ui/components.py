@@ -177,16 +177,44 @@ def inject_theme() -> None:
 # ---------------------------------------------------------------------------
 
 def render_titlebar(lang: str = "fi") -> None:
+    """Slim brand strip at the very top of every page.
+
+    Includes a tiny inline FI // EN language switcher rendered as
+    ``<a href="?lang=...">`` links so a click round-trips through
+    Streamlit's query-param handler — ``ui/app.py`` reads
+    ``st.query_params['lang']`` at the top of the file and writes it
+    into ``st.session_state.ui_lang``. ``target="_top"`` makes the
+    href navigate the parent window even if the markup ends up
+    inside an iframe (Streamlit's ``st.html`` does sandbox).
+
+    The active language is amber (``--p-lead``), the inactive one
+    is muted ``--ink-3``, and the ``//`` separator stays ``--ink-3``
+    — keeping the terminal-DNA feel consistent with INDERES//AGENT
+    DESK above it.
+    """
     online = "ONLINE" if lang == "en" else "VERKOSSA"
+    fi_cls = "ia-lang-on" if lang == "fi" else "ia-lang-off"
+    en_cls = "ia-lang-on" if lang == "en" else "ia-lang-off"
+    lang_html = (
+        '<span class="ia-lang">'
+        f'<a href="?lang=fi" target="_top" class="{fi_cls}">FI</a>'
+        '<span class="ia-lang-sep">//</span>'
+        f'<a href="?lang=en" target="_top" class="{en_cls}">EN</a>'
+        '</span>'
+    )
     html = (
         '<div class="ia-titlebar">'
         '<span class="ia-brand">INDERES//AGENT</span>'
         '<span class="ia-tag">DESK</span>'
         '<span class="ia-spacer"></span>'
+        f'{lang_html}'
         f'<span class="ia-online">{online}</span>'
         "</div>"
     )
-    st.html(html)
+    # st.markdown(unsafe_allow_html=True) instead of st.html — the
+    # latter sandboxes in an iframe and `target="_top"` works but the
+    # parent-window navigation feels cleaner without the sandbox.
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_ticker() -> None:
@@ -272,35 +300,39 @@ def render_disclaimer(lang: str = "fi") -> None:
 
 
 def render_feature_toggles(lang: str = "fi") -> None:
-    """Render the 3 feature controls (valuation toggle, plan-then-execute
-    toggle, model-tier radio) inline on the idle hero.
+    """Render the 3 feature controls inside a minimalist expander on the idle hero.
 
-    Same controls as the sidebar version, same session_state keys —
-    a value set on the hero persists when the user navigates to the
-    sidebar after their first query, and vice versa. To avoid Streamlit
-    duplicate-key errors, the sidebar version is rendered only AFTER
-    the chat starts (see ``ui/app.py`` — sidebar toggles are gated by
-    ``st.session_state.get("history")``).
+    Visually matches the results section's "AVAA PÄÄTTELY ›" expander
+    (``.ia-paattely-b`` look — 1px line, mono font, micro caps, restrained
+    colors), but with the summary text in ``--p-lead`` amber so the eye
+    reads it as the primary interactive affordance on an otherwise quiet
+    hero. Default closed.
+
+    Same session_state keys as the sidebar version. The sidebar gates its
+    render to ``st.session_state.get("history")`` so we never have
+    duplicate keys (hero shows toggles when idle; sidebar takes over once
+    chat is active).
 
     Help text uses Streamlit's native ``help=`` parameter, which renders
-    a small ``?`` icon with hover tooltip — same affordance as in the
+    a small ``?`` icon with hover tooltip — same affordance as the
     sidebar.
     """
     fi = lang == "fi"
+    # Gear glyph + caps label + chevron — same affordance language as
+    # "AVAA PÄÄTTELY ›" in results.
+    label = "⚙ ASETUKSET ›" if fi else "⚙ SETTINGS ›"
 
-    # Section header — minimal label, all-caps, persona-amber accent
-    label = "ASETUKSET" if fi else "SETTINGS"
+    # CSS-scoping anchor: an empty marker placed immediately BEFORE the
+    # st.expander. theme.css uses :has() + sibling combinator to find the
+    # next stExpander and re-skin only THAT instance to match the
+    # .ia-paattely-b look — leaving Streamlit's other expanders (e.g. the
+    # activity log inside the answer flow) untouched.
     st.markdown(
-        f'<div class="ia-hero-toggles-h">{label}</div>',
+        '<div class="ia-hero-toggles-anchor" aria-hidden="true"></div>',
         unsafe_allow_html=True,
     )
 
-    # Wrap the three controls in a styled container — Streamlit renders
-    # checkboxes / radio with native widgets, but we want them inside
-    # the same minimalist container as the rest of the hero.
-    cols = st.columns([1, 1, 1])
-
-    with cols[0]:
+    with st.expander(label, expanded=False):
         st.checkbox(
             "Vaihtoehtoinen arvonmääritys" if fi else "Alternative valuation",
             key="valuation_mode_on",
@@ -315,7 +347,6 @@ def render_feature_toggles(lang: str = "fi") -> None:
             ),
         )
 
-    with cols[1]:
         st.checkbox(
             "🧠 Pidempi suunnittelu" if fi else "🧠 Deeper planning",
             key="plan_then_execute_on",
@@ -337,7 +368,13 @@ def render_feature_toggles(lang: str = "fi") -> None:
             ),
         )
 
-    with cols[2]:
+        # Caps mini-label above the radio so the tier choice reads as
+        # its own row, matching the rhythm of the Päättely slot labels.
+        cap = "MALLIN LAATU" if fi else "MODEL TIER"
+        st.markdown(
+            f'<div class="ia-toggle-cap">{cap}</div>',
+            unsafe_allow_html=True,
+        )
         tier_options_fi = ["Vakio", "Tarkka LEAD", "Tarkka kaikki"]
         tier_options_en = ["Standard", "Premium LEAD", "Premium all"]
         tier_options = tier_options_fi if fi else tier_options_en
@@ -362,7 +399,7 @@ def render_feature_toggles(lang: str = "fi") -> None:
                 "conflict-detector, planner, LEAD. ~$0.30 extra/query "
                 "(~20x baseline). Latency +15–25 s."
             ),
-            horizontal=False,
+            horizontal=True,
             label_visibility="collapsed",
         )
 

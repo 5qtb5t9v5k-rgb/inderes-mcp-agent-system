@@ -212,6 +212,20 @@ def _enforce_daily_cap_or_stop() -> None:
 # Title and header — Trading Desk chrome
 # ---------------------------------------------------------------------------
 
+# Language switcher: ?lang=fi / ?lang=en in the URL (clicked from the
+# titlebar's tiny FI // EN links) writes ui_lang into session_state and
+# clears the query param so deep-link sharing stays clean. The default is
+# Finnish — the primary audience is Nordic and the brand is Finnish-first.
+_lang_qp = st.query_params.get("lang")
+if _lang_qp in ("fi", "en"):
+    if st.session_state.get("ui_lang") != _lang_qp:
+        st.session_state.ui_lang = _lang_qp
+    # Clean URL after the click so subsequent shares don't pin a language.
+    try:
+        del st.query_params["lang"]
+    except KeyError:
+        pass
+
 _lang = st.session_state.get("ui_lang", "fi")
 render_titlebar(_lang)
 # render_ticker() — disabled: distracting, replace with a real feed if/when one's available
