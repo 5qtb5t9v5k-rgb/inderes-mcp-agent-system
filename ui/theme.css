@@ -629,14 +629,30 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary {
   min-height: 0 !important;
 }
 /* Force micro size onto the inner text node — Streamlit wraps the
-   summary label in <p>/<span>/<div> with its own font-size. */
-body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary * {
+   summary label in <p>/<span>/<div> with its own font-size. We
+   target ONLY text-bearing children (p, label, span, div) and
+   explicitly exclude Material Icons elements — Streamlit's
+   chevron is `<span class="material-symbols-outlined">keyboard
+   _arrow_down</span>` which renders as an icon ONLY when its
+   font is the Material Icons font. Forcing mono on it makes the
+   ligature name leak through as literal text ("keyboard_arrow_
+   down" overlapping ASETUKSET). The :not() guards prevent that. */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary p,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary label,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary div:not([class*="material"]):not([data-testid="stIconMaterial"]),
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary span:not([class*="material"]):not([data-testid="stIconMaterial"]) {
   font-size: var(--t-micro) !important;
   font-family: var(--ia-mono) !important;
   letter-spacing: var(--ls-caps) !important;
   font-weight: 600 !important;
   color: var(--p-lead) !important;
   line-height: 1.2 !important;
+}
+/* Material Icons chevron — keep its native font, but tint amber. */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary [class*="material"],
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary [data-testid="stIconMaterial"] {
+  color: var(--p-lead) !important;
+  fill: var(--p-lead) !important;
 }
 
 /* —— BODY TEXT INSIDE THE EXPANDER ——
@@ -649,8 +665,8 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary *
    `--ink-2` for visual continuity with "Tutki pohjoismaisia…". */
 body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] p,
 body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] label,
-body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] span,
-body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] div {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] span:not([class*="material"]):not([data-testid="stIconMaterial"]):not([data-testid="stTooltipIcon"]),
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] div:not([class*="material"]):not([data-testid="stIconMaterial"]):not([data-testid="stTooltipIcon"]) {
   font-family: var(--ia-mono) !important;
   font-size: var(--t-body) !important;
   color: var(--ink-2) !important;
@@ -659,6 +675,13 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] div {
 }
 body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] p {
   margin: 0 !important;
+}
+/* `?` help icons (Material Icons) — keep native font, tint muted. */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [class*="material"],
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stIconMaterial"],
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stTooltipIcon"] {
+  color: var(--ink-3) !important;
+  fill: var(--ink-3) !important;
 }
 
 /* Widget label ("Mallin laatu") — caps-micro ink-3 sub-heading,

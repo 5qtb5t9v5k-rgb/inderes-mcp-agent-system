@@ -349,7 +349,7 @@ def render_feature_toggles(lang: str = "fi") -> None:
         )
 
         st.checkbox(
-            "🧠 Pidempi suunnittelu" if fi else "🧠 Deeper planning",
+            "Pidempi suunnittelu" if fi else "Deeper planning",
             key="plan_then_execute_on",
             help=(
                 "LEAD kirjoittaa lyhyen strukturoidun suunnitelman "
@@ -374,18 +374,18 @@ def render_feature_toggles(lang: str = "fi") -> None:
         # checkboxes above. Options name the actual model so the user
         # knows what they're switching to (Gemini 2.5 Pro vs Flash Lite).
         tier_options_fi = [
-            "Vakio (Flash Lite)",
+            "Vakio (Gemini 3.1 Flash Lite)",
             "Pro LEAD (Gemini 2.5 Pro)",
             "Pro kaikki (Gemini 2.5 Pro)",
         ]
         tier_options_en = [
-            "Standard (Flash Lite)",
+            "Standard (Gemini 3.1 Flash Lite)",
             "Pro LEAD (Gemini 2.5 Pro)",
             "Pro all (Gemini 2.5 Pro)",
         ]
         tier_options = tier_options_fi if fi else tier_options_en
         st.radio(
-            "Mallin laatu" if fi else "Model tier",
+            "Mallin valinta" if fi else "Model selection",
             options=tier_options,
             key="lead_tier",
             help=(
@@ -2425,19 +2425,19 @@ def render_statusbar(meta: dict | None = None, lang: str = "fi") -> None:
 
     The legal notice is already in the sidebar disclaimer; repeating it
     here would be the fourth time the user sees the same warning.
-    """
-    meta = meta or {}
-    errors = meta.get("subagent_errors", 0)
-    fbacks = meta.get("fallback_events", 0)
-    err_lbl = "errors" if lang == "en" else "virheet"
-    fb_lbl  = "fallbacks" if lang == "en" else "fallbackit"
 
+    User feedback (2026-05-09): the previously-shown ``virheet`` and
+    ``fallbackit`` counters were noise on a normal session (almost
+    always 0/0). Dropped — kept only the live MCP connection dot and
+    the active model name.
+    """
+    # `meta` is unused now but kept on the signature so callers don't break.
+    del meta
+    del lang
     html = (
         '<div class="ia-statusbar">'
         '<span class="ia-hot">● mcp.inderes.com</span>'
         '<span>│ gemini-3.1-flash-lite</span>'
-        f'<span>│ {err_lbl}: <span class="ia-warn">{errors}</span></span>'
-        f'<span>│ {fb_lbl}: {fbacks}</span>'
         '<span class="ia-spacer"></span>'
         '</div>'
     )

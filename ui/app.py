@@ -809,14 +809,14 @@ with st.sidebar:
     # Gemini 2.5 Pro (paid tier ~5x cost on the LEAD step, ~$0.07
     # extra per query). Subagents stay on Flash Lite either way —
     # they're data-gathering agents, Flash handles tool-calling well.
-    _tier_h = "MALLIN LAATU" if _lang_side == "fi" else "MODEL TIER"
+    _tier_h = "MALLIN VALINTA" if _lang_side == "fi" else "MODEL SELECTION"
     _tier_options_fi = [
-        "Vakio (Flash Lite)",
+        "Vakio (Gemini 3.1 Flash Lite)",
         "Pro LEAD (Gemini 2.5 Pro)",
         "Pro kaikki (Gemini 2.5 Pro)",
     ]
     _tier_options_en = [
-        "Standard (Flash Lite)",
+        "Standard (Gemini 3.1 Flash Lite)",
         "Pro LEAD (Gemini 2.5 Pro)",
         "Pro all (Gemini 2.5 Pro)",
     ]
