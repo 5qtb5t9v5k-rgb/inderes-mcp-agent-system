@@ -600,14 +600,13 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
    - .element-container                 (legacy fallback)
    - [data-testid="stExpander"]         (the actual expander wrapper)
 */
-.ia-hero-toggles-anchor,
-.ia-plan-anchor { display: none; }
+.ia-hero-toggles-anchor { display: none; }
 
 /* —— FAMILY 1: modern testid-based selectors (Streamlit ≥1.40) —— */
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details {
   border: 1px solid var(--line) !important;
   border-radius: var(--r) !important;
@@ -618,9 +617,9 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   box-shadow: none !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details > summary {
   list-style: none;
   cursor: pointer;
@@ -638,9 +637,9 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
    summary label in <p>/<span>/<div> with its own font-size that the
    summary-level rule above does not propagate to. Without this the
    header reads ~16px instead of micro. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary *,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details > summary * {
   font-size: var(--t-micro) !important;
   font-family: var(--ia-mono) !important;
@@ -653,9 +652,9 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
    the same caps-micro treatment our hand-rolled .ia-toggle-cap had,
    so the model-tier section reads visually like a sub-heading. The
    native ? help icon next to it stays as-is (Streamlit handles it). */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p {
   font-family: var(--ia-mono) !important;
   font-size: var(--t-micro) !important;
@@ -665,23 +664,23 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   text-transform: uppercase;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary::-webkit-details-marker,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details > summary::-webkit-details-marker {
   display: none;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details[open] > summary,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details[open] > summary {
   border-bottom: 1px solid var(--line) !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary:hover,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details > summary:hover {
   background: var(--bg-2) !important;
 }
@@ -690,18 +689,18 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
    open/close and gives the "this is interactive" cue without us
    needing to script anything. We just tint it amber to match the
    summary text color. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary svg,
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) details > summary svg {
   fill: var(--p-lead) !important;
   color: var(--p-lead) !important;
 }
 
 /* Body — match Päättely slot rhythm. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
   + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"],
-.element-container:has(.ia-hero-toggles-anchor, .ia-plan-anchor)
+.element-container:has(.ia-hero-toggles-anchor)
   + .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] {
   padding: var(--s-2) var(--s-3) !important;
   font-size: var(--t-body);

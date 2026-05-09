@@ -1931,9 +1931,9 @@ def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
     if not parsed and not narrative:
         return
 
-    # Streamlit's native chevron renders open/close — the trailing "›"
-    # is omitted to match the ASETUKSET label and avoid a double indicator.
-    summary_label = "🧠 SUUNNITELMA" if lang == "fi" else "🧠 PLAN"
+    # Match AVAA LOKI / AVAA PÄÄTTELY exactly — slim secondary button,
+    # caps label, "›" chevron. No emoji, no rounded amber chrome.
+    btn_label = "AVAA SUUNNITELMA ›" if lang == "fi" else "OPEN PLAN ›"
 
     # Build the body of the expander
     parts: list[str] = []
@@ -2017,20 +2017,31 @@ def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
             f'<div class="ia-plan-meta">{model_lab} <code>{escape_html(model_used)}</code></div>'
         )
 
-    # Use Streamlit's native st.expander instead of a hand-rolled
-    # <details> block. Reason: when we used `st.markdown(<details>...)`
-    # the click events didn't fire on first render — the expander only
-    # became interactive after a subsequent rerun (user reported:
-    # "avaa suunnitelma aukeaa vasta kun painan avaa loki"). Switching
-    # to st.expander lets Streamlit handle the open/close JS, and we
-    # restyle it to match the Päättely look via the `.ia-plan-anchor`
-    # marker + `:has()` CSS scoping (same pattern as ⚙ ASETUKSET).
-    st.markdown(
-        '<div class="ia-plan-anchor" aria-hidden="true"></div>',
-        unsafe_allow_html=True,
-    )
-    with st.expander(summary_label, expanded=False):
-        body_html = f'<div class="ia-plan-grid">{"".join(parts)}</div>'
+    # Click-toggle pattern (st.button + session_state) instead of either
+    # raw <details> or st.expander. Reason: in the chat_message context,
+    # neither alternative was reliable on first render — user repeatedly
+    # had to click "AVAA LOKI" first before "AVAA SUUNNITELMA" became
+    # interactive. st.button always reruns immediately and the body is
+    # rendered conditionally; visually it now matches AVAA LOKI / AVAA
+    # PÄÄTTELY exactly (slim secondary button, caps label, ›).
+    state_key = f"plan_open_{run_dir.name}"
+    if st.button(
+        btn_label,
+        key=f"plan_btn_{run_dir.name}",
+        use_container_width=True,
+        type="secondary",
+    ):
+        st.session_state[state_key] = not st.session_state.get(state_key, False)
+        st.rerun()
+
+    if st.session_state.get(state_key, False):
+        # When open, render the slot grid wrapped in the same `.ia-paattely-b`
+        # container as Päättely so it sits visually flush below the button.
+        body_html = (
+            '<div class="ia-paattely-b ia-plan-expander" style="border-top:0">'
+            f'<div class="ia-plan-grid">{"".join(parts)}</div>'
+            "</div>"
+        )
         st.markdown(body_html, unsafe_allow_html=True)
 
 
