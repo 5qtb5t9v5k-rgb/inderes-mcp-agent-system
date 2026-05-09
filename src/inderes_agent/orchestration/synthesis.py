@@ -701,9 +701,23 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
 
 
 async def synthesize(
-    query: str, workflow_result: WorkflowResult
+    query: str,
+    workflow_result: WorkflowResult,
+    *,
+    deep_lead: bool = False,
 ) -> tuple[str, str, SynthesisTrace]:
     """Run the lead agent over the subagents' outputs.
+
+    Args:
+        query: original user question
+        workflow_result: results from the subagent fan-out
+        deep_lead: when True, builds LEAD with Gemini Pro (stronger
+            synthesis) instead of the default Flash Lite. Use this for
+            high-stakes queries where synthesis quality matters more
+            than the ~5–10s latency + 5x cost premium. Subagents are
+            unaffected — they always run on Flash Lite. Default False
+            preserves backward compatibility for callers that don't
+            care about the toggle.
 
     Returns (final_answer_text, lead_model_used, synthesis_trace) where
     `synthesis_trace.conflict_report` is the conflict-detector output and
@@ -773,7 +787,7 @@ Now synthesize a final answer for the user, following your instructions.
 """
 
     t_lead = time.time()
-    async with build_lead_agent() as lead:
+    async with build_lead_agent(deep=deep_lead) as lead:
         result = await lead.run(prompt)
         text = result.text if hasattr(result, "text") else str(result)
         model_used = getattr(lead.client, "last_used_model", "unknown")

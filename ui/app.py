@@ -698,6 +698,39 @@ with st.sidebar:
         help=_val_help,
     )
 
+    # LEAD-tier selector — opt-in upgrade for synthesis quality.
+    # Default "Vakio" keeps everything on Flash Lite (paid tier base
+    # cost ~$0.015/query). "Tarkka LEAD" swaps the synthesis call to
+    # Gemini 2.5 Pro (paid tier ~5x cost on the LEAD step, ~$0.07
+    # extra per query). Subagents stay on Flash Lite either way —
+    # they're data-gathering agents, Flash handles tool-calling well.
+    _tier_h = "MALLIN LAATU" if _lang_side == "fi" else "MODEL TIER"
+    _tier_options_fi = ["Vakio", "Tarkka LEAD"]
+    _tier_options_en = ["Standard", "Premium LEAD"]
+    _tier_options = _tier_options_fi if _lang_side == "fi" else _tier_options_en
+    _tier_help = (
+        "Vakio = Flash Lite kaikkialla (~$0,015 / kysely, free-tier-yhteensopiva).\n\n"
+        "Tarkka LEAD = synteesi Gemini 2.5 Pro:lla (~$0,07 lisää / kysely). "
+        "Subagentit pysyvät Flash Litellä — vain LEADin lopullinen synteesi "
+        "vaihdetaan. Latenssi nousee ~5–10 s. Suositeltu kun synteesin laatu "
+        "ratkaisee (vivahteikkaat kysymykset, monimutkainen vertailu, "
+        "tärkeä päätöstuki)."
+        if _lang_side == "fi"
+        else "Standard = Flash Lite throughout (~$0.015/query, free-tier ok).\n\n"
+        "Premium LEAD = synthesis on Gemini 2.5 Pro (~$0.07 extra/query). "
+        "Subagents stay on Flash Lite — only the final LEAD synthesis is "
+        "upgraded. Latency +5–10 s. Recommended when synthesis quality "
+        "matters (nuanced questions, complex comparisons, decision support)."
+    )
+    st.markdown(f'<div class="ia-side-h">{_tier_h}</div>', unsafe_allow_html=True)
+    st.radio(
+        _tier_h,
+        options=_tier_options,
+        key="lead_tier",
+        help=_tier_help,
+        label_visibility="collapsed",
+    )
+
     # Recent runs
     _runs_h = "VIIMEISIMMÄT AJOT" if _lang_side == "fi" else "RECENT RUNS"
     _runs_cap = (
@@ -962,11 +995,20 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
                 )
 
         # Phase 4: synthesis
+        # Read the LEAD-tier radio: "Tarkka LEAD" / "Premium LEAD" → Pro,
+        # anything else (default "Vakio" / "Standard") → Flash Lite. The
+        # tier value is stored in session_state by the radio widget in the
+        # sidebar. Default if unset: standard tier.
+        _selected_tier = st.session_state.get("lead_tier", "")
+        deep_lead = _selected_tier in ("Tarkka LEAD", "Premium LEAD")
         status.write(
-            f"{_persona_chip('lead')} kokoaa tulokset yhdeksi vastaukseksi…",
+            f"{_persona_chip('lead')} kokoaa tulokset yhdeksi vastaukseksi"
+            f"{' (Pro-tilassa)' if deep_lead else ''}…",
             html=True,
         )
-        answer, lead_model, synth_trace = await synthesize(query, workflow_result)
+        answer, lead_model, synth_trace = await synthesize(
+            query, workflow_result, deep_lead=deep_lead,
+        )
         conflict_report = synth_trace.conflict_report
 
         write_run(
