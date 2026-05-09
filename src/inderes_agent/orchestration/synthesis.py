@@ -303,8 +303,9 @@ def _extract_paattely(text: str) -> tuple[str, str | None, dict[str, Any] | None
     # `## Yhteenveto` heading, the prose regex would otherwise suck the
     # whole answer into päättely. Strict cap at 4 keeps päättely focused
     # and pushes the rest back to the answer body.
-    paragraphs = re.split(r"\n\s*\n", body)
-    capped_body = "\n\n".join(p.strip() for p in paragraphs[:4] if p.strip())
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    paragraphs_capped = paragraphs[:4]
+    capped_body = "\n\n".join(paragraphs_capped)
 
     # Compute what we actually consumed from the original text — only the
     # capped portion, not the entire greedy match. The rest of the greedy
@@ -317,6 +318,31 @@ def _extract_paattely(text: str) -> tuple[str, str | None, dict[str, Any] | None
         consumed_end = body_start_in_text + len(capped_body)
 
     cleaned = (text[: m2.start()] + text[consumed_end:]).rstrip() + "\n"
+
+    # When the prose conforms to the prompt's 4-paragraph spec, lift it
+    # into the structured slot dict the UI's 2×2 grid renderer expects.
+    # Eval baseline (case_002) caught this: 0 of 183 historical runs
+    # produced structured output via JSON, but 55 did emit well-formed
+    # 4-paragraph prose. Mapping prose → slots in-parser gives the UI
+    # the structure it always expected, without changing the LEAD
+    # prompt or losing the more readable prose form for partial cases.
+    #
+    # Order matches the prompt at agents/prompts/lead.md §31-53:
+    #   ¶1 → disagree   (mistä subagentit olivat eri mieltä)
+    #   ¶2 → resolution (miten ratkaisin)
+    #   ¶3 → uncertain  (mitkä väitteet ovat epävarmoja)
+    #   ¶4 → skipped    (mitä jätin tekemättä)
+    if len(paragraphs_capped) == 4:
+        structured = {
+            "disagree":   paragraphs_capped[0],
+            "resolution": paragraphs_capped[1],
+            "uncertain":  paragraphs_capped[2],
+            "skipped":    paragraphs_capped[3],
+        }
+        return cleaned, raw_full, structured, None
+
+    # Fewer than 4 paragraphs → prose fallback (UI renders as styled
+    # block). Better than forcing slots with empty values.
     return cleaned, raw_full, {"prose": capped_body}, None
 
 

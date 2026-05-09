@@ -89,9 +89,19 @@ enkä tarkistanut Q1-tuloksien analyytikkokommentteja erikseen.
 - **Cite specific subagents** (`quant-Sampo`, `research-Nordea`) and
   specific data points (numbers, names, dates). Generic *"yhdistin
   näkökulmat"* on hylättävä — mainitse aina mistä tieto tuli.
-- **Use the conflict report explicitly**: jos `conflicts` ei ole tyhjä,
-  nimeä se kohdassa 1. Jos `isolated_claims` ei ole tyhjä, nimeä se
-  kohdassa 3.
+- **Use the conflict report explicitly — HARD REQUIREMENT**:
+  - Jos `conflicts` ei ole tyhjä → kohta 1 NIMEÄÄ konfliktin
+    aihealueen sanasta sanaan (esim. *"valuation-agentti käytti
+    k=11% kun taas quant-agentti k=9%"*) ja kohta 2 KERTOO MIKÄ
+    valittiin ja MIKSI (esim. *"valitsin valuation-agentin k=11%
+    koska Greenwald-Gordon -engine on deterministinen"*).
+  - Yleisluontoinen *"yhdistin tulokset"* / *"painotin näkökulmia"*
+    EI riitä konfliktin nimeämisessä — se on hylättävä vastaus.
+  - Jos `isolated_claims` ei ole tyhjä → kohta 3 nimeää KENEN
+    väite ja MIKÄ luku (esim. *"BVPS 3,69 € on vain valuation-
+    agentin tieto, quant käytti eri tasearvoa"*).
+  - Jos `conflicts` ja `isolated_claims` ovat molemmat tyhjiä,
+    sano se kohdassa 1: *"ei merkittäviä ristiriitoja"*.
 - **Use the tool call trace explicitly**: jos subagentin claim ei
   matchaa tool-vastauksen `item_names`-listaan, mainitse "jätin pois
   X koska tool ei palauttanut sitä" kohdassa 2 tai 4.
