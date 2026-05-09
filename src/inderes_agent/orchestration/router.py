@@ -52,9 +52,29 @@ Domain meanings:
 - sentiment  → insider transactions, forum buzz, calendar events (earnings dates etc.)
 - portfolio  → Inderes' model portfolio (holdings, performance)
 
+ROUTING RULES (apply in order):
+
+1. **Comparison queries** — if `is_comparison` is true, the answer
+   needs context AND numbers AND market view. Domains MUST include
+   at least {quant, research, sentiment} so LEAD has something
+   beyond a number-spreadsheet. NEVER route a comparison to quant alone.
+
+2. **"Why / explain / what drives" qualitative questions** — must
+   include `research` (and usually `sentiment`). A pure quant route
+   on a "miksi"-question fabricates context that should come from
+   analyst reports.
+
+3. **Single quant lookup** ("What's X's P/E?") — quant is fine alone.
+
+4. **Default for company-named ambiguous queries** — quant + research
+   + sentiment.
+
 Few-shot examples:
 - "What's Konecranes' P/E?"                     → {"domains":["quant"], "companies":["Konecranes"], "is_comparison":false}
-- "Compare Sampo and Nordea on profitability"   → {"domains":["quant"], "companies":["Sampo","Nordea"], "is_comparison":true}
+- "Compare Sampo and Nordea on profitability"   → {"domains":["quant","research","sentiment"], "companies":["Sampo","Nordea"], "is_comparison":true}
+- "Vertaile Sammon ja Nordean kannattavuutta"   → {"domains":["quant","research","sentiment"], "companies":["Sampo","Nordea"], "is_comparison":true}
+- "nordea vs aktia"                             → {"domains":["quant","research","sentiment"], "companies":["Nordea","Aktia"], "is_comparison":true}
+- "Selitä mistä Nordean kannattavuus tulee"     → {"domains":["research","quant","sentiment"], "companies":["Nordea"], "is_comparison":false}
 - "Should I be worried about Sampo?"            → {"domains":["quant","research","sentiment"], "companies":["Sampo"], "is_comparison":false}
 - "What does Inderes hold right now?"           → {"domains":["portfolio"], "companies":[], "is_comparison":false}
 - "Earnings reports this week?"                 → {"domains":["sentiment"], "companies":[], "is_comparison":false}
@@ -165,7 +185,7 @@ async def classify_query(query: str, conversation_context: str = "") -> QueryCla
 
     try:
         data = _extract_json(text)
-        return QueryClassification(**data)
+        classification = QueryClassification(**data)
     except Exception:
         # Defensive fallback: route to all domains and let the lead synthesize.
         return QueryClassification(
@@ -174,3 +194,42 @@ async def classify_query(query: str, conversation_context: str = "") -> QueryCla
             is_comparison=False,
             reasoning=f"router_parse_failed: {text[:200]}",
         )
+
+    # Belt-and-braces: even with the prompt rule, Flash Lite occasionally
+    # under-routes a comparison to just `quant`. Eval baseline (case_001
+    # in evals/golden.yaml) caught this on 19 historical runs. If the
+    # model agreed it's a comparison but emitted < 3 domains, expand to
+    # the standard {quant, research, sentiment} trio so LEAD has the
+    # context it needs for a real side-by-side.
+    return _enforce_comparison_floor(classification)
+
+
+def _enforce_comparison_floor(c: QueryClassification) -> QueryClassification:
+    """Post-process the router output to guarantee the comparison floor.
+
+    If `is_comparison=True` but fewer than 3 distinct domains were
+    selected, expand to {quant, research, sentiment} (preserving any
+    existing entries like `valuation` if the toggle requested one).
+
+    The rationale is in evals/findings_2026-05-09.md:
+    'Comparison routing systematically thin' — diagnostic Q1 found 19
+    `is_comparison=true` runs got only `["quant"]`, leading LEAD to
+    fabricate business-model context that should have come from a
+    research-agent fetch.
+    """
+    if not c.is_comparison:
+        return c
+    distinct = set(c.domains)
+    floor = {Domain.QUANT, Domain.RESEARCH, Domain.SENTIMENT}
+    if floor.issubset(distinct):
+        return c
+    # Preserve existing order, append missing floor domains in canonical order.
+    expanded: list[Domain] = list(c.domains)
+    for d in (Domain.QUANT, Domain.RESEARCH, Domain.SENTIMENT):
+        if d not in expanded:
+            expanded.append(d)
+    note = " · expanded to comparison floor"
+    return c.model_copy(update={
+        "domains": expanded,
+        "reasoning": (c.reasoning or "") + note,
+    })

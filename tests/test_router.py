@@ -7,6 +7,7 @@ import pytest
 from inderes_agent.orchestration.router import (
     Domain,
     QueryClassification,
+    _enforce_comparison_floor,
     _extract_json,
     query_has_valuation_intent,
 )
@@ -136,3 +137,79 @@ def test_valuation_intent_handles_typos_and_morphology():
     assert query_has_valuation_intent("anna arvostusta Nordealle")
     # "tavoitehinnasta" → matches "tavoitehint"
     assert query_has_valuation_intent("kerro tavoitehinnasta")
+
+
+# ---------------------------------------------------------------------------
+# Comparison-floor enforcement
+#
+# Eval baseline (evals/golden.yaml case_001) caught the router emitting
+# is_comparison=true with only ["quant"] for "Vertaile Sammon ja Nordean
+# kannattavuutta" — 19 historical runs hit this. The post-processor
+# below the LLM call is belt-and-braces against Flash Lite ignoring the
+# prompt rule.
+# ---------------------------------------------------------------------------
+
+
+def _qc(domains, *, is_comparison, companies=None, reasoning="x"):
+    """Tiny helper — easier to read than QueryClassification(...) inline."""
+    return QueryClassification(
+        domains=list(domains),
+        companies=companies or [],
+        is_comparison=is_comparison,
+        reasoning=reasoning,
+    )
+
+
+def test_comparison_floor_expands_quant_only():
+    """Bug from eval baseline: comparison routed to quant only."""
+    c = _qc([Domain.QUANT], is_comparison=True, companies=["Sampo", "Nordea"])
+    out = _enforce_comparison_floor(c)
+    assert set(out.domains) >= {Domain.QUANT, Domain.RESEARCH, Domain.SENTIMENT}
+    # Annotation makes the expansion visible in routing.json.
+    assert "expanded to comparison floor" in (out.reasoning or "")
+
+
+def test_comparison_floor_expands_quant_research():
+    """Half-routed comparisons (quant+research) still need sentiment."""
+    c = _qc([Domain.QUANT, Domain.RESEARCH], is_comparison=True)
+    out = _enforce_comparison_floor(c)
+    assert set(out.domains) >= {Domain.QUANT, Domain.RESEARCH, Domain.SENTIMENT}
+
+
+def test_comparison_floor_already_satisfied_unchanged():
+    """When the floor is met, the post-processor is a no-op."""
+    original = _qc(
+        [Domain.QUANT, Domain.RESEARCH, Domain.SENTIMENT],
+        is_comparison=True,
+        companies=["Sampo", "Nordea"],
+    )
+    out = _enforce_comparison_floor(original)
+    assert out.domains == original.domains
+    assert out.reasoning == original.reasoning  # no annotation when no change
+
+
+def test_comparison_floor_preserves_extra_domains():
+    """Valuation toggle adds 'valuation' — floor expansion must not drop it."""
+    c = _qc(
+        [Domain.QUANT, Domain.VALUATION],
+        is_comparison=True,
+        companies=["Sampo", "Nordea"],
+    )
+    out = _enforce_comparison_floor(c)
+    # Original domains preserved + floor added.
+    assert Domain.VALUATION in out.domains
+    assert set(out.domains) >= {
+        Domain.QUANT, Domain.RESEARCH, Domain.SENTIMENT, Domain.VALUATION,
+    }
+
+
+def test_comparison_floor_does_not_apply_to_non_comparison():
+    """Non-comparison single-quant lookups stay narrow.
+
+    "What's Konecranes' P/E?" → quant alone is correct. The floor is
+    a comparison-only rule.
+    """
+    c = _qc([Domain.QUANT], is_comparison=False, companies=["Konecranes"])
+    out = _enforce_comparison_floor(c)
+    assert out.domains == [Domain.QUANT]
+    assert "expanded" not in (out.reasoning or "")
