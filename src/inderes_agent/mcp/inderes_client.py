@@ -91,13 +91,23 @@ PORTFOLIO_TOOLS: tuple[str, ...] = (
     "search-companies",
 )
 
-# Valuation agent uses the same MCP tools as QUANT (it needs BVPS, ROE
-# history, and current price from get-fundamentals). The difference is
-# in the prompt + output contract: QUANT outputs a narrative summary,
-# VALUATION outputs strict JSON the deterministic engine consumes.
+# Valuation agent fetches BVPS / ROE history via get-fundamentals,
+# AND uses get-inderes-estimates as the authoritative source for the
+# CURRENT share price + its observation date (transactionDate). The
+# `sharePrice` field on get-inderes-estimates is the price the analyst
+# saw when they last updated their estimates — typically much fresher
+# (days/weeks) than the year-end value embedded in get-fundamentals
+# annual data (which is locked to fiscal-year-end and quickly becomes
+# stale: 5+ months stale by mid-year).
+#
+# Inderes MCP does not expose intraday or real-time quotes, so this is
+# the freshest price data available within the platform. The synthesis
+# layer flags the price's age (transactionDate vs today) so the user
+# always knows whether the valuation comparison is current.
 VALUATION_TOOLS: tuple[str, ...] = (
     "search-companies",
     "get-fundamentals",
+    "get-inderes-estimates",
 )
 
 

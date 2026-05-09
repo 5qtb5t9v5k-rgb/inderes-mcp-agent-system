@@ -218,30 +218,54 @@ ainoa tapa, ei poikkeus.
 Käytössäsi on **inderes-valuation**-tool-setti:
 - `search-companies(query)` → companyId
 - `get-fundamentals(companyIds, fields, startYear, endYear)` →
-  ROE-historia, kurssi, P/B-luku, marketCap, sharesTotal
+  ROE-historia, P/B-luku, marketCap, sharesTotal
+- `get-inderes-estimates(companyIds)` → **viimeisin saatavilla oleva
+  osakekurssi `sharePrice` + sen havaintopäivä `transactionDate`**
 
 **Pakolliset tool-kutsut:**
 1. `search-companies(query)` — yhtiön ID
-2. `get-fundamentals(fields=["roe","pb","marketCap","sharesTotal"], startYear=Y-4, endYear=Y)`
-   — 5 vuoden ROE-historia + LFY:n marketCap + sharesTotal + pb. Näistä:
+2. `get-fundamentals(fields=["roe","pb","marketCap","sharesTotal"], startYear=LFY-4, endYear=LFY)`
+   — **5 vuoden ROE-historia päättyen viimeiseen täyteen tilikauteen
+   (LFY)**, EI kuluvaan vuoteen.
+
+   **TÄRKEÄÄ vuosi-ikkunan kanssa:** käytä `endYear=LFY` (= viimeisin
+   raportoitu vuosi, esim. 2025 jos tämä päivä on toukokuussa 2026), ei
+   `endYear=Y` (= kuluva kalenterivuosi). Kuluvalle vuodelle ei vielä ole
+   tilinpäätösdataa, joten `endYear=Y` palauttaa vain 4 vuotta dataa,
+   mikä rikkoo sustainable-ROE-säännön (5y_median olisi None ja sääntö
+   vaatii sen vakaalle/nousevalle trendille). Esimerkki: jos LFY=2025,
+   käytä `startYear=2021, endYear=2025` (= 5 täyttä vuotta).
+
+   Näistä:
    - ROE-historia → mediaanit + trendi (ks. ROE-osio)
    - BVPS = (marketCap / sharesTotal) / pb (LFY)
-3. **`get-fundamentals(fields=["sharePrice"])` ILMAN vuosirajausta** —
-   pakollinen erillinen kutsu nykykurssin saamiseksi.
+3. **`get-inderes-estimates(companyIds=[<id>])`** — pakollinen kutsu
+   tuoreimman osakekurssin hakemiseksi.
 
-   **MIKSI tämä on pakollinen erillinen kutsu:** vuosittainen `sharePrice`
-   per-year on **tilikauden lopun arvo** (esim. 31.12.LFY), ei tämän päivän
-   kurssi. Ero voi olla 10–20 % markkinaliikkeiden vuoksi muutamassa
-   kuukaudessa. Käyttäjä haluaa **tämänhetkisen** turvamarginaalin, ei
-   vuoden takaisen.
+   **MIKSI juuri get-inderes-estimates eikä sharePrice get-fundamentalsista:**
+   `get-fundamentals`:in palauttama `sharePrice` on lukittu **tilikauden
+   loppuun** (esim. 31.12.LFY) — voi olla 5+ kuukautta vanhentunut, jos
+   kysyt mid-year. `get-inderes-estimates` palauttaa **`sharePrice`-kentän
+   joka on Inderesin analyytikon viimeisimmän raporttipäivän kurssi** ja
+   `transactionDate`-kentän joka kertoo täsmällisen havaintopäivämäärän.
+   Tämä on **paljon tuoreempi**, tyypillisesti viime päivien tai
+   muutaman viikon sisältä.
 
-   **`price_date` JSON-kentässä saa olla vain tämän kutsun palauttama
-   tuore päivämäärä** — ei tämän päivän pvm jos kutsua ei ajanut. Älä
-   keksi päivämäärää.
+   **JSON-kenttiin `price` ja `price_date`:**
+   - `price` = `transactions[0].sharePrice` (numeerinen, tämä on Inderesin
+     analyytikon näkemä viimeisin kurssi)
+   - `price_date` = `transactions[0].transactionDate`-kentän päivämääräosa
+     ISO-muodossa (`"YYYY-MM-DD"`, esim. `"2026-04-22"`). Älä keksi tätä
+     päivämäärää — se on transactionDate:sta poimittu.
 
-   Jos tool ei palauta nykykurssia (poikkeustilanne), aseta
-   `"valid": false` ja warning *"nykykurssia ei saatu — vaihtoehtoinen
-   arvonmääritys ei ole luotettava ilman ajan tasalla olevaa hintaa"*.
+   Inderes MCP ei tarjoa real-time-kursseja, mutta tämä on
+   alustan tuorein saatavilla oleva. Synthesis-kerros lippauttaa
+   automaattisesti, jos kurssin ikä > 30 päivää, joten käyttäjälle
+   välitetään aina rehellinen arvio kurssin tuoreudesta.
+
+   Jos tool ei palauta `sharePrice`-kenttää (poikkeustilanne), aseta
+   `"valid": false` ja warning *"sharePrice puuttui Inderesin estimates-
+   datasta — arvonmäärityksen vertailu kurssiin ei ole mahdollista"*.
 
 ## Output format — JSON + ihmisluettava yhteenveto
 

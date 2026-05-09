@@ -347,7 +347,7 @@ def test_format_block_no_warning_for_normal_case() -> None:
         company="Nordea",
         company_id="COMPANY:382", ticker="NDA",
         bvps=9.41, bvps_date="2025-12-31",
-        price=16.09, price_date="2026-05-09",
+        price=16.09, price_date="2026-05-09",  # = today, fresh
         roe_used=0.15, k=0.09, g=0.04,
         roe_version="5y_median",
         roe_history={"raw": [[2021, 0.15]], "trend_label": "vakaa"},
@@ -362,3 +362,121 @@ def test_format_block_no_warning_for_normal_case() -> None:
     assert "REUNATAPAUS" not in block
     # No "manuaalinen ROE-override" warning either (5y_median was used)
     assert "manuaalisesta ROE-overridesta" not in block
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Price-freshness warnings
+#
+# Inderes MCP does not expose intraday quotes — the freshest available price
+# is `get-inderes-estimates.sharePrice` with a `transactionDate` that's
+# typically 1-3 weeks old (Inderes refreshes their dataset on cron). When
+# that date drifts further, the price-vs-FV comparison can be meaningfully
+# misleading, so the synthesis block warns the user transparently.
+#
+# Tiers:
+#   ≤ 30 days  → no warning (effectively current)
+#   31-90 days → ℹ️ informational note about refresh cycle
+#   > 90 days  → ⚠️ explicit "vanhentunut, mainitse käyttäjälle" guard
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _make_record_with_price_date(price_date: str):
+    """Helper to build a minimal ValuationRecord with a specific price_date."""
+    from inderes_agent.orchestration.synthesis import ValuationRecord
+    from inderes_agent.valuation import value_stock
+    from inderes_agent.valuation.parser import ValuationAgentOutput
+    v = value_stock(bvps=9.41, roe=0.15, k=0.09, g=0.04, price=16.09)
+    agent_output = ValuationAgentOutput(
+        company="Nordea", company_id="COMPANY:382", ticker="NDA",
+        bvps=9.41, bvps_date="2025-12-31",
+        price=16.09, price_date=price_date,
+        roe_used=0.15, k=0.09, g=0.04,
+        roe_version="5y_median",
+        roe_history={"raw": [[2021, 0.15]], "trend_label": "vakaa"},
+        roe_rationale="r", k_rationale="k", g_rationale="g",
+    )
+    return ValuationRecord(company="Nordea", agent_output=agent_output, valuation=v)
+
+
+def test_price_freshness_no_warning_for_recent_price() -> None:
+    """A price observed today (or within the last 30 days) gets no warning."""
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
+    from datetime import date, timedelta
+    fresh = (date.today() - timedelta(days=5)).isoformat()
+    rec = _make_record_with_price_date(fresh)
+    block = _format_valuation_block([rec])
+    assert "VANHENTUNUT" not in block
+    assert "Kurssin ikä" not in block
+
+
+def test_price_freshness_info_note_at_30_to_90_days() -> None:
+    """31-90 days old → ℹ️ informational note (not alarm-level)."""
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
+    from datetime import date, timedelta
+    age = (date.today() - timedelta(days=45)).isoformat()
+    rec = _make_record_with_price_date(age)
+    block = _format_valuation_block([rec])
+    assert "Kurssin ikä" in block
+    assert "ℹ️" in block
+    assert "VANHENTUNUT" not in block  # not the louder warning yet
+
+
+def test_price_freshness_strong_warning_over_90_days() -> None:
+    """>90 days → ⚠️ KURSSI VANHENTUNUT, must mention age in days."""
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
+    from datetime import date, timedelta
+    age = (date.today() - timedelta(days=120)).isoformat()
+    rec = _make_record_with_price_date(age)
+    block = _format_valuation_block([rec])
+    assert "KURSSI VANHENTUNUT" in block
+    assert "120 päivää" in block
+
+
+def test_price_freshness_handles_iso_datetime() -> None:
+    """price_date may arrive as full ISO datetime (e.g. directly from
+    Inderes' transactionDate field). The helper must extract the date
+    portion correctly.
+    """
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
+    from datetime import date, timedelta
+    # 60 days old, with a full ISO datetime suffix
+    age_date = (date.today() - timedelta(days=60)).isoformat()
+    iso_datetime = f"{age_date}T16:17:30.000Z"
+    rec = _make_record_with_price_date(iso_datetime)
+    block = _format_valuation_block([rec])
+    assert "Kurssin ikä" in block  # info-level warning fires
+
+
+def test_price_freshness_handles_missing_or_unparseable() -> None:
+    """Empty / None / garbage price_date returns None (no warning)."""
+    from inderes_agent.orchestration.synthesis import (
+        _format_valuation_block, _price_date_age_days,
+    )
+    # Direct helper unit test
+    assert _price_date_age_days(None) is None
+    assert _price_date_age_days("") is None
+    assert _price_date_age_days("not a date") is None
+    assert _price_date_age_days("13/05/2026") is None  # wrong format
+
+    # End-to-end: an unparseable price_date doesn't crash or warn
+    rec = _make_record_with_price_date("garbage")
+    block = _format_valuation_block([rec])
+    assert "VANHENTUNUT" not in block
+    assert "Kurssin ikä" not in block
+
+
+def test_price_freshness_helper_returns_today_zero_days() -> None:
+    """Sanity: today's date should yield age=0."""
+    from inderes_agent.orchestration.synthesis import _price_date_age_days
+    from datetime import date
+    today = date.today().isoformat()
+    assert _price_date_age_days(today) == 0
+
+
+def test_price_freshness_helper_ignores_future_dates() -> None:
+    """Future dates (clock skew, agent typo) shouldn't trigger negative age
+    or false warnings — return None and stay silent."""
+    from inderes_agent.orchestration.synthesis import _price_date_age_days
+    from datetime import date, timedelta
+    future = (date.today() + timedelta(days=30)).isoformat()
+    assert _price_date_age_days(future) is None

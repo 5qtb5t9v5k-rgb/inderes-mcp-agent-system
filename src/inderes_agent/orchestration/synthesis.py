@@ -17,6 +17,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any
 
 from ..agents import build_conflict_detector_agent, build_lead_agent
@@ -425,6 +426,47 @@ def _process_valuation_subagents(
     return records
 
 
+def _price_date_age_days(price_date: str | None) -> int | None:
+    """Compute the age in days of an ISO `price_date` string vs today.
+
+    Accepts:
+      - ``None`` / empty / unparseable → returns ``None`` (no warning)
+      - ``"YYYY-MM-DD"`` → age in calendar days (today − date)
+      - ``"YYYY-MM-DDTHH:MM:SS..."`` (ISO datetime) → date part only
+
+    Used by ``_format_valuation_block`` to flag stale price observations
+    in the LEAD prompt block. The valuation agent fetches the price from
+    ``get-inderes-estimates``'s ``sharePrice`` + ``transactionDate`` —
+    Inderes MCP does not offer intraday or real-time quotes, so the
+    freshest price has SOME age. The synthesis layer warns the user
+    transparently when that age exceeds 30 days, and warns more strongly
+    above 90 days.
+
+    Returns ``None`` (= no warning) when:
+      - price_date is missing
+      - the string can't be parsed (we don't want a parsing edge case
+        to spuriously warn the user; if anything, no warning is the
+        safer default)
+      - the parsed date is in the future (sanity guard — should never
+        happen in practice)
+    """
+    if not price_date or not isinstance(price_date, str):
+        return None
+    # Take only the date portion if it's an ISO datetime (Inderes MCP
+    # returns transactionDate as e.g. "2026-04-22T16:17:30.000Z").
+    date_part = price_date.split("T", 1)[0].strip()
+    try:
+        observed = date.fromisoformat(date_part)
+    except (ValueError, TypeError):
+        return None
+    today = date.today()
+    delta_days = (today - observed).days
+    if delta_days < 0:
+        # Future date → don't warn, just ignore
+        return None
+    return delta_days
+
+
 def _format_valuation_block(records: list[ValuationRecord]) -> str:
     """Render valuation records as a prompt block for the LEAD agent.
 
@@ -456,6 +498,40 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
                      f"price {a.price:.2f} ({a.price_date or '?'}), "
                      f"ROE {a.roe_used:.1%} ({a.roe_version}), "
                      f"k {a.k:.1%}, g {a.g:.1%}")
+
+        # Price-freshness check. The price/price_date here came from
+        # `get-inderes-estimates`'s sharePrice + transactionDate (Inderes
+        # MCP doesn't expose intraday quotes; this is the alpha alpha
+        # data freshness available within the platform). If the analyst's
+        # observation is older than 30 days, the price-vs-FV comparison
+        # could be meaningfully off — flag it so LEAD softens the verdict
+        # in synthesis. Empirically the cron-refreshed Inderes datasets
+        # update every 1-3 weeks, so >30 days warrants a heads-up; >90
+        # days warrants stronger language ("merkittävästi vanhentunut").
+        price_age_days = _price_date_age_days(a.price_date)
+        if price_age_days is not None:
+            if price_age_days > 90:
+                lines.append(
+                    f"  ⚠️ KURSSI VANHENTUNUT: price_date={a.price_date} on "
+                    f"{price_age_days} päivää vanha. Tämä on Inderesin "
+                    f"viimeisin saatavilla oleva analyytikkokurssi, mutta "
+                    f"merkittäviä markkinaliikkeitä on voinut tapahtua. "
+                    f"**Mainitse käyttäjälle eksplisiittisesti, että "
+                    f"vertailu fair valueen perustuu {price_age_days} "
+                    f"päivän takaiseen kurssiin** — turvamarginaali ei "
+                    f"ehkä vastaa tämän päivän todellista tilannetta."
+                )
+            elif price_age_days > 30:
+                lines.append(
+                    f"  ℹ️ Kurssin ikä {price_age_days} päivää (price_date="
+                    f"{a.price_date}). Inderes MCP ei tarjoa real-time-"
+                    f"kurssia, tämä on tuorein saatavilla oleva analyytikko-"
+                    f"havainto. Mainitse käyttäjälle päivämäärä avoimesti, "
+                    f"jotta hän voi itse tarkistaa onko markkinassa tapahtunut "
+                    f"merkittäviä liikkeitä sen jälkeen."
+                )
+            # ≤ 30 päivää: ei warningia, kurssi on käytännössä tuore
+
         # Multi-line rationales (the agent now produces 2-4 sentence
         # explanations per parameter — surface them in full so LEAD
         # can paraphrase or quote them).
