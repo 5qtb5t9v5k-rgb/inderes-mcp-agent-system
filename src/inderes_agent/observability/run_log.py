@@ -119,6 +119,25 @@ def write_run(
             encoding="utf-8",
         )
 
+    # Plan-then-execute output, only present when the user enabled the
+    # "Käytä pidempää suunnittelua" sidebar toggle. Persisting it lets
+    # the user review LEAD's strategic plan after the run, and
+    # eval-time replay can compare planned vs actual behaviour.
+    if workflow.plan is not None:
+        (run_dir / "plan.json").write_text(
+            json.dumps(
+                {
+                    "raw": workflow.plan.raw_text,
+                    "parsed": workflow.plan.parsed,
+                    "narrative": workflow.plan.narrative,
+                    "model_used": workflow.plan.model_used,
+                    "duration_seconds": workflow.plan.duration_seconds,
+                },
+                ensure_ascii=False, indent=2,
+            ),
+            encoding="utf-8",
+        )
+
     # Alternative-valuation results — only present when user enabled the
     # "Käytä vaihtoehtoista arvonmääritystä" sidebar toggle and at least one
     # VALUATION subagent ran. Each record includes the agent's parsed

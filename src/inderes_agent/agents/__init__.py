@@ -6,6 +6,7 @@ The build_* functions return them un-entered; callers do `async with build_quant
 
 from .conflict_detector import build_conflict_detector_agent
 from .lead import build_lead_agent
+from .lead_planner import build_lead_planner_agent
 from .portfolio import build_portfolio_agent
 from .quant import build_quant_agent
 from .research import build_research_agent
@@ -15,6 +16,7 @@ from .valuation import build_valuation_agent
 __all__ = [
     "build_conflict_detector_agent",
     "build_lead_agent",
+    "build_lead_planner_agent",
     "build_portfolio_agent",
     "build_quant_agent",
     "build_research_agent",

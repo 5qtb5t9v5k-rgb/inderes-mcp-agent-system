@@ -737,6 +737,23 @@ async def synthesize(
     valuation_block = _format_valuation_block(valuation_records)
     cls = workflow_result.classification
 
+    # Plan-then-execute: when enabled, LEAD planner has run BEFORE the
+    # subagents. Surface its plan here so synthesis can reference what
+    # was intended vs what was actually delivered (e.g. "we set out to
+    # compare ROE; quant returned only one company's data — adjust").
+    plan = workflow_result.plan
+    if plan is not None and plan.parsed is not None:
+        plan_block = (
+            f"PRE-DISPATCH PLAN (LEAD planner ran before subagents):\n"
+            f"  thinking:   {plan.parsed.get('thinking', '?')}\n"
+            f"  axis:       {plan.parsed.get('axis') or '(not a comparison)'}\n"
+            f"  watchouts:  {plan.parsed.get('watchouts') or '[]'}\n"
+            f"  per-subagent guidance: "
+            f"{plan.parsed.get('per_subagent') or {}}\n"
+        )
+    else:
+        plan_block = "_no pre-dispatch plan; subagents ran on default behaviour_"
+
     prompt = today_prompt_prefix() + f"""\
 USER QUESTION:
 {query}
@@ -746,6 +763,8 @@ domains   = {[d.value for d in cls.domains]}
 companies = {cls.companies}
 comparison = {cls.is_comparison}
 reasoning = {cls.reasoning}
+
+{plan_block}
 
 SUBAGENT OUTPUTS (the agent's own narrative summary):
 {subagents_block}

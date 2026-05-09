@@ -86,7 +86,7 @@ from inderes_agent.observability.run_log import (  # noqa: E402
 )
 from inderes_agent.orchestration.router import classify_query  # noqa: E402
 from inderes_agent.orchestration.synthesis import synthesize  # noqa: E402
-from inderes_agent.orchestration.workflows import run_workflow  # noqa: E402
+from inderes_agent.orchestration.workflows import run_planner, run_workflow  # noqa: E402
 
 # Trading Desk visual layer — pure cosmetics, no agent-pipeline impact.
 # `streamlit run ui/app.py` puts `ui/` on sys.path (not the repo root), so we
@@ -698,6 +698,38 @@ with st.sidebar:
         help=_val_help,
     )
 
+    # Plan-then-execute toggle — adds a strategic planning step before
+    # subagent dispatch. The planner reads the routing decision and
+    # writes per-subagent guidance + comparison axis + watchouts. Then
+    # subagents see this guidance in their prompts. Mostly useful for
+    # complex / nuanced queries; on simple ones it adds latency without
+    # changing much. Default OFF to preserve baseline cost + latency.
+    _plan_label = (
+        "🧠 Käytä pidempää suunnittelua"
+        if _lang_side == "fi"
+        else "🧠 Use deeper planning"
+    )
+    _plan_help = (
+        "Lisää pre-dispatch -suunnitteluvaiheen: LEAD kirjoittaa lyhyen "
+        "strukturoidun suunnitelman ennen subagenttien dispatchia. "
+        "Subagentit saavat tämän kontekstin promptiinsa, joten haut "
+        "ovat tarkempia. Lisää ~5–10 s + ~20 % kustannus.\n\n"
+        "Hyödyllinen monimutkaisille kyselyille (vertailut, vivahteikkaat "
+        "kysymykset, tutkimukselliset 'miksi' -kysymykset)."
+        if _lang_side == "fi"
+        else "Adds a pre-dispatch planning step: LEAD writes a short "
+        "structured plan before subagents are dispatched. Subagents "
+        "receive this context in their prompts, so their fetches are "
+        "more focused. Adds ~5–10 s + ~20 % cost.\n\n"
+        "Useful for complex queries (comparisons, nuanced questions, "
+        "exploratory 'why' questions)."
+    )
+    st.checkbox(
+        _plan_label,
+        key="plan_then_execute_on",
+        help=_plan_help,
+    )
+
     # LEAD-tier selector — opt-in upgrade for synthesis quality.
     # Default "Vakio" keeps everything on Flash Lite (paid tier base
     # cost ~$0.015/query). "Tarkka LEAD" swaps the synthesis call to
@@ -973,8 +1005,27 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             )
             augmented_query = ctx_line + query
 
+        # Resolve LEAD-tier early — both planner and synthesis use it.
+        _selected_tier = st.session_state.get("lead_tier", "")
+        deep_lead = _selected_tier in ("Tarkka LEAD", "Premium LEAD")
+
+        # Plan-then-execute step (only when toggle is on). Adds one
+        # LLM call before the workflow; the resulting plan is embedded
+        # in each subagent's prompt and surfaced in the UI later as a
+        # "🧠 Suunnitelma" expander.
+        plan = None
+        if st.session_state.get("plan_then_execute_on"):
+            status.write(
+                f"{_persona_chip('lead')} suunnittelee strategian ennen agenttien dispatchia"
+                f"{' (Pro-tilassa)' if deep_lead else ''}…",
+                html=True,
+            )
+            plan = await run_planner(
+                augmented_query, classification, deep=deep_lead,
+            )
+
         workflow_result = await run_workflow(
-            augmented_query, classification, run_dir=run_dir,
+            augmented_query, classification, run_dir=run_dir, plan=plan,
         )
 
         # Phase 3: per-agent results
@@ -994,13 +1045,8 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
                     html=True,
                 )
 
-        # Phase 4: synthesis
-        # Read the LEAD-tier radio: "Tarkka LEAD" / "Premium LEAD" → Pro,
-        # anything else (default "Vakio" / "Standard") → Flash Lite. The
-        # tier value is stored in session_state by the radio widget in the
-        # sidebar. Default if unset: standard tier.
-        _selected_tier = st.session_state.get("lead_tier", "")
-        deep_lead = _selected_tier in ("Tarkka LEAD", "Premium LEAD")
+        # Phase 4: synthesis. `deep_lead` was resolved earlier (Phase 3)
+        # so both planner and synthesis use the same model tier.
         status.write(
             f"{_persona_chip('lead')} kokoaa tulokset yhdeksi vastaukseksi"
             f"{' (Pro-tilassa)' if deep_lead else ''}…",
