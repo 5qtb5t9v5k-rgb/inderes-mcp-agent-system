@@ -984,9 +984,23 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             f'{p["glyph"]} {code}</span>'
         )
 
+    # Narration voice: consistent 3rd-person describing what the SYSTEM
+    # does — like a sports commentator. Avoids the earlier mix of 1st-
+    # person ("Tunnistan…", "Käynnistän…") and passive voice
+    # ("Reititys valmis…"). Each phase has a "starting" line + a
+    # "completed" line so the user sees both the activity and the
+    # outcome with consistent ✓/❌/… markers.
+    _ui_lang_now = st.session_state.get("ui_lang", "fi")
+    _fi = _ui_lang_now == "fi"
+    def _t(fi: str, en: str) -> str:
+        return fi if _fi else en
+
     try:
         # Phase 1: routing
-        status.write("🧭 Tunnistan, mitkä agentit tähän tarvitaan…")
+        status.write(_t(
+            "🧭 Reitittäjä tutkii millaisia agentteja kysymys vaatii…",
+            "🧭 Router deciding which agents this query needs…",
+        ))
         ctx = ", ".join(state.last_companies) if state.last_companies else ""
         ctx_hint = f"previous turn discussed: {ctx}" if ctx else ""
         classification = await classify_query(query, conversation_context=ctx_hint)
@@ -1026,21 +1040,15 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             f'<span style="color:var(--p-lead)">{", ".join(classification.companies)}</span>'
             if classification.companies else "—"
         )
+        # "Reititys valmis: {chips} käsittelevät kohdetta {company}"
+        # — descriptive, third person, completes the routing phase.
         status.write(
-            f"✓ Reititys valmis — kysymys menee: {domains_html} · kohde: {companies_html}",
+            _t(
+                f"✓ Reititys valmis: {domains_html} käsittelevät kohdetta {companies_html}",
+                f"✓ Routing done: {domains_html} will investigate {companies_html}",
+            ),
             html=True,
         )
-
-        # Phase 2: dispatch — write a per-agent task description BEFORE
-        # awaiting so the user sees who's working during the (often 10–30s)
-        # parallel run.
-        status.write("⚙️ Käynnistän agentit rinnakkain — kukin omalla tehtävällään…")
-        for d in classification.domains:
-            verb = DOMAIN_VERBS_FI.get(d.value, "tutkii aineistoa")
-            status.write(
-                f"  {_persona_chip(d.value)} → {verb}",
-                html=True,
-            )
 
         # Inject conversation context into the SUBAGENT prompt as well, not
         # just the router. Without this, a followup like "Onko jompikumpi
@@ -1077,14 +1085,40 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
         # in each subagent's prompt and surfaced in the UI later as a
         # "🧠 Suunnitelma" expander.
         plan = None
+        _pro_tag = " (Pro-tilassa)" if deep_lead and _fi else (
+            " (Pro mode)" if deep_lead else ""
+        )
         if st.session_state.get("plan_then_execute_on"):
             status.write(
-                f"{_persona_chip('lead')} suunnittelee strategian ennen agenttien dispatchia"
-                f"{' (Pro-tilassa)' if deep_lead else ''}…",
+                _t(
+                    f"🧠 Suunnittelija laatii strategian agenteille{_pro_tag}…",
+                    f"🧠 Planner drafts strategy for the agents{_pro_tag}…",
+                ),
                 html=True,
             )
             plan = await run_planner(
                 augmented_query, classification, deep=deep_lead,
+            )
+            status.write(
+                _t(
+                    f"  ✓ Suunnitelma valmis ({plan.duration_seconds:.1f}s)",
+                    f"  ✓ Plan ready ({plan.duration_seconds:.1f}s)",
+                )
+            )
+
+        # Phase 3: dispatch — write a per-agent task description BEFORE
+        # awaiting so the user sees who's working during the (often 10–30s)
+        # parallel run.
+        status.write(_t(
+            "⚙ Agentit käynnistyvät rinnakkain:",
+            "⚙ Agents starting in parallel:",
+        ))
+        for d in classification.domains:
+            verb_dict = DOMAIN_VERBS_FI if _fi else DOMAIN_VERBS_EN
+            verb = verb_dict.get(d.value, _t("tutkii aineistoa", "investigates data"))
+            status.write(
+                f"  {_persona_chip(d.value)} {verb}",
+                html=True,
             )
 
         workflow_result = await run_workflow(
@@ -1092,28 +1126,39 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             plan=plan, subagents_deep=deep_subagents,
         )
 
-        # Phase 3: per-agent results
+        # Phase 4: per-agent results
         for sr in workflow_result.subagent_results:
             chip = _persona_chip(sr.domain.value)
             company = f" · {sr.company}" if sr.company else ""
             if sr.error:
                 status.write(
-                    f"  {chip}{company} ❌ keskeytyi: {sr.error[:60]}",
+                    _t(
+                        f"  {chip}{company} ❌ keskeytyi: {sr.error[:60]}",
+                        f"  {chip}{company} ❌ failed: {sr.error[:60]}",
+                    ),
                     html=True,
                 )
             else:
+                n_tools = len(sr.tool_calls or [])
+                tools_lab = _t(
+                    f"{n_tools} työkalukutsua",
+                    f"{n_tools} tool calls",
+                )
                 status.write(
-                    f"  {chip}{company} ✓ valmis "
+                    f"  {chip}{company} ✓ {sr.duration_seconds:.1f}s, "
+                    f"{tools_lab} "
                     f'<span style="color:var(--ink-3); font-size:10px">'
                     f'({sr.model_used})</span>',
                     html=True,
                 )
 
-        # Phase 4: synthesis. `deep_lead` was resolved earlier (Phase 3)
-        # so both planner and synthesis use the same model tier.
+        # Phase 5: synthesis. `deep_lead` was resolved earlier so both
+        # planner and synthesis use the same model tier.
         status.write(
-            f"{_persona_chip('lead')} kokoaa tulokset yhdeksi vastaukseksi"
-            f"{' (Pro-tilassa)' if deep_lead else ''}…",
+            _t(
+                f"{_persona_chip('lead')} kokoaa subagenttien tulokset yhdeksi vastaukseksi{_pro_tag}…",
+                f"{_persona_chip('lead')} synthesises the subagent outputs into the final answer{_pro_tag}…",
+            ),
             html=True,
         )
         answer, lead_model, synth_trace = await synthesize(

@@ -217,17 +217,42 @@ GITHUB_URL = "https://github.com/5qtb5t9v5k-rgb/inderes-mcp-agent-system"
 
 
 def render_disclaimer(lang: str = "fi") -> None:
-    """Hero panel: brand equation + one-line tagline + agent roster.
+    """Hero panel: brand equation + one-line tagline + agent roster + sample
+    queries. Designed as an inviting intro for first-time visitors —
+    the not-affiliated legal notice lives in the sidebar disclaimer.
 
-    The not-affiliated notice lives in the sidebar disclaimer, not here, so
-    this panel reads as an inviting intro instead of a legal notice.
+    Includes 3 example queries the user can click into the chat box to
+    showcase what the system can do at different levels of complexity:
+      - simple metric lookup       (entry-level)
+      - comparison-with-context    (multi-agent, opt-in valuation)
+      - decision support           (plan-then-execute + Pro-LEAD shines)
     """
     if lang == "fi":
         tag = "MULTI-AGENT RESEARCH"
-        tagline = "Tutki pohjoismaisia osakkeita viiden erikoistuneen agentin kautta."
+        tagline = (
+            "Pohjoismaisten osakkeiden tutkimusta — yksi päätoimittaja "
+            "koordinoi viittä erikoisagenttia, jotka kaikki tekevät omat "
+            "MCP-haut ja palauttavat strukturoituja tuloksia."
+        )
+        examples_label = "Kokeile esimerkiksi"
+        examples = [
+            "Mikä on Sammon P/E ja Inderesin näkemys?",
+            "Vertaile Nordean ja Aktian kannattavuutta",
+            "Tee Sampolle arvonmääritys ja kerro kannattaako se ostaa",
+        ]
     else:
         tag = "MULTI-AGENT RESEARCH"
-        tagline = "Research Nordic equities through five specialised agents."
+        tagline = (
+            "Nordic-equity research — a lead orchestrator coordinates "
+            "five specialist agents, each making their own MCP queries "
+            "and returning structured results."
+        )
+        examples_label = "Try for example"
+        examples = [
+            "What is Sampo's P/E and Inderes' view?",
+            "Compare Nordea and Aktia on profitability",
+            "Value Sampo and tell me whether it's worth buying",
+        ]
 
     # Equation — INDERES + MCP + AGENTIT = INSIGHTS — captures what this is
     # at a glance. Operators and the equals sign get colored separately so
@@ -242,11 +267,34 @@ def render_disclaimer(lang: str = "fi") -> None:
         '<span class="result">INSIGHTS</span>'
     )
 
+    # Per-agent roster with role description so user knows what each does.
+    # Two-column layout: glyph+CODE on left, role on right.
     agents_html = ""
     for code, p in PERSONAS.items():
+        role = p.get("role_fi" if lang == "fi" else "role_en", "—")
         agents_html += (
-            f'<span class="ag" style="color:{p["color"]}">'
-            f'{p["glyph"]} {code}</span>'
+            f'<div class="ag" style="color:{p["color"]}">'
+            f'<span class="glyph">{p["glyph"]}</span>'
+            f'<span class="code">{code}</span>'
+            f'<span class="role">{role}</span>'
+            f'</div>'
+        )
+
+    # Example query chips — clickable buttons would need st.button (which
+    # would force a rerun). For the idle-hero, render them as styled
+    # readonly chips that the user can copy-paste; the chat input is right
+    # below them. Future improvement: make them clickable to populate the
+    # input directly.
+    examples_html = ""
+    if examples:
+        items = "".join(
+            f'<div class="ex-item">"{q}"</div>' for q in examples
+        )
+        examples_html = (
+            f'<div class="ia-hero-examples">'
+            f'<div class="ex-lab">{examples_label}:</div>'
+            f'{items}'
+            f'</div>'
         )
 
     html = (
@@ -255,9 +303,10 @@ def render_disclaimer(lang: str = "fi") -> None:
         f'<div class="ia-hero-eq">{eq_html}</div>'
         f'<div class="ia-hero-text">{tagline}</div>'
         f'<div class="ia-hero-agents">{agents_html}</div>'
+        f'{examples_html}'
         '</div>'
     )
-    st.html(html)
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_sidebar_disclaimer(lang: str = "fi") -> None:
@@ -1621,7 +1670,9 @@ def render_paattely_b(
             f'<div class="ia-paattely-prose-body">{body_html}</div>'
             "</details>"
         )
-        st.html(html)
+        # See render_plan_expander note — st.markdown(unsafe_allow_html=True)
+        # is needed so <details> click interactivity works on first render.
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     # Conflict-only fallback: no Päättely emitted but we have conflicts to
@@ -1634,7 +1685,7 @@ def render_paattely_b(
             f'{conflict_html}'
             "</details>"
         )
-        st.html(html)
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     # Structured JSON form: 2×2 slot grid.
@@ -1688,7 +1739,7 @@ def render_paattely_b(
         f'<div class="ia-paattely-grid">{"".join(rendered_slots)}</div>'
         "</details>"
     )
-    st.html(html)
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # Match the **💭 Perustelut:** callout at the start of LEAD's text.
@@ -1847,7 +1898,12 @@ def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
         f'<div class="ia-plan-grid">{"".join(parts)}</div>'
         "</details>"
     )
-    st.html(html)
+    # Use st.markdown(unsafe_allow_html=True) instead of st.html() so the
+    # <details> element renders into the parent DOM. st.html() sandboxes
+    # in an iframe which broke <details> click interactivity until a
+    # subsequent Streamlit rerun (user reported: "avaa suunnitelma aukeaa
+    # vasta kun painan avaa loki"). markdown route works on first render.
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_perustelut_box(body: str | None, lang: str = "fi") -> None:
