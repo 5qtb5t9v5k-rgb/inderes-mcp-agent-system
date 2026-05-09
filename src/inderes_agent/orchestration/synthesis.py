@@ -127,8 +127,17 @@ def _strip_json_fences(text: str) -> str:
     return s.strip()
 
 
-async def detect_conflicts(workflow_result: WorkflowResult) -> ConflictReport:
-    """Pre-synthesis pass. Skips automatically when there's nothing to compare."""
+async def detect_conflicts(
+    workflow_result: WorkflowResult,
+    *,
+    deep: bool = False,
+) -> ConflictReport:
+    """Pre-synthesis pass. Skips automatically when there's nothing to compare.
+
+    ``deep=True`` upgrades the detector's model to Pro — used by the
+    "Tarkka kaikki" tier so conflict resolution gets the same reasoning
+    quality as subagents.
+    """
     non_error = [sr for sr in workflow_result.subagent_results if not sr.error]
     if len(non_error) < 2:
         return ConflictReport(
@@ -145,7 +154,7 @@ Now produce the conflict report as STRICT JSON per your instructions.
 
     t_start = time.time()
     try:
-        async with build_conflict_detector_agent() as detector:
+        async with build_conflict_detector_agent(deep=deep) as detector:
             result = await detector.run(prompt)
             raw = result.text if hasattr(result, "text") else str(result)
             model_used = getattr(detector.client, "last_used_model", "unknown")
@@ -705,19 +714,22 @@ async def synthesize(
     workflow_result: WorkflowResult,
     *,
     deep_lead: bool = False,
+    deep_subagents: bool = False,
 ) -> tuple[str, str, SynthesisTrace]:
     """Run the lead agent over the subagents' outputs.
 
     Args:
         query: original user question
         workflow_result: results from the subagent fan-out
-        deep_lead: when True, builds LEAD with Gemini Pro (stronger
-            synthesis) instead of the default Flash Lite. Use this for
-            high-stakes queries where synthesis quality matters more
-            than the ~5–10s latency + 5x cost premium. Subagents are
-            unaffected — they always run on Flash Lite. Default False
-            preserves backward compatibility for callers that don't
-            care about the toggle.
+        deep_lead: when True, builds LEAD with Gemini Pro for synthesis.
+            Use for high-stakes queries where synthesis nuance matters.
+            Subagents/conflict-detector unaffected by this flag.
+        deep_subagents: when True, the conflict-detector is also built
+            on Pro. The subagents themselves are upgraded by the
+            workflow (passing ``subagents_deep=True`` to ``run_workflow``);
+            this synthesize parameter only governs whether the
+            conflict-detector also gets the upgrade in the same tier.
+            Used by the "Tarkka kaikki" UI radio.
 
     Returns (final_answer_text, lead_model_used, synthesis_trace) where
     `synthesis_trace.conflict_report` is the conflict-detector output and
@@ -725,7 +737,7 @@ async def synthesize(
     """
     from ..agents._common import today_prompt_prefix
 
-    conflict_report = await detect_conflicts(workflow_result)
+    conflict_report = await detect_conflicts(workflow_result, deep=deep_subagents)
 
     # Process VALUATION subagents (if any) — parse their JSON, run the
     # deterministic engine, and stash records for run_log + LEAD prompt.

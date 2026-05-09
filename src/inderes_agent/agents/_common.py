@@ -63,6 +63,22 @@ def load_prompt(filename: str) -> str:
     return _today_header() + path.read_text(encoding="utf-8")
 
 
+def resolve_deep_model_override(deep: bool) -> str | None:
+    """Returns the deep model name (e.g. ``'gemini-2.5-pro'``) when
+    ``deep=True``, else ``None`` (= use the default Flash Lite primary).
+
+    Used by every agent builder that accepts a ``deep`` parameter to map
+    the boolean toggle into the right ``primary_model`` override for
+    ``build_chat_client``. Centralised here so the model name lives in
+    settings and adding a third tier later (e.g. opus/claude) only
+    needs to change this function + settings.
+    """
+    if not deep:
+        return None
+    from ..settings import get_settings
+    return get_settings().LEAD_MODEL_DEEP
+
+
 def with_code_execution(*tools: Any) -> list[Any]:
     """Append Gemini's sandboxed code-execution tool to a list of tools.
 

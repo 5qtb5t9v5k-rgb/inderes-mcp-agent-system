@@ -15,12 +15,15 @@ from __future__ import annotations
 from agent_framework import Agent
 
 from ..llm.gemini_client import build_chat_client
-from ._common import load_prompt
+from ._common import load_prompt, resolve_deep_model_override
 
 
-def build_conflict_detector_agent() -> Agent:
+def build_conflict_detector_agent(deep: bool = False) -> Agent:
+    """Build the pre-synthesis conflict-detector agent. ``deep=True`` runs
+    on Pro — useful at the "Tarkka kaikki" tier where every step gets
+    upgraded reasoning."""
     return Agent(
-        client=build_chat_client(),
+        client=build_chat_client(primary_model=resolve_deep_model_override(deep)),
         name="aino-conflict-detector",
         instructions=load_prompt("conflict_detector.md"),
         tools=None,

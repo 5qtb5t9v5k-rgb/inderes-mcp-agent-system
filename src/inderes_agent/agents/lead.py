@@ -5,7 +5,7 @@ from __future__ import annotations
 from agent_framework import Agent
 
 from ..llm.gemini_client import build_chat_client
-from ._common import load_prompt
+from ._common import load_prompt, resolve_deep_model_override
 
 
 def build_lead_agent(deep: bool = False) -> Agent:
@@ -18,13 +18,8 @@ def build_lead_agent(deep: bool = False) -> Agent:
     falls through to Flash. Subagents are unaffected; this only touches
     the single LEAD synthesis call.
     """
-    from ..settings import get_settings
-
-    primary_override: str | None = None
-    if deep:
-        primary_override = get_settings().LEAD_MODEL_DEEP
     return Agent(
-        client=build_chat_client(primary_model=primary_override),
+        client=build_chat_client(primary_model=resolve_deep_model_override(deep)),
         name="aino-lead",
         instructions=load_prompt("lead.md"),
         tools=None,

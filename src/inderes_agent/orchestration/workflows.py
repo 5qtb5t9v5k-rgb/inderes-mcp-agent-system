@@ -80,12 +80,13 @@ async def _run_one(
     sem: asyncio.Semaphore,
     run_dir: Path,
     plan: PlanResult | None = None,
+    deep: bool = False,
 ) -> SubagentResult:
     builder = _AGENT_BUILDERS[domain]
     async with sem:
         t_start = time.time()
         try:
-            async with builder() as agent:
+            async with builder(deep=deep) as agent:
                 # If a specific company was specified for this fan-out branch,
                 # rephrase the prompt for the subagent so it focuses there.
                 from ..agents._common import today_prompt_prefix
@@ -227,6 +228,7 @@ async def run_workflow(
     run_dir: Path,
     *,
     plan: PlanResult | None = None,
+    subagents_deep: bool = False,
 ) -> WorkflowResult:
     """Spawn subagents per the classification, respecting MAX_CONCURRENT_AGENTS.
 
@@ -237,6 +239,12 @@ async def run_workflow(
     per-subagent guidance is embedded into each subagent's user prompt so
     the dispatch is purposeful instead of generic. None preserves the
     default behaviour bit-for-bit.
+
+    `subagents_deep` (default False) — when True, every subagent's
+    builder is called with ``deep=True``, swapping its primary model to
+    Gemini Pro. Used by the "Tarkka kaikki" model-tier UI radio. Cost
+    multiplier ~30x at the subagent step; reserve for high-stakes queries
+    where every word in subagent output matters.
     """
     settings = get_settings()
     sem = asyncio.Semaphore(settings.MAX_CONCURRENT_AGENTS)
@@ -253,9 +261,9 @@ async def run_workflow(
     for domain in classification.domains:
         if fanout and domain != Domain.PORTFOLIO:
             for company in classification.companies:
-                tasks.append(asyncio.create_task(_run_one(domain, query, company, sem, run_dir, plan)))
+                tasks.append(asyncio.create_task(_run_one(domain, query, company, sem, run_dir, plan, subagents_deep)))
         else:
-            tasks.append(asyncio.create_task(_run_one(domain, query, None, sem, run_dir, plan)))
+            tasks.append(asyncio.create_task(_run_one(domain, query, None, sem, run_dir, plan, subagents_deep)))
 
     t_fanout_start = time.time()
     results = await asyncio.gather(*tasks)

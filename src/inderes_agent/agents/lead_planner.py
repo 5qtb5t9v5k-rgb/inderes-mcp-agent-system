@@ -27,7 +27,7 @@ from __future__ import annotations
 from agent_framework import Agent
 
 from ..llm.gemini_client import build_chat_client
-from ._common import load_prompt
+from ._common import load_prompt, resolve_deep_model_override
 
 
 def build_lead_planner_agent(deep: bool = False) -> Agent:
@@ -39,14 +39,8 @@ def build_lead_planner_agent(deep: bool = False) -> Agent:
     output → better synthesis. The cost is small relative to the rest
     of the pipeline (one extra LLM call, no tools, ~1k output tokens).
     """
-    from ..settings import get_settings
-
-    primary_override: str | None = None
-    if deep:
-        primary_override = get_settings().LEAD_MODEL_DEEP
-
     return Agent(
-        client=build_chat_client(primary_model=primary_override),
+        client=build_chat_client(primary_model=resolve_deep_model_override(deep)),
         name="aino-lead-planner",
         instructions=load_prompt("lead_planner.md"),
         tools=None,

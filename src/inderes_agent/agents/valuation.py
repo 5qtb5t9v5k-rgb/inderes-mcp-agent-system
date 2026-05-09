@@ -20,17 +20,17 @@ from agent_framework import Agent
 
 from ..llm.gemini_client import build_chat_client
 from ..mcp.inderes_client import VALUATION_TOOLS, build_mcp_tool
-from ._common import load_prompt
+from ._common import load_prompt, resolve_deep_model_override
 
 
-def build_valuation_agent() -> Agent:
+def build_valuation_agent(deep: bool = False) -> Agent:
     """Construct the valuation subagent. Caller uses it as an async context manager.
 
     No code-execution sandbox: the agent's job is to produce JSON, not to
     do arithmetic. The deterministic engine handles all the math.
     """
     return Agent(
-        client=build_chat_client(),
+        client=build_chat_client(primary_model=resolve_deep_model_override(deep)),
         name="aino-valuation",
         instructions=load_prompt("valuation.md"),
         tools=build_mcp_tool(name="inderes-valuation", allowed=VALUATION_TOOLS),

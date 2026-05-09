@@ -737,22 +737,27 @@ with st.sidebar:
     # extra per query). Subagents stay on Flash Lite either way —
     # they're data-gathering agents, Flash handles tool-calling well.
     _tier_h = "MALLIN LAATU" if _lang_side == "fi" else "MODEL TIER"
-    _tier_options_fi = ["Vakio", "Tarkka LEAD"]
-    _tier_options_en = ["Standard", "Premium LEAD"]
+    _tier_options_fi = ["Vakio", "Tarkka LEAD", "Tarkka kaikki"]
+    _tier_options_en = ["Standard", "Premium LEAD", "Premium all"]
     _tier_options = _tier_options_fi if _lang_side == "fi" else _tier_options_en
     _tier_help = (
-        "Vakio = Flash Lite kaikkialla (~$0,015 / kysely, free-tier-yhteensopiva).\n\n"
+        "Vakio = Flash Lite kaikkialla (~$0,015 / kysely).\n\n"
         "Tarkka LEAD = synteesi Gemini 2.5 Pro:lla (~$0,07 lisää / kysely). "
-        "Subagentit pysyvät Flash Litellä — vain LEADin lopullinen synteesi "
-        "vaihdetaan. Latenssi nousee ~5–10 s. Suositeltu kun synteesin laatu "
-        "ratkaisee (vivahteikkaat kysymykset, monimutkainen vertailu, "
-        "tärkeä päätöstuki)."
+        "Subagentit Flash Litellä. Suositeltu vivahteikkaisiin kysymyksiin.\n\n"
+        "Tarkka kaikki = KAIKKI agentit Pro:lla — subagentit, conflict-"
+        "detector, planner, LEAD. ~$0,30 lisää / kysely (~20x vakio). "
+        "Latenssi +15–25 s. Käytä kun jokainen sana matters: investointi-"
+        "teesin kirjoitus, due diligence, monimutkainen vertailu jossa "
+        "subagentin sävy ratkaisee."
         if _lang_side == "fi"
-        else "Standard = Flash Lite throughout (~$0.015/query, free-tier ok).\n\n"
+        else "Standard = Flash Lite throughout (~$0.015/query).\n\n"
         "Premium LEAD = synthesis on Gemini 2.5 Pro (~$0.07 extra/query). "
-        "Subagents stay on Flash Lite — only the final LEAD synthesis is "
-        "upgraded. Latency +5–10 s. Recommended when synthesis quality "
-        "matters (nuanced questions, complex comparisons, decision support)."
+        "Subagents on Flash Lite. Recommended for nuanced queries.\n\n"
+        "Premium all = ALL agents on Pro — subagents, conflict-detector, "
+        "planner, LEAD. ~$0.30 extra/query (~20x baseline). "
+        "Latency +15–25 s. Use when every word matters: investment "
+        "thesis writing, due diligence, complex comparisons where "
+        "subagent tone is load-bearing."
     )
     st.markdown(f'<div class="ia-side-h">{_tier_h}</div>', unsafe_allow_html=True)
     st.radio(
@@ -1005,9 +1010,17 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             )
             augmented_query = ctx_line + query
 
-        # Resolve LEAD-tier early — both planner and synthesis use it.
+        # Resolve model-tier early — used by planner, workflow, and
+        # synthesis. Three tiers map to two booleans:
+        #   "Vakio" / "Standard"          → all False (Flash Lite)
+        #   "Tarkka LEAD" / "Premium LEAD" → only LEAD + planner on Pro
+        #   "Tarkka kaikki" / "Premium all" → everything on Pro
         _selected_tier = st.session_state.get("lead_tier", "")
-        deep_lead = _selected_tier in ("Tarkka LEAD", "Premium LEAD")
+        deep_lead = _selected_tier in (
+            "Tarkka LEAD", "Premium LEAD",
+            "Tarkka kaikki", "Premium all",
+        )
+        deep_subagents = _selected_tier in ("Tarkka kaikki", "Premium all")
 
         # Plan-then-execute step (only when toggle is on). Adds one
         # LLM call before the workflow; the resulting plan is embedded
@@ -1025,7 +1038,8 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             )
 
         workflow_result = await run_workflow(
-            augmented_query, classification, run_dir=run_dir, plan=plan,
+            augmented_query, classification, run_dir=run_dir,
+            plan=plan, subagents_deep=deep_subagents,
         )
 
         # Phase 3: per-agent results
@@ -1053,7 +1067,8 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             html=True,
         )
         answer, lead_model, synth_trace = await synthesize(
-            query, workflow_result, deep_lead=deep_lead,
+            query, workflow_result,
+            deep_lead=deep_lead, deep_subagents=deep_subagents,
         )
         conflict_report = synth_trace.conflict_report
 
