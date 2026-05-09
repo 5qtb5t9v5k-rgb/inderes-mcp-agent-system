@@ -604,10 +604,7 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
 
 /* —— FAMILY 1: modern testid-based selectors (Streamlit ≥1.40) —— */
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details {
   border: 1px solid var(--line) !important;
   border-radius: var(--r) !important;
   background: var(--bg-1) !important;
@@ -617,10 +614,7 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   box-shadow: none !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details > summary {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary {
   list-style: none;
   cursor: pointer;
   padding: var(--s-1) var(--s-3) !important;
@@ -629,55 +623,49 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   font-size: var(--t-micro) !important;
   font-weight: 600 !important;
   letter-spacing: var(--ls-caps) !important;
-  line-height: 1.2;
+  line-height: 1.2 !important;
   user-select: none;
   background: transparent !important;
+  min-height: 0 !important;
 }
-/* Force the same size onto the inner text node — Streamlit wraps the
-   summary label in <p>/<span>/<div> with its own font-size that the
-   summary-level rule above does not propagate to. Without this the
-   header reads ~16px instead of micro. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary *,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details > summary * {
+/* Force micro size onto the inner text node — Streamlit wraps the
+   summary label in <p>/<span>/<div> with its own font-size. */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary * {
   font-size: var(--t-micro) !important;
   font-family: var(--ia-mono) !important;
   letter-spacing: var(--ls-caps) !important;
   font-weight: 600 !important;
   color: var(--p-lead) !important;
+  line-height: 1.2 !important;
 }
 
 /* —— BODY TEXT INSIDE THE EXPANDER ——
-   User feedback (2026-05-09): native Streamlit checkbox/radio labels
-   were rendering at ~14–16px sans-serif, blowing up the expander
-   vertically and clashing with the hero box's compact mono style.
-   Force EVERY <p> inside the body to mono-meta (~11px) ink-1, then
-   handle the widget-label exception below. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] p,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] p {
+   User feedback (2026-05-09 v2): tighter `+` sibling selectors weren't
+   reliably catching Streamlit's nested label markup. Switched to
+   `body:has(.ia-hero-toggles-anchor)` which matches whenever the
+   anchor exists ANYWHERE on the page — and the anchor only renders
+   on idle (no chat history), so this won't bleed into trace expanders
+   in answer messages. Color now matches the hero description text
+   `--ink-2` for visual continuity with "Tutki pohjoismaisia…". */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] p,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] label,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] span,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] div {
   font-family: var(--ia-mono) !important;
-  font-size: var(--t-meta) !important;
-  color: var(--ink-1) !important;
-  line-height: 1.4 !important;
-  margin: 0 !important;
+  font-size: var(--t-body) !important;
+  color: var(--ink-2) !important;
+  line-height: 1.5 !important;
   font-weight: 400 !important;
 }
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] p {
+  margin: 0 !important;
+}
 
-/* Widget label ("Mallin laatu") — sub-heading caps-micro ink-3.
-   Two selectors because Streamlit's testid for the widget label has
-   shifted across versions; the second `> label p` form catches the
-   newer structure where the label is a direct child of stRadio. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p,
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stRadio"] > label p,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stWidgetLabel"] p,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stRadio"] > label p {
+/* Widget label ("Mallin laatu") — caps-micro ink-3 sub-heading,
+   matching .ia-hero-tag style ("MULTI-AGENT RESEARCH" in the hero). */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stWidgetLabel"] p,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stWidgetLabel"] label,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stWidgetLabel"] span {
   font-family: var(--ia-mono) !important;
   font-size: var(--t-micro) !important;
   font-weight: 600 !important;
@@ -685,91 +673,56 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   color: var(--ink-3) !important;
   text-transform: uppercase !important;
   margin-bottom: var(--s-1) !important;
+  line-height: 1.2 !important;
 }
 
-/* Tighten checkbox / radio spacing — defaults are airy, we want the
-   three rows (2× checkbox + radio) to fit without scrolling on a
-   phone-sized viewport. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stCheckbox"],
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stCheckbox"] {
+/* Tighten checkbox / radio spacing — defaults are airy. */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stCheckbox"] {
   margin-bottom: var(--s-1) !important;
   min-height: 0 !important;
 }
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stCheckbox"] label {
   align-items: center !important;
   padding: 0 !important;
   min-height: 0 !important;
+  gap: var(--s-1) !important;
 }
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stRadio"] [role="radiogroup"] label {
   padding: 2px 0 !important;
   margin: 0 !important;
   min-height: 0 !important;
   align-items: center !important;
+  gap: var(--s-1) !important;
 }
 
 /* Shrink the checkbox/radio markers themselves so they match the
-   smaller text. Default Streamlit markers are sized for body text. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label > div:first-child,
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label > div:first-child,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stCheckbox"] label > div:first-child,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
-  transform: scale(0.85) !important;
-  transform-origin: center !important;
+   smaller text. */
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stCheckbox"] label > div:first-child,
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpanderDetails"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+  transform: scale(0.8) !important;
+  transform-origin: left center !important;
 }
 
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary::-webkit-details-marker,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details > summary::-webkit-details-marker {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary::-webkit-details-marker {
   display: none;
 }
-
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details[open] > summary,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details[open] > summary {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details[open] > summary {
   border-bottom: 1px solid var(--line) !important;
 }
-
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary:hover,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details > summary:hover {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary:hover {
   background: var(--bg-2) !important;
 }
-
-/* Streamlit's native chevron SVG kept — it rotates correctly on
-   open/close and gives the "this is interactive" cue without us
-   needing to script anything. We just tint it amber to match the
+/* Streamlit's native chevron SVG — tinted amber to match the
    summary text color. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) details > summary svg,
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) details > summary svg {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] details > summary svg {
   fill: var(--p-lead) !important;
   color: var(--p-lead) !important;
 }
-
 /* Body padding — tight, matching the hero box's compact rhythm. */
-[data-testid="stElementContainer"]:has(.ia-hero-toggles-anchor)
-  + [data-testid="stElementContainer"]:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"],
-.element-container:has(.ia-hero-toggles-anchor)
-  + .element-container:has([data-testid="stExpander"]) [data-testid="stExpanderDetails"] {
+body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
   padding: var(--s-2) var(--s-3) !important;
-  font-size: var(--t-meta);
-  color: var(--ink-1);
+  font-size: var(--t-body);
+  color: var(--ink-2);
 }
 
 /* SIDEBAR DISCLAIMER — red-bordered fine print at the very top */
