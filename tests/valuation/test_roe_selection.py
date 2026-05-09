@@ -248,3 +248,70 @@ def test_select_handles_degenerate_zero_history() -> None:
     roe, version = select_sustainable_roe(stats)
     assert roe == 0.0
     assert version == "5y_median"
+
+
+# ---------------------------------------------------------------------------
+# Severe-decline classifier (UPM-Kymmene 2026-05-09 regression)
+#
+# Original rule was `delta < -0.10 AND lfy < p3y_avg`. UPM's ROE went
+# 12.7→13.1→3.3→3.9→4.5 % — a 48 % drop in 3y_avg vs 5y_avg, but the
+# most recent year (4.5 %) ticked up slightly above the 3y_avg (3.9 %),
+# so the dual condition failed and the trend was misclassified as
+# "vakaa". The rule then prescribed 5y_median = 4.5 % which mixes the
+# old high-ROE regime with the new low-ROE regime, and rejected the
+# agent's perfectly reasonable 3y_median = 3.9 % choice.
+#
+# Fix: severe declines (|delta| ≥ 20 %) are structural by definition;
+# classify as laskeva regardless of where LFY sits. Symmetric branch
+# added for severe rises.
+# ---------------------------------------------------------------------------
+
+
+def test_upm_severe_decline_classified_as_laskeva() -> None:
+    """UPM 2021–25 — clear multi-year regime shift down."""
+    history = [0.127, 0.131, 0.033, 0.039, 0.045]
+    stats = compute_roe_statistics(history)
+    # delta = (0.039 - 0.075) / 0.075 = -0.48 → severe → laskeva
+    assert stats.trend_label == "laskeva"
+    # The conservative recent-regime estimate, not the 5y_median
+    # that mixes old + new regimes.
+    roe, version = select_sustainable_roe(stats)
+    assert version == "min_3y_trend"
+    assert roe == pytest.approx(0.039, abs=0.001)
+
+
+def test_severe_decline_fires_even_when_lfy_recovers_inside_window() -> None:
+    """Synthetic case: 3-year recovery within an otherwise depressed window.
+
+    [0.20, 0.20, 0.05, 0.06, 0.08]: 5y_avg=0.118, 3y_avg=0.063,
+    delta = -0.46 → severe decline. LFY (0.08) > 3y_avg (0.063) but
+    that's inside a deeply depressed window — the structural drop
+    is real."""
+    stats = compute_roe_statistics([0.20, 0.20, 0.05, 0.06, 0.08])
+    assert stats.trend_label == "laskeva"
+
+
+def test_moderate_decline_with_lfy_above_long_term_stays_vakaa() -> None:
+    """Symmetric guard: a small dip with full recovery is NOT laskeva."""
+    # 5y_avg = 0.142, 3y_avg = 0.137, delta = -0.04 → vakaa
+    stats = compute_roe_statistics([0.15, 0.15, 0.13, 0.14, 0.14])
+    assert stats.trend_label == "vakaa"
+
+
+def test_moderate_decline_with_lfy_still_below_long_term_is_laskeva() -> None:
+    """Moderate decline (delta -10–20 %) AND LFY below long-term avg.
+
+    [0.15, 0.15, 0.10, 0.11, 0.12]: 5y_avg=0.126, 3y_avg=0.110,
+    delta = -0.13 → moderate. lfy=0.12 < long_term 0.126 → laskeva."""
+    stats = compute_roe_statistics([0.15, 0.15, 0.10, 0.11, 0.12])
+    assert stats.trend_label == "laskeva"
+
+
+def test_severe_rise_classified_as_nouseva_even_with_lfy_dip() -> None:
+    """Symmetric counterpart: structural rise even if LFY ticked down."""
+    # 5y_avg = 0.116, 3y_avg = 0.183, delta = +0.58 → severe rise
+    # LFY = 0.18 happens to be == 3y_avg so the dual condition
+    # `lfy > p3y_avg` would be false, but the new severe-rise branch
+    # catches it.
+    stats = compute_roe_statistics([0.05, 0.10, 0.18, 0.19, 0.18])
+    assert stats.trend_label == "nouseva"

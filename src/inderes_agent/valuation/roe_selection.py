@@ -137,10 +137,31 @@ def compute_roe_statistics(history: list[float]) -> RoeStatistics:
             trend_label = "vakaa"
         else:
             delta = (p3y_avg - long_term) / abs(long_term)
-            if delta > 0.10 and lfy > p3y_avg:
-                trend_label = "nouseva"
-            elif delta < -0.10 and lfy < p3y_avg:
+            # Severe decline (≥20 % drop in 3y avg vs long-term) is
+            # always structural — classify as laskeva even if the most
+            # recent year ticked up slightly within the depressed
+            # window. Surfaced by UPM-Kymmene 2026-05-09:
+            #   ROE 2021–25 = [12.7, 13.1, 3.3, 3.9, 4.5] %
+            #   3y_avg = 3.9 %, 5y_avg = 7.5 %, delta = -48 %
+            #   But LFY (4.5 %) > 3y_avg (3.9 %) so the original
+            #   `delta < -0.10 AND lfy < p3y_avg` failed → vakaa →
+            #   the rule prescribed 5y_median=4.5 %, mixing two
+            #   regimes and rejecting the agent's conservative
+            #   3y_median=3.9 % choice. Severe-decline branch fixes it.
+            if delta < -0.20:
                 trend_label = "laskeva"
+            elif delta < -0.10 and lfy < long_term:
+                # Moderate decline AND LFY below the long-term level —
+                # company is in a sustained dip. (Was `lfy < p3y_avg`
+                # which was even tighter; `lfy < long_term` is the
+                # symmetric semantic to "below historical norm".)
+                trend_label = "laskeva"
+            elif delta > 0.20:
+                # Symmetric: severe rise is structural, even if LFY
+                # ticked down within the elevated window.
+                trend_label = "nouseva"
+            elif delta > 0.10 and lfy > long_term:
+                trend_label = "nouseva"
             else:
                 trend_label = "vakaa"
 
