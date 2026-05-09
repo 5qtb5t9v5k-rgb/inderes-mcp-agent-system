@@ -499,38 +499,78 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
                      f"ROE {a.roe_used:.1%} ({a.roe_version}), "
                      f"k {a.k:.1%}, g {a.g:.1%}")
 
-        # Price-freshness check. The price/price_date here came from
-        # `get-inderes-estimates`'s sharePrice + transactionDate (Inderes
-        # MCP doesn't expose intraday quotes; this is the alpha alpha
-        # data freshness available within the platform). If the analyst's
-        # observation is older than 30 days, the price-vs-FV comparison
-        # could be meaningfully off — flag it so LEAD softens the verdict
-        # in synthesis. Empirically the cron-refreshed Inderes datasets
-        # update every 1-3 weeks, so >30 days warrants a heads-up; >90
-        # days warrants stronger language ("merkittävästi vanhentunut").
+        # BVPS-freshness disclaimer — Inderes MCP only exposes yearly
+        # taseen tietoja (marketCap, sharesTotal, pb), all NULL at
+        # quarterly resolution. So BVPS is always derived from LFY
+        # (last fully-reported year) year-end figures — the LATEST
+        # PUBLISHED *YEARLY* result available, but quarterly book-value
+        # updates post-Q1/Q2/Q3 reports are NOT extractable here. For
+        # fast-growing quality companies (e.g. Puuilo with ROE 50 %+),
+        # actual BVPS at end of latest quarter may be meaningfully
+        # higher than the LFY year-end figure used here. LEAD must
+        # surface this when the date is more than ~120 days old.
+        bvps_age_days = _price_date_age_days(a.bvps_date)
+        if bvps_age_days is not None and bvps_age_days > 120:
+            lines.append(
+                f"  ℹ️ BVPS:n lähde: tasearvo per {a.bvps_date} "
+                f"({bvps_age_days} pv vanha) — yhtiön viimeisin "
+                f"vuosittainen tase. Inderes MCP ei tarjoa quarterly-"
+                f"tason tase-eriä (Q1/Q2/Q3-päivityksiä ei voi poimia "
+                f"automaattisesti). **Mainitse käyttäjälle erityisesti "
+                f"laatuyhtiöillä että BVPS perustuu vuodenvaihteen "
+                f"tilanteeseen — Q1–Q3-tuloksia ei ole päivitetty "
+                f"taseeseen tässä laskennassa.**"
+            )
+
+        # Price-freshness disclaimer — ALWAYS surfaced, regardless of age.
+        # Inderes MCP empirically does NOT expose any per-stock real-time
+        # or even daily price endpoint:
+        #   - get-fundamentals yearly = year-end close (locked, 130+ days
+        #     stale by mid-year)
+        #   - get-fundamentals quarterly = Q-end close (Q4 always null,
+        #     in-progress Q always null)
+        #   - get-inderes-estimates.sharePrice = analyst's snapshot,
+        #     typically 1-3 weeks old (refreshed when analyst writes)
+        #   - get-model-portfolio-price daily = portfolio NAV, not per-stock
+        #   - list-insider-transactions.price = TX execution price, only
+        #     when a transaction has occurred recently (unreliable)
+        # Inderes' own website shows live prices via a separate market
+        # data feed not exposed via MCP.
+        #
+        # The price comparison vs fair value is the headline takeaway of
+        # the whole valuation. The user MUST always know how recent the
+        # price actually is — not just when it crosses an arbitrary
+        # threshold. So we emit the freshness info on every Tila-C run
+        # and graduate the urgency by age.
         price_age_days = _price_date_age_days(a.price_date)
         if price_age_days is not None:
             if price_age_days > 90:
-                lines.append(
-                    f"  ⚠️ KURSSI VANHENTUNUT: price_date={a.price_date} on "
-                    f"{price_age_days} päivää vanha. Tämä on Inderesin "
-                    f"viimeisin saatavilla oleva analyytikkokurssi, mutta "
-                    f"merkittäviä markkinaliikkeitä on voinut tapahtua. "
-                    f"**Mainitse käyttäjälle eksplisiittisesti, että "
-                    f"vertailu fair valueen perustuu {price_age_days} "
-                    f"päivän takaiseen kurssiin** — turvamarginaali ei "
-                    f"ehkä vastaa tämän päivän todellista tilannetta."
+                tier = "⚠️ KURSSI MAHDOLLISESTI MERKITTÄVÄSTI VANHENTUNUT"
+                soften = (
+                    "Merkittäviä markkinaliikkeitä on voinut tapahtua. "
+                    "Tee käyttäjälle eksplisiittinen muistutus että vertailu "
+                    "fair valueen perustuu vanhaan kurssiin."
                 )
             elif price_age_days > 30:
-                lines.append(
-                    f"  ℹ️ Kurssin ikä {price_age_days} päivää (price_date="
-                    f"{a.price_date}). Inderes MCP ei tarjoa real-time-"
-                    f"kurssia, tämä on tuorein saatavilla oleva analyytikko-"
-                    f"havainto. Mainitse käyttäjälle päivämäärä avoimesti, "
-                    f"jotta hän voi itse tarkistaa onko markkinassa tapahtunut "
-                    f"merkittäviä liikkeitä sen jälkeen."
+                tier = "ℹ️ KURSSI HIEMAN VANHENTUNUT"
+                soften = (
+                    "Inderes ei ole päivittänyt analyytikkokurssia "
+                    "viimeiseen kuukauteen — markkinaliikkeitä on voinut "
+                    "tapahtua sen jälkeen."
                 )
-            # ≤ 30 päivää: ei warningia, kurssi on käytännössä tuore
+            else:
+                tier = "ℹ️ Kurssin lähde"
+                soften = (
+                    "Käytännössä tuore (alle kk vanha), mutta ei real-time."
+                )
+            lines.append(
+                f"  {tier}: price_date={a.price_date} ({price_age_days} pv vanha). "
+                f"Inderes MCP ei tarjoa real-time-kurssia per yhtiö — tämä on "
+                f"Inderesin viimeisin analyytikkohavainto. **Mainitse "
+                f"vastauksessa käyttäjälle aina kurssin päivämäärä ja "
+                f"kehota tarkistamaan live-hinta inderes.fi:stä tai "
+                f"Nasdaqista ennen sijoituspäätöksiä.** {soften}"
+            )
 
         # Multi-line rationales (the agent now produces 2-4 sentence
         # explanations per parameter — surface them in full so LEAD

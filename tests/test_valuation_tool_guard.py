@@ -398,38 +398,42 @@ def _make_record_with_price_date(price_date: str):
     return ValuationRecord(company="Nordea", agent_output=agent_output, valuation=v)
 
 
-def test_price_freshness_no_warning_for_recent_price() -> None:
-    """A price observed today (or within the last 30 days) gets no warning."""
+def test_price_freshness_disclaimer_always_emitted_for_recent_price() -> None:
+    """Even ≤ 30 days old, the disclaimer is always emitted (Inderes MCP
+    has no real-time price). The user must always know the price is not
+    live and what date it's from."""
     from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
     fresh = (date.today() - timedelta(days=5)).isoformat()
     rec = _make_record_with_price_date(fresh)
     block = _format_valuation_block([rec])
-    assert "VANHENTUNUT" not in block
-    assert "Kurssin ikä" not in block
+    # Always says "Kurssin lähde" or stronger
+    assert "Kurssin lähde" in block or "VANHENTUNUT" in block
+    # Always tells LEAD to surface the date + advise live-check
+    assert "live-hinta" in block.lower()
+    assert "inderes.fi" in block.lower()
 
 
 def test_price_freshness_info_note_at_30_to_90_days() -> None:
-    """31-90 days old → ℹ️ informational note (not alarm-level)."""
+    """31-90 days old → ℹ️ KURSSI HIEMAN VANHENTUNUT (heightened tone)."""
     from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
     age = (date.today() - timedelta(days=45)).isoformat()
     rec = _make_record_with_price_date(age)
     block = _format_valuation_block([rec])
-    assert "Kurssin ikä" in block
-    assert "ℹ️" in block
-    assert "VANHENTUNUT" not in block  # not the louder warning yet
+    assert "HIEMAN VANHENTUNUT" in block
+    assert "45 pv vanha" in block
 
 
 def test_price_freshness_strong_warning_over_90_days() -> None:
-    """>90 days → ⚠️ KURSSI VANHENTUNUT, must mention age in days."""
+    """>90 days → ⚠️ MERKITTÄVÄSTI VANHENTUNUT, must mention age in days."""
     from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
     age = (date.today() - timedelta(days=120)).isoformat()
     rec = _make_record_with_price_date(age)
     block = _format_valuation_block([rec])
-    assert "KURSSI VANHENTUNUT" in block
-    assert "120 päivää" in block
+    assert "MERKITTÄVÄSTI VANHENTUNUT" in block
+    assert "120 pv vanha" in block
 
 
 def test_price_freshness_handles_iso_datetime() -> None:
@@ -444,11 +448,12 @@ def test_price_freshness_handles_iso_datetime() -> None:
     iso_datetime = f"{age_date}T16:17:30.000Z"
     rec = _make_record_with_price_date(iso_datetime)
     block = _format_valuation_block([rec])
-    assert "Kurssin ikä" in block  # info-level warning fires
+    assert "HIEMAN VANHENTUNUT" in block  # info-level warning fires
 
 
 def test_price_freshness_handles_missing_or_unparseable() -> None:
-    """Empty / None / garbage price_date returns None (no warning)."""
+    """Empty / None / garbage price_date returns None (no disclaimer to
+    avoid spurious "X pv vanha" messages on missing data)."""
     from inderes_agent.orchestration.synthesis import (
         _format_valuation_block, _price_date_age_days,
     )
@@ -458,11 +463,12 @@ def test_price_freshness_handles_missing_or_unparseable() -> None:
     assert _price_date_age_days("not a date") is None
     assert _price_date_age_days("13/05/2026") is None  # wrong format
 
-    # End-to-end: an unparseable price_date doesn't crash or warn
+    # End-to-end: an unparseable price_date doesn't emit a freshness line
+    # at all (we'd be lying about age = N if we couldn't parse the date)
     rec = _make_record_with_price_date("garbage")
     block = _format_valuation_block([rec])
     assert "VANHENTUNUT" not in block
-    assert "Kurssin ikä" not in block
+    assert "Kurssin lähde" not in block
 
 
 def test_price_freshness_helper_returns_today_zero_days() -> None:

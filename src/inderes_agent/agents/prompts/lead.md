@@ -303,9 +303,29 @@ nähdä joka ajossa):
 | EPV (kasvuton arvo)| B,BB €   | (ROE / k) × BVPS — Greenwald          |
 | Kasvun arvo        | C,CC €   | FV − EPV (vain laatuyhtiöillä)        |
 | **Fair value**     | **D,DD €** | FCF / (k − g) — Gordon              |
-| Nykykurssi         | E,EE €   | <price_date>                           |
+| Nykykurssi         | E,EE €   | Inderes-data <price_date> (ei live)    |
 | Turvamarginaali    | +X,X %   | (FV − kurssi) / FV                     |
 ```
+
+**TÄRKEÄÄ kurssin päivämäärästä — käyttäjälle pakko sanoa aina**:
+
+Inderes MCP ei tarjoa real-time- eikä päivätason kurssia per yhtiö.
+"Nykykurssi" on Inderesin analyytikon viimeisin saatavilla oleva
+havainto, päivämäärä `<price_date>` (engine-blokin Parametrit-rivillä).
+Ikä voi olla **päivistä viikkoihin**, joskus kuukausiin.
+
+Tila C:ssä **AINA** lisättävä lyhyt rivi joko taulukon alle tai
+"Markkinan implisiittinen näkemys" -kappaleen yhteyteen:
+
+> *Huom: Vertailu perustuu Inderesin {price_date} päivämäärän
+> analyytikkokurssiin (X päivää vanha, ei real-time). Tarkista live-hinta
+> esim. inderes.fi:stä tai Nasdaq Helsingistä ennen
+> sijoituspäätöstä.*
+
+Engine-blokissa on aina **"Kurssin lähde" / "KURSSI HIEMAN VANHENTUNUT" /
+"KURSSI MAHDOLLISESTI MERKITTÄVÄSTI VANHENTUNUT"** -rivi joka kertoo
+iän ja vakavuusasteen. Käytä siitä dataa luonnolliseen lauseeseen
+synteesissä.
 
 Lukijalle tämä taulukko on koko mallin tiivistetty näkymä. Käytä
 EXAKT numeroita engine-blokista (`fcf_ps`, `epv_pure`, `growth_value_pure`,
