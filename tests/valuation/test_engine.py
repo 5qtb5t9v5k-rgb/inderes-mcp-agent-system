@@ -407,3 +407,130 @@ def test_implied_roe_above_model_roe_when_overvalued() -> None:
     v = value_stock(bvps=2.68, roe=0.19, k=0.09, g=0.05, price=12.0)
     assert v.price > v.fv_gordon  # overvalued
     assert v.implied_roe > v.roe  # market implies higher ROE than model
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# growth_paid_for_pct — EPV-ankkuri framing for laatuyhtiöitä
+#
+# Greenwald insight: split price into "what you're paying for current
+# earning power" (EPV) vs "what you're paying for expected growth"
+# (price - EPV). The most actionable single number for quality companies is
+# the fraction of expected growth value (FV - EPV) that the market has
+# already priced into today's price:
+#
+#   growth_paid_for_pct = (price - EPV) / (FV - EPV) × 100
+#
+# 0 % means you're paying just EPV — all upside is "free" if the model is
+# right. 100 % means you're paying full Gordon FV. >100 % means overpaying.
+# Only meaningful for laatuyhtiöitä (ROE > k, growth ADDS value); None for
+# tuhoutuva and keskinkertainen because growth value ≤ 0 makes the ratio
+# undefined or sign-flipped.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_growth_paid_for_pct_for_nordea_case() -> None:
+    """Nordea-style laatu case where price is just above EPV.
+
+    With ROE 15%, k 9%, g 3.5%, BVPS 9.41, price 16.09:
+      EPV = (0.15/0.09) × 9.41 ≈ 15.68
+      FV  = ((0.15-0.035)/(0.09-0.035)) × 9.41 ≈ 19.68
+      growth_value = FV - EPV ≈ 4.00
+      price - EPV = 16.09 - 15.68 ≈ 0.41
+      growth_paid_for ≈ 10 %
+
+    User reading: "market has priced in only 10 % of expected growth
+    value, so 90 % is free upside if the model is right."
+    """
+    v = value_stock(bvps=9.41, roe=0.15, k=0.09, g=0.035, price=16.09)
+    assert v.quality == "laatu"
+    assert v.growth_paid_for_pct is not None
+    assert v.growth_paid_for_pct == pytest.approx(10.2, abs=1.0)
+
+
+def test_growth_paid_for_pct_at_epv_is_zero() -> None:
+    """When price equals EPV exactly, growth_paid_for = 0 %.
+
+    User reading: "I'm paying for current earning power only; all
+    expected growth is free upside."
+    """
+    bvps, roe, k = 10.0, 0.15, 0.09
+    epv = (roe / k) * bvps  # ≈ 16.67
+    v = value_stock(bvps=bvps, roe=roe, k=k, g=0.05, price=epv)
+    assert v.quality == "laatu"
+    assert v.growth_paid_for_pct == pytest.approx(0.0, abs=0.01)
+
+
+def test_growth_paid_for_pct_at_fair_value_is_100() -> None:
+    """When price equals fair_value exactly, growth_paid_for = 100 %.
+
+    User reading: "I'm paying for the entire model-expected upside,
+    no free growth, no margin."
+    """
+    bvps, roe, k, g = 10.0, 0.15, 0.09, 0.05
+    fcf = (roe - g) * bvps
+    fv = fcf / (k - g)  # 25.0
+    v = value_stock(bvps=bvps, roe=roe, k=k, g=g, price=fv)
+    assert v.quality == "laatu"
+    assert v.growth_paid_for_pct == pytest.approx(100.0, abs=0.01)
+
+
+def test_growth_paid_for_pct_above_fv_exceeds_100() -> None:
+    """When price > fair_value, growth_paid_for > 100 % — overpaying."""
+    v = value_stock(bvps=2.68, roe=0.19, k=0.09, g=0.05, price=12.0)
+    assert v.quality == "laatu"
+    assert v.price > v.fv_gordon
+    assert v.growth_paid_for_pct is not None
+    assert v.growth_paid_for_pct > 100.0
+
+
+def test_growth_paid_for_pct_below_epv_negative() -> None:
+    """When price < EPV (rare for laatu), growth_paid_for < 0 % —
+    market is below the no-growth value. User reading: 'kasvu kaupan
+    päälle PLUS alennus EPV:stä' (growth as bonus on top of an
+    already-discounted earning-power floor)."""
+    v = value_stock(bvps=10.0, roe=0.20, k=0.09, g=0.05, price=15.0)
+    assert v.quality == "laatu"
+    epv = (0.20 / 0.09) * 10.0  # ≈ 22.22
+    assert v.price < epv  # below EPV
+    assert v.growth_paid_for_pct is not None
+    assert v.growth_paid_for_pct < 0
+
+
+def test_growth_paid_for_pct_none_for_tuhoutuva() -> None:
+    """For tuhoutuva (ROE < k), growth_value_pure ≤ 0 — the EPV-anchor
+    framing inverts and becomes confusing. Engine returns None and
+    UI/LEAD must omit the framing."""
+    v = value_stock(bvps=10.17, roe=0.091, k=0.10, g=0.05, price=9.58)
+    assert v.quality == "tuhoutuva"
+    assert v.growth_paid_for_pct is None
+
+
+def test_growth_paid_for_pct_none_for_keskinkertainen() -> None:
+    """For keskinkertainen (ROE ≈ k within ±2 % buffer), growth_value_pure
+    is near zero — the ratio explodes / is misleading. Engine returns
+    None just like for tuhoutuva."""
+    v = value_stock(bvps=10.0, roe=0.091, k=0.09, g=0.05, price=10.0)
+    assert v.quality == "keskinkertainen"
+    assert v.growth_paid_for_pct is None
+
+
+def test_growth_paid_for_pct_relates_to_safety_margin() -> None:
+    """Sanity: when price < FV (positive safety margin) AND laatu,
+    growth_paid_for < 100. When price > FV (negative safety margin),
+    growth_paid_for > 100. They convey related but distinct information.
+
+    growth_paid_for is more meaningful for laatu because:
+      - It tells you "what fraction of expected upside you've locked in"
+      - safety_margin tells you "by how much you got the stock cheaper than FV"
+    The two converge near FV but diverge near EPV.
+    """
+    # Undervalued laatu: positive margin AND <100% growth paid
+    v_under = value_stock(bvps=10.0, roe=0.15, k=0.09, g=0.05, price=18.0)
+    assert v_under.safety_margin_to_fv_pct > 0
+    assert v_under.growth_paid_for_pct is not None
+    assert v_under.growth_paid_for_pct < 100.0
+    # Overvalued laatu: negative margin AND >100% growth paid
+    v_over = value_stock(bvps=10.0, roe=0.15, k=0.09, g=0.05, price=30.0)
+    assert v_over.safety_margin_to_fv_pct < 0
+    assert v_over.growth_paid_for_pct is not None
+    assert v_over.growth_paid_for_pct > 100.0

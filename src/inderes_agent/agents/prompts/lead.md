@@ -366,7 +366,52 @@ agentti laati `roe_rationale`, `k_rationale`, `g_rationale`
 - k:n valinta: <k_rationale>
 - g:n valinta: <g_rationale>
 
-**Entry-tasot taulukkona**:
+**🎯 EPV-ankkuri (vain laatuyhtiöille — sitten kun engine-blokissa on
+"EPV-ankkuri" -rivi)**
+
+Tämä on Greenwaldin filosofian ydin laatuyhtiöiden ostamisessa: hinta
+jaetaan kahteen osaan — **EPV** ("paljon maksat tulosvoimasta") ja
+**kurssi − EPV** ("paljon maksat odotetusta kasvusta"). Sitten
+suhteutetaan tämä kasvuosa siihen mitä koko mallin mukainen kasvu on
+arvoinen (= FV − EPV).
+
+Käytä engine-blokin **EPV-ankkuri**-riviä, joka antaa numeroarvon
+`growth_paid_for_pct`-kentästä. Kirjoita kappale tähän tyyliin:
+
+> *"Toinen näkökulma — Greenwaldin EPV-ankkuri:*
+> *• EPV (kasvuton arvo): X € — tämä on yhtiön tulosvoiman 'lattia'.*
+> *• Nykykurssin ja EPV:n ero: Y € — tämä on se osa, jolla maksat*
+>   *kasvun odotuksesta.*
+> *• Suhteessa malliin koko kasvuvarantoon (FV − EPV = Z €), markkina*
+>   *on hinnoitellut **N % kasvusta** sisään, eli **(100−N) % kasvusta***
+>   ***tulee vielä kaupan päälle** jos malli on oikeassa.*
+> *Tämä on käytännön luenta turvamarginaalille: et vain saa osaketta***
+> ***alennuksessa fair valueen — saat suuren osan odotetusta kasvusta***
+> ***'ilmaiseksi' tulosvoiman lisäksi."*
+
+Erityistapaukset (tunnista engine-blokista):
+
+- `growth_paid_for_pct ≈ 0 %` → *"Maksat lähes pelkän tulosvoiman; koko
+  odotettu kasvu on vapaata upsidea."* — paras laadukkaan laatuyhtiön
+  entry-tilanne
+- `growth_paid_for_pct ≈ 50 %` → *"Puolet kasvuvarannosta on
+  hinnassa; toinen puoli on vielä avoinna."*
+- `growth_paid_for_pct ≈ 100 %` → *"Maksat kaiken odotetun kasvun; ei
+  enää marginaalia jos kasvu jää pienemmäksi."*
+- `growth_paid_for_pct > 100 %` → *"Maksat **enemmän** kuin malli
+  ennustaa kasvua — markkina hinnoittelee korkeampaa ROE:ta tai
+  voimakkaampaa kasvua kuin oma malli olettaa."*
+- `growth_paid_for_pct < 0 %` (rare) → *"Markkina hinnoittelee
+  yhtiötä jopa alle EPV-tason — kasvu kaupan päälle PLUS alennus
+  tulosvoiman päälle."*
+
+**HUOM**: Jos engine-blokissa **EI ole** EPV-ankkuri-riviä (tuhoutuva
+tai keskinkertainen yhtiö), älä keksi tätä sektiota — kasvu ei lisää
+arvoa, joten kysymys "kuinka paljon kasvusta on hinnoiteltu" ei ole
+mielekkäs.
+
+**Entry-tasot taulukkona** (säilyy myös laatuyhtiöllä toissijaisena
+viittauksena, EPV-ankkuri on pääviitekehys):
 
 ```
 | Taso     | Hinta    | Kuvaus                                  |

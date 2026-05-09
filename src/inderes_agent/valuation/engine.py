@@ -111,6 +111,34 @@ class Valuation:
                                          # absolute thresholds; this is
                                          # the relative discount.
 
+    # ── EPV-ankkuri: how much of the GROWTH VALUE is the market paying for? ──
+    # Greenwald's framing for laatuyhtiöitä: split the price into "what
+    # you're paying for current earning power" (= EPV) and "what you're
+    # paying for expected growth" (= price - EPV). Then ask: how much of
+    # the model's expected growth value (= FV - EPV) has the market priced
+    # in already?
+    #
+    #   growth_paid_for_pct = (price − EPV) / (FV − EPV) × 100
+    #
+    # Reading:
+    #   0 %   → market values the stock at EPV; ALL expected growth is
+    #           "free upside" if the model is right
+    #   100 % → market values the stock at full Gordon FV; you're paying
+    #           for every cent of expected growth
+    #   >100% → overpaying for growth (price above FV)
+    #   <0 %  → market is below EPV; even the no-growth case is discounted
+    #
+    # This is the most actionable single number for laatu-luokan entries:
+    # "Of the upside the model expects, how much have I locked in by paying
+    # today's price?" Closely related to safety_margin_to_fv_pct but with
+    # a more meaningful denominator for quality companies.
+    #
+    # None for tuhoutuva / keskinkertainen — those have growth_value_pure
+    # ≤ 0 (or near-zero), so the ratio is undefined or misleading. The
+    # whole "kasvun hinnoittelu" framing only makes sense when growth
+    # actually adds value.
+    growth_paid_for_pct: float | None
+
     # ── Entry levels (per methodology/formulas.md) ──
     entry_aloitus: float             # 0.90 × fair_value
     entry_nosto: float               # 0.80 × fair_value
@@ -263,6 +291,20 @@ def value_stock(
     # Positive = undervalued from the model's perspective.
     safety_margin_to_fv_pct = (fair_value - price) / fair_value * 100.0
 
+    # EPV-ankkuri: only meaningful for laatuyhtiöitä, where growth_value_pure
+    # is a positive number (= the dollar amount of value growth contributes
+    # on top of EPV). For tuhoutuva (ROE < k), growth_value_pure is negative
+    # — the ratio would invert sign in confusing ways. For keskinkertainen
+    # (ROE ≈ k), growth_value_pure is near zero — ratio explodes. In both
+    # non-laatu cases the question "what fraction of growth has the market
+    # priced in?" doesn't make narrative sense, so return None and let
+    # callers omit the framing entirely.
+    growth_paid_for_pct: float | None
+    if quality == "laatu" and growth_value_pure > 1e-6:
+        growth_paid_for_pct = (price - epv_pure) / growth_value_pure * 100.0
+    else:
+        growth_paid_for_pct = None
+
     return Valuation(
         bvps=bvps,
         roe=roe,
@@ -287,6 +329,7 @@ def value_stock(
         implied_g=implied_g,
         implied_roe=implied_roe,
         safety_margin_to_fv_pct=safety_margin_to_fv_pct,
+        growth_paid_for_pct=growth_paid_for_pct,
         entry_aloitus=0.90 * fair_value,
         entry_nosto=0.80 * fair_value,
         entry_taysi=0.75 * fair_value,

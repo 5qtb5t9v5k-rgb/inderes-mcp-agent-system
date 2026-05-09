@@ -505,6 +505,24 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
             f"{v.safety_margin_to_fv_pct:+.1f}% "
             f"(positiivinen = aliarvostettu)"
         )
+
+        # EPV-ankkuri: Greenwald's framing for laatuyhtiöitä — "how much
+        # of the expected GROWTH VALUE has the market priced in?". More
+        # actionable than 90/80/75 % FV thresholds because it answers the
+        # user's real question: "by paying today's price, what fraction
+        # of the upside am I locking in vs leaving on the table?". Only
+        # emitted for laatu (ROE > k); for tuhoutuva and keskinkertainen
+        # the framing inverts/explodes and is omitted.
+        if v.growth_paid_for_pct is not None:
+            free_pct = 100.0 - v.growth_paid_for_pct
+            lines.append(
+                f"  EPV-ankkuri (laatuyhtiö): kurssi − EPV = "
+                f"{v.price - v.epv_pure:+.2f}€, mikä on "
+                f"{v.growth_paid_for_pct:.1f}% odotetusta kasvuvarannosta "
+                f"({v.growth_value_pure:.2f}€). Eli {free_pct:+.1f}% "
+                f"kasvusta tulee 'kaupan päälle' jos malli oikeaan."
+            )
+
         lines.append(f"  Entry-tasot: aloitus {v.entry_aloitus:.2f}€, "
                      f"nosto {v.entry_nosto:.2f}€, täysi {v.entry_taysi:.2f}€")
 
