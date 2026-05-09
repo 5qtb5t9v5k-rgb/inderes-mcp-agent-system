@@ -671,6 +671,33 @@ with st.sidebar:
         st.session_state.history = []
         st.rerun()
 
+    # Alternative-valuation toggle — opt-in extension on top of the
+    # default research flow. When enabled, every company-specific query
+    # also dispatches the `valuation` subagent which fetches BVPS/ROE,
+    # decides k/g with rationale, and a deterministic Python engine
+    # computes the user's own fair value. LEAD's synthesis includes a
+    # `Oma malli vs Inderes` comparison section.
+    _val_h = "MOODI" if _lang_side == "fi" else "MODE"
+    _val_label = (
+        "Käytä vaihtoehtoista arvonmääritystä"
+        if _lang_side == "fi"
+        else "Use alternative valuation"
+    )
+    _val_help = (
+        "Lisää oma Greenwald-Gordon -malli vastauksen rinnalle. "
+        "Toimii yhtiökyselyihin (esim. 'tee arvonmääritys Sammosta'). "
+        "Lisää yhden agentin ajon — kasvattaa kestoa ~3–5 s."
+        if _lang_side == "fi"
+        else "Adds a Greenwald-Gordon model alongside the answer. "
+        "Works for company queries. Adds ~3–5 s per query."
+    )
+    st.markdown(f'<div class="ia-side-h">{_val_h}</div>', unsafe_allow_html=True)
+    st.checkbox(
+        _val_label,
+        key="valuation_mode_on",
+        help=_val_help,
+    )
+
     # Recent runs
     _runs_h = "VIIMEISIMMÄT AJOT" if _lang_side == "fi" else "RECENT RUNS"
     _runs_cap = (
@@ -845,6 +872,34 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
         classification = await classify_query(query, conversation_context=ctx_hint)
         if not classification.companies and state.last_companies:
             classification.companies = state.last_companies
+
+        # Alternative-valuation opt-in: when the user has the sidebar toggle
+        # on AND the query targets a real company AND the query has clear
+        # valuation intent, append VALUATION to the dispatch list. We also
+        # force-include QUANT (Inderes' target/recommendation) so LEAD has
+        # both sides for the "Oma malli vs Inderes" comparison.
+        #
+        # The valuation-intent gate (added 2026-05-09) prevents toggle
+        # leakage: previously, ANY company-mentioning query would fire
+        # valuation when the toggle was on, including purely qualitative
+        # questions like "selitä mistä Nordean kannattavuus tulee" — the
+        # user got an unwanted Greenwald-Gordon table. The heuristic in
+        # router.query_has_valuation_intent() restricts firing to queries
+        # that actually ask for valuation (sensitivity, multiples, "mitä
+        # jos…", "tavoitehinta", explicit "arvonmääritys", etc.).
+        from inderes_agent.orchestration.router import (
+            Domain as _Dom,
+            query_has_valuation_intent,
+        )
+        if (
+            st.session_state.get("valuation_mode_on")
+            and classification.companies
+            and query_has_valuation_intent(query)
+        ):
+            if _Dom.VALUATION not in classification.domains:
+                classification.domains.append(_Dom.VALUATION)
+            if _Dom.QUANT not in classification.domains:
+                classification.domains.append(_Dom.QUANT)
 
         domains_html = " + ".join(_persona_chip(d.value) for d in classification.domains)
         companies_html = (

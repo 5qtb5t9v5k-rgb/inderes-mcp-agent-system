@@ -20,6 +20,7 @@ from ..agents import (
     build_quant_agent,
     build_research_agent,
     build_sentiment_agent,
+    build_valuation_agent,
 )
 from ..observability.output_parts import ToolCallTrace, extract_parts
 from ..settings import get_settings
@@ -51,6 +52,7 @@ _AGENT_BUILDERS = {
     Domain.RESEARCH: build_research_agent,
     Domain.SENTIMENT: build_sentiment_agent,
     Domain.PORTFOLIO: build_portfolio_agent,
+    Domain.VALUATION: build_valuation_agent,
 }
 
 

@@ -16,10 +16,19 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..agents import build_conflict_detector_agent, build_lead_agent
+from ..valuation import (
+    Valuation,
+    ValuationAgentOutput,
+    ValuationAgentSkipped,
+    ValuationParseError,
+    parse as parse_valuation_agent,
+    value_stock,
+)
+from .router import Domain
 from .workflows import WorkflowResult
 
 log = logging.getLogger(__name__)
@@ -171,6 +180,22 @@ def _format_conflict_block(report: ConflictReport) -> str:
 
 
 @dataclass
+class ValuationRecord:
+    """One company's alternative-valuation result.
+
+    Holds the agent's parsed output + the engine's deterministic computation,
+    so run_log.write_run can persist both the agent's parameter rationale
+    and the resulting fair value to ``valuation.json``.
+    """
+    company: str
+    agent_output: ValuationAgentOutput | None = None
+    valuation: Valuation | None = None
+    skipped: ValuationAgentSkipped | None = None
+    parse_error: str | None = None
+    raw_text: str | None = None  # for forensic logging when parse fails
+
+
+@dataclass
 class SynthesisTrace:
     """Per-stage timings + conflict report + parsed Päättely from one synthesize() call.
 
@@ -181,12 +206,18 @@ class SynthesisTrace:
 
     `paattely_raw` is the raw text matched (block-with-fences) for forensics
     even when JSON parse fails.
+
+    `valuations` is the list of per-company alternative-valuation records,
+    populated only when the user enabled the "Käytä vaihtoehtoista
+    arvonmääritystä" toggle and the workflow dispatched VALUATION agents.
+    Empty list otherwise.
     """
     conflict_report: ConflictReport
     lead_seconds: float = 0.0
     paattely: dict[str, Any] | None = None
     paattely_raw: str | None = None
     paattely_error: str | None = None
+    valuations: list[ValuationRecord] = field(default_factory=list)
 
 
 # Compiled once. The Päättely block can be EITHER:
@@ -279,6 +310,238 @@ def _extract_paattely(text: str) -> tuple[str, str | None, dict[str, Any] | None
     return cleaned, raw_full, {"prose": capped_body}, None
 
 
+def _process_valuation_subagents(
+    workflow_result: WorkflowResult,
+) -> list[ValuationRecord]:
+    """Parse each VALUATION subagent's JSON output and run the engine.
+
+    For per-company comparisons we get one VALUATION subagent per company;
+    for single-company queries we get one. Each result either:
+      - parses cleanly + engine returns a Valuation → ValuationRecord with both
+      - parses to ValuationAgentSkipped → record carries the skip reason
+      - fails to parse → record carries the error + raw text for forensics
+
+    Logged warnings rather than raised exceptions: a malformed VALUATION
+    output should not break the rest of the synthesis pipeline.
+    """
+    records: list[ValuationRecord] = []
+    for sr in workflow_result.subagent_results:
+        if sr.domain != Domain.VALUATION:
+            continue
+        # Default company label: subagent's per-company tag for fanout, or
+        # "<unknown>" until the parser succeeds and we can use parsed.company.
+        # We deliberately do NOT fall back to sr.text[:80] — that pulls the
+        # **Ajatus:** line into the run-log's company field.
+        company = sr.company or "<unknown>"
+        if sr.error:
+            records.append(ValuationRecord(
+                company=company,
+                parse_error=f"agent error before output: {sr.error}",
+                raw_text=sr.text,
+            ))
+            continue
+
+        # ── Tool-call guard: reject hallucinated outputs at the boundary ──
+        # The valuation agent's whole job is to fetch data from MCP and emit
+        # JSON. Without ≥1 get-fundamentals call there is no MCP-sourced data
+        # in the output — by definition the JSON is invented. We saw this in
+        # run 20260508-205057-769 ("entäs jos roe olisi 13%"): Flash Lite
+        # decided the prior turn's context was "enough" and emitted a fully
+        # hallucinated bundle (wrong company_id COMPANY:345 instead of 382,
+        # invented price 12.85€ vs actual 16.09€, invented ROE history).
+        #
+        # Engine math is deterministic but garbage-in → garbage-out: the
+        # +18.2% safety margin shown to the user was the visible artifact of
+        # a 100% fabricated input price. Catching this BEFORE parser.parse()
+        # routes the run cleanly into Tila B (LEAD shows the honest
+        # "valuation skipped" message instead of fabricated numbers).
+        #
+        # Why count get-fundamentals specifically (not search-companies):
+        # search-companies returns only IDs, not the BVPS/ROE/price needed.
+        # An agent that did only search-companies still couldn't produce a
+        # real valuation. get-fundamentals is the load-bearing call.
+        fundamentals_calls = sum(
+            1 for tc in (sr.tool_calls or [])
+            if getattr(tc, "name", "") == "get-fundamentals"
+        )
+        if fundamentals_calls == 0:
+            log.warning(
+                "valuation tool-call guard rejected %s: 0 get-fundamentals calls "
+                "(agent skipped MCP — output is hallucinated)",
+                company,
+            )
+            records.append(ValuationRecord(
+                company=company,
+                parse_error=(
+                    "agentti ei tehnyt yhtään get-fundamentals-kutsua — "
+                    "output ei perustu MCP-dataan, todennäköisesti hallusinoitu"
+                ),
+                raw_text=sr.text,
+            ))
+            continue
+
+        try:
+            parsed = parse_valuation_agent(sr.text)
+        except ValuationParseError as exc:
+            log.warning("valuation-parser failed for %s: %s", company, exc)
+            records.append(ValuationRecord(
+                company=company,
+                parse_error=str(exc),
+                raw_text=exc.raw_text,
+            ))
+            continue
+
+        if isinstance(parsed, ValuationAgentSkipped):
+            records.append(ValuationRecord(
+                company=parsed.company,  # use parser's company name once we have it
+                skipped=parsed,
+                raw_text=sr.text,
+            ))
+            continue
+
+        # Happy path: agent emitted clean JSON → run the deterministic engine.
+        # Use parsed.company once available — it's the canonical name from
+        # the structured output, free of "**Ajatus:**" leakage.
+        company = parsed.company
+        try:
+            valuation = value_stock(**parsed.to_engine_kwargs())
+        except ValueError as exc:
+            log.warning("valuation-engine rejected %s: %s", company, exc)
+            records.append(ValuationRecord(
+                company=company,
+                agent_output=parsed,
+                parse_error=f"engine validation failed: {exc}",
+                raw_text=sr.text,
+            ))
+            continue
+
+        records.append(ValuationRecord(
+            company=company,
+            agent_output=parsed,
+            valuation=valuation,
+            raw_text=sr.text,
+        ))
+
+    return records
+
+
+def _format_valuation_block(records: list[ValuationRecord]) -> str:
+    """Render valuation records as a prompt block for the LEAD agent.
+
+    Returns a human-readable structured text — not JSON, because LEAD's
+    job is to weave this into prose. For each company shows: chosen
+    parameters with rationale, computed fair value with quality label,
+    and the comparison-relevant numbers (yli/ali %, entry levels).
+    """
+    if not records:
+        return "_user did not enable alternative valuation; default flow only_"
+
+    lines: list[str] = []
+    for rec in records:
+        lines.append(f"### {rec.company}")
+        if rec.parse_error and not rec.valuation:
+            lines.append(f"_valuation skipped: {rec.parse_error}_")
+            lines.append("")
+            continue
+        if rec.skipped:
+            lines.append(f"_agent flagged invalid: {'; '.join(rec.skipped.warnings)}_")
+            lines.append("")
+            continue
+
+        a = rec.agent_output
+        v = rec.valuation
+        assert a is not None and v is not None  # narrowed by branches above
+
+        lines.append(f"Parametrit: BVPS {a.bvps:.2f} ({a.bvps_date or '?'}), "
+                     f"price {a.price:.2f} ({a.price_date or '?'}), "
+                     f"ROE {a.roe_used:.1%} ({a.roe_version}), "
+                     f"k {a.k:.1%}, g {a.g:.1%}")
+        # Multi-line rationales (the agent now produces 2-4 sentence
+        # explanations per parameter — surface them in full so LEAD
+        # can paraphrase or quote them).
+        lines.append(f"  ROE-perustelu: {a.roe_rationale}")
+        lines.append(f"  k-perustelu: {a.k_rationale}")
+        lines.append(f"  g-perustelu: {a.g_rationale}")
+        if a.warnings:
+            for w in a.warnings:
+                lines.append(f"  ⚠ {w}")
+
+        # Engine output — full set so LEAD can build the perussetti table.
+        lines.append(
+            f"Engine: quality={v.quality}, fair_value={v.fair_value:.2f} €, "
+            f"FV_Gordon={v.fv_gordon:.2f}, FCF_ps={v.fcf_ps:.3f}, "
+            f"EPV_pure={v.epv_pure:.2f}, growth_value={v.growth_value_pure:.2f}, "
+            f"GM={v.gm:.2f}x, Rock_Bottom={v.rock_bottom:.2f}, P/B={v.pb:.2f}"
+        )
+
+        # EPV / growth-pricing decomposition + dual implied reading.
+        # Gordon's equation has TWO unknowns (ROE, g) but only ONE constraint
+        # (price). A price below model's fair value can be explained by
+        # EITHER lower growth OR lower ROE. Surface both so LEAD doesn't
+        # pick one dimension as "the" answer.
+        implied_g_str = (
+            f"{v.implied_g:+.2%}" if v.implied_g is not None
+            else "ei laskettavissa (P/B ≈ 1 tai implied_g ≥ k)"
+        )
+        lines.append(
+            f"  EPV-dekompositio: kurssi on {v.market_premium_to_epv_pct:+.1f}% "
+            f"yli/alle EPV:n; kasvun osuus nykyhinnasta "
+            f"{v.growth_priced_in_share*100:+.1f}%."
+        )
+        lines.append(
+            f"  Markkinan implisiittinen näkemys (DUAALI — sama hinta selittyy "
+            f"joko alemmalla g:llä TAI alemmalla ROE:lla):"
+        )
+        lines.append(
+            f"    • Kun ROE pidetään mallin arvossa ({a.roe_used:.1%}): "
+            f"implied_g = {implied_g_str} (oma g = {a.g:.1%})"
+        )
+        lines.append(
+            f"    • Kun g pidetään mallin arvossa ({a.g:.1%}): "
+            f"implied_ROE = {v.implied_roe:+.2%} (oma ROE = {a.roe_used:.1%})"
+        )
+        lines.append(
+            f"  Turvamarginaali oman fair valuen suhteen: "
+            f"{v.safety_margin_to_fv_pct:+.1f}% "
+            f"(positiivinen = aliarvostettu)"
+        )
+        lines.append(f"  Entry-tasot: aloitus {v.entry_aloitus:.2f}€, "
+                     f"nosto {v.entry_nosto:.2f}€, täysi {v.entry_taysi:.2f}€")
+
+        # ── Sanity-check: extreme safety margins are a red flag ──
+        # When |safety_margin| > 100% the model says price differs from FV
+        # by more than the entire FV — almost always a sign of mismatched
+        # parameters (e.g. manual_override ROE 5% on a stock priced for
+        # 13%, run 20260508-221645-249 had Bittium showing -3155 %).
+        # Flag it so LEAD softens the takeaway in synthesis instead of
+        # presenting the absurd number as a confident verdict.
+        if abs(v.safety_margin_to_fv_pct) > 100.0:
+            lines.append(
+                f"  ⚠️ HUOM REUNATAPAUS: turvamarginaali ({v.safety_margin_to_fv_pct:+.1f}%) "
+                f"on poikkeuksellisen suuri. Tämä viittaa siihen että annetut "
+                f"parametrit (ROE {a.roe_used:.1%}, k {a.k:.1%}, g {a.g:.1%}) "
+                f"ovat kaukana siitä mitä markkina hinnoittelee — joko "
+                f"manuaalinen oletus on epärealistinen tai parametrit "
+                f"keskenään epäsuhdassa. **Mainitse tämä epävarmuus käyttäjälle**, "
+                f"älä esitä lukua varmana tuomiona."
+            )
+        elif v.quality == "tuhoutuva" and a.roe_version == "manual_override":
+            # Subtler case: tuhoutuva-luokka manual override:lla. ROE < k
+            # tarkoittaa että kasvu syö arvoa — käyttäjän on tärkeää tietää
+            # että manuaalinen ROE-arvo aiheutti tämän tuomion, ei objektii-
+            # vinen havainto yhtiön kannattavuudesta.
+            lines.append(
+                f"  ⚠️ HUOM: 'tuhoutuva'-luokitus johtuu **manuaalisesta "
+                f"ROE-overridesta** ({a.roe_used:.1%}), ei agentin tekemästä "
+                f"havainnosta. Mainitse käyttäjälle että tämä on skenaario, "
+                f"ei ennuste."
+            )
+
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 async def synthesize(
     query: str, workflow_result: WorkflowResult
 ) -> tuple[str, str, SynthesisTrace]:
@@ -292,9 +555,14 @@ async def synthesize(
 
     conflict_report = await detect_conflicts(workflow_result)
 
+    # Process VALUATION subagents (if any) — parse their JSON, run the
+    # deterministic engine, and stash records for run_log + LEAD prompt.
+    valuation_records = _process_valuation_subagents(workflow_result)
+
     subagents_block = _format_subagent_results(workflow_result)
     tool_trace_block = _format_tool_call_trace(workflow_result)
     conflict_block = _format_conflict_block(conflict_report)
+    valuation_block = _format_valuation_block(valuation_records)
     cls = workflow_result.classification
 
     prompt = today_prompt_prefix() + f"""\
@@ -328,6 +596,21 @@ How to use the conflict report:
 - For each item in `conflicts`: do NOT silently pick one side. Either resolve it (state which subagent's claim is more likely correct AND why), or flag the disagreement explicitly to the user.
 - For `isolated_claims`: be skeptical. A specific factual claim (a company name in a list, a number, an attributed quote) that only one subagent made and that no other corroborated is the most common hallucination shape. Either drop it, or surface it with an explicit "single-source" caveat.
 
+ALTERNATIVE VALUATION (user's own methodology, opt-in — present only when user enabled the toggle):
+{valuation_block}
+
+How to use the alternative valuation:
+- This is the **user's own valuation methodology** (Greenwald-Gordon hybrid: FV = ((ROE-g)/(k-g)) × BVPS, with quality classification by ROE-vs-k). The numbers are deterministically computed by a Python engine; do NOT recalculate them.
+- If the block is the placeholder "_user did not enable alternative valuation; default flow only_", **skip the comparison section entirely** — do not invent it.
+- If real valuation records are present, add a section titled `## Oma malli vs Inderes` (FI) or `## Own model vs Inderes` (EN) to the answer body. In it, **per company**:
+  1. State own fair value with one number (the engine's `fair_value`).
+  2. State Inderes' target price (from QUANT subagent's INDERES VIEW).
+  3. State the percentage delta and explain the source of the difference (different k? different g? different ROE-version chosen?).
+  4. State the quality classification (laatu / keskinkertainen / tuhoutuva) and what it implies.
+  5. Flag any agent warnings about data quality.
+- Do NOT invent numbers not in this block. The engine has full precision; round to 2 decimals when displaying.
+- The comparison section sits **after** the standard answer body but **before** `**📖 Lähteet:**`.
+
 Now synthesize a final answer for the user, following your instructions.
 """
 
@@ -351,5 +634,6 @@ Now synthesize a final answer for the user, following your instructions.
         paattely=paattely,
         paattely_raw=paattely_raw,
         paattely_error=paattely_err,
+        valuations=valuation_records,
     )
     return cleaned_text, model_used, trace

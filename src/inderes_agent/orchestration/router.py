@@ -21,6 +21,11 @@ class Domain(str, Enum):
     RESEARCH = "research"
     SENTIMENT = "sentiment"
     PORTFOLIO = "portfolio"
+    # VALUATION is opt-in: router never picks it; ui/app.py appends it
+    # when the user enables the "Käytä vaihtoehtoista arvonmääritystä"
+    # sidebar toggle. The agent fetches BVPS/ROE via MCP and emits JSON
+    # the deterministic valuation engine consumes.
+    VALUATION = "valuation"
 
 
 class QueryClassification(BaseModel):
@@ -61,6 +66,72 @@ If the user follow-up is ambiguous (e.g. "and the dividend yield?"), assume cont
 
 Output only the JSON. No markdown fences. No prose.
 """
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Toggle-intent heuristic
+#
+# When the "Käytä vaihtoehtoista arvonmääritystä" sidebar toggle is on, the
+# UI adds VALUATION to the dispatch list automatically. But forcing valuation
+# on every company-query is too aggressive — purely qualitative questions
+# ("explain why...", "what drives...") don't benefit from a Greenwald-Gordon
+# table and the user just gets noise.
+#
+# This heuristic checks whether the query has clear *valuation intent* before
+# the toggle adds VALUATION. Returning False keeps the router's original
+# domain set; True allows the toggle to extend it.
+#
+# Surfaced from production run 20260508-220611-207 ("selitä mistä Nordean
+# kannattavuus oikeasti tulee") where the toggle caused a full Tila C
+# 4-section structure including a fair-value table for a question that was
+# entirely about *qualitative* drivers of profitability.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Keywords that strongly suggest the user wants the alternative valuation.
+# Lowercase substring matches — Finnish stems are partial so morphology
+# variants ("arvostus", "arvostuksen", "arvostusta") all hit "arvostu".
+_VALUATION_INTENT_KEYWORDS: tuple[str, ...] = (
+    # Explicit valuation requests
+    "arvonmääritys", "arvonmääritystä", "arvonmäärität",
+    "arvostus", "arvostuks", "arvostust", "arvosta nordeaa", "arvosta sampoa",
+    "fair value", "valuation",
+    # Sensitivity / scenario probes (explicit numeric parameter changes)
+    "mitä jos roe", "mitä jos k", "mitä jos g",
+    "entäs jos roe", "entäs jos k", "entäs jos g",
+    "jos roe olisi", "jos k olisi", "jos g olisi",
+    "jos roe lask", "jos roe nous",
+    # Multiples and price relations
+    "p/b", "p/e", "ev/ebit",
+    "kerroin", "kerto",
+    # Verdict-style phrasings
+    "yliarvostett", "aliarvostett", "halpa kö", "kallis ko",
+    "kannattaako ostaa", "kannattaisi ostaa",
+    # NB: Finnish genitive/elative of "tavoitehinta" doubles the consonant
+    # ("tavoitehinnan", "tavoitehinnasta"), so we need both stems to cover
+    # nominative + inflected forms.
+    "tavoitehint", "tavoitehinn",
+    # Greenwald / model-specific
+    "implied", "turvamarginaal", "epv", "greenwald", "gordon",
+)
+
+
+def query_has_valuation_intent(query: str) -> bool:
+    """Should the alternative-valuation toggle add VALUATION to this query?
+
+    Returns True only when the query has clear valuation-flavored intent.
+    Used by ui/app.py and the e2e test script to gate the toggle's
+    domain-injection so that *qualitative* company questions
+    ("selitä miksi…", "mistä syystä…") don't get a Greenwald-Gordon table
+    they didn't ask for.
+
+    The heuristic is intentionally conservative: false negatives (toggle
+    silently doesn't fire) are much better UX than false positives (user
+    gets a fair-value table for a "explain X" question). When in doubt,
+    user can re-phrase explicitly ("tee arvonmääritys") to force the
+    valuation path.
+    """
+    q = query.lower()
+    return any(kw in q for kw in _VALUATION_INTENT_KEYWORDS)
 
 
 def _extract_json(text: str) -> dict[str, Any]:
