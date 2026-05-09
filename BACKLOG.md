@@ -216,6 +216,46 @@ main; cloud deployment live. 146 tests green.
   ~15 % which mixes two regimes. Flag when |LFY − LFY-3| > 30 % →
   suggest manual_override. **~1 h.**
 
+- 💭 **Yahoo Finance integration as fresh-data side-channel** — Inderes
+  MCP exposes neither real-time per-stock prices nor quarterly book
+  values (verified by exhaustive probe of all 16 tools, 2026-05-09).
+  Best Inderes can do: `get-inderes-estimates.sharePrice` is 1–3 weeks
+  old (analyst snapshot), and BVPS is locked to LFY year-end (130+ days
+  stale by mid-year). The current implementation always-on disclaimers
+  this honestly, but doesn't fix the underlying staleness.
+
+  Yahoo Finance via the `yfinance` Python library would provide:
+    - `info["currentPrice"]` — 15-min-delayed live quote (free tier)
+    - `info["bookValue"]` — per-share book value updated after each
+      Q-report (e.g., Nordea Q1 2026 book value available ~22.4.2026,
+      ~3 weeks fresher than LFY 2025 year-end)
+    - Helsinki tickers all work (`.HE` suffix: `NDA-FI.HE`, `SAMPO.HE`,
+      `KNEBV.HE`, etc.)
+
+  **Architecture**: Yahoo as a *side-channel*, not a replacement.
+  Inderes still owns ROE history, analyst sentiment, Nordic context.
+  Yahoo provides only `(price, bookValue, lastQuarterEnd)` for the
+  valuation snapshot. New `src/inderes_agent/market_data/yahoo_client.py`
+  + new `get-yahoo-snapshot(ticker)` tool exposed to the valuation
+  agent's tool-set. Falls back to Inderes MCP if Yahoo doesn't recognise
+  the ticker.
+
+  **When to do this**: not now — current disclaimers are honest enough
+  for a single-user research tool where the user always opens a broker
+  app to see live prices. Activate this when:
+    - Watchlist + daily briefing feature ships (BACKLOG §1, #4) — fresh
+      morning data becomes load-bearing
+    - User feedback indicates 17-day price lag is misleading on actual
+      decisions
+    - We move to multi-user / public deployment where staleness is
+      legally riskier
+  **~1 day total** (50 lines client + 5 tool integration + ticker
+  mapping for OMXH companies + 10 tests + docs).
+
+  *Risks*: yfinance is unofficial (Yahoo could change API any day),
+  occasional rate limits, ticker mismatches for some Nordic small-caps,
+  TOS for free-tier personal research is permissive but not guaranteed.
+
 ### Open — readily usable extensions
 
 - 💭 **Portfolio mode** — same valuation engine applied across the
