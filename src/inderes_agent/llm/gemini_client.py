@@ -98,10 +98,55 @@ class FallbackGeminiChatClient(GeminiChatClient):
 
     def _prepare_config(self, options, system_instruction):  # type: ignore[override]
         config = super()._prepare_config(options, system_instruction)
+
+        # DEBUG: print state so we can see what's actually in config when
+        # LEAD (Pro) gets rejected by the API. Tag the agent name so we know
+        # which call is being prepared.
+        import os
+        if os.environ.get("INDERES_DEBUG_GEMINI_CONFIG"):
+            print(
+                f"[gemini-config] model={getattr(self, 'primary_model', '?')} "
+                f"tools_count={len(getattr(config, 'tools', None) or [])} "
+                f"tool_config={config.tool_config!r}",
+                flush=True,
+            )
+
+        # Gemini Pro rejects requests that carry a ``function_calling_config``
+        # without any ``function_declarations`` in ``tools``. Flash silently
+        # accepts the same request. Inspect the resolved Tool list and clear
+        # ``function_calling_config`` whenever no declarations exist — this
+        # covers LEAD (tools=None) AND any tool list that contains only
+        # server-side tools (code_execution etc., which don't carry
+        # function_declarations).
+        has_function_declarations = any(
+            getattr(t, "function_declarations", None)
+            for t in (getattr(config, "tools", None) or [])
+        )
+        if not has_function_declarations:
+            # Both are required: clear tool_config entirely AND clear tools.
+            # If config.tools is even an empty list, Pro's strict validator
+            # may still complain about the dangling tool_config setup.
+            if config.tool_config is not None:
+                config.tool_config = None
+            # Also reset config.tools to None — empty list and None are
+            # treated differently by the API surface.
+            try:
+                config.tools = None
+            except Exception:
+                pass
+
         if self._has_server_side_tool(options):
             tool_config = config.tool_config or genai_types.ToolConfig()
             tool_config.include_server_side_tool_invocations = True
             config.tool_config = tool_config
+
+        if os.environ.get("INDERES_DEBUG_GEMINI_CONFIG"):
+            print(
+                f"[gemini-config-after] model={getattr(self, 'primary_model', '?')} "
+                f"tools={getattr(config, 'tools', None)!r} "
+                f"tool_config={config.tool_config!r}",
+                flush=True,
+            )
         return config
 
     def get_response(self, messages, *args: Any, **kwargs: Any):  # type: ignore[override]
@@ -204,11 +249,23 @@ class FallbackGeminiChatClient(GeminiChatClient):
                 raise
 
 
-def build_chat_client(settings: Settings | None = None) -> FallbackGeminiChatClient:
-    """Single factory; all agents must use this rather than constructing GeminiChatClient directly."""
+def build_chat_client(
+    settings: Settings | None = None,
+    primary_model: str | None = None,
+) -> FallbackGeminiChatClient:
+    """Single factory; all agents must use this rather than constructing
+    GeminiChatClient directly.
+
+    ``primary_model`` overrides ``settings.PRIMARY_MODEL`` for callers that
+    want a stronger model (e.g. LEAD's deep-mode synthesis using Pro).
+    The fallback always stays on the configured FALLBACK_MODEL — so even
+    if the override (e.g. Pro) hits a 503 / quota cap, the agent still
+    answers via Flash rather than failing the query.
+    """
     s = settings or get_settings()
+    primary = primary_model or s.PRIMARY_MODEL
     return FallbackGeminiChatClient(
-        primary_model=s.PRIMARY_MODEL,
+        primary_model=primary,
         fallback_model=s.FALLBACK_MODEL,
         api_key=s.require_gemini_key(),
         retry_delay_ms=s.RETRY_DELAY_MS,

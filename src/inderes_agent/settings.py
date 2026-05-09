@@ -18,6 +18,10 @@ class Settings(BaseSettings):
 
     PRIMARY_MODEL: str = "gemini-3.1-flash-lite-preview"
     FALLBACK_MODEL: str = "gemini-2.5-flash"
+    # Optional "deep mode" model used only by LEAD when the user toggles
+    # "🧠 Syvempi analyysi" in the UI. Subagents always stay on PRIMARY/FALLBACK
+    # so this only affects the synthesis call (1 LLM call per query).
+    LEAD_MODEL_DEEP: str = "gemini-2.5-pro"
 
     RETRY_DELAY_MS: int = 1000
     MAX_RETRIES: int = 1
