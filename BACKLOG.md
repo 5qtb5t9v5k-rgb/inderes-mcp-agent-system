@@ -1,7 +1,7 @@
 # Backlog
 
 A single-file overview of what's done, in flight, paused, and worth thinking
-about. Last updated 2026-05-10.
+about. Last updated 2026-05-10 (afternoon, post-MCP-depth audit).
 
 ## Status markers
 
