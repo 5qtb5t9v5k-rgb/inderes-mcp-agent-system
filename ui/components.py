@@ -2570,6 +2570,135 @@ class CustomStatus:
         self._placeholder.markdown(html, unsafe_allow_html=True)
 
 
+def render_feedback_widget(run_dir: Path, lang: str = "fi") -> None:
+    """👍/👎 feedback row under each completed answer (Wk 1 #4).
+
+    Renders one of three states:
+
+    1. **Initial** — "Oliko vastaus hyödyllinen?" + 👍 / 👎 buttons.
+       Click 👍 → instant persist + transition to (3).
+       Click 👎 → transition to (2).
+
+    2. **Comment pending** — only after 👎 was clicked: an optional
+       textarea ("Mikä meni vikaan?") + Lähetä button. The 👎 itself is
+       only persisted when the user submits — this lets the textarea
+       and rating travel together so a single ``feedback.json`` write
+       captures both. Skipping the comment is fine (button submits with
+       comment=None).
+
+    3. **Frozen** — feedback already on disk for this run. Shows the
+       chosen emoji + (if any) the comment, no further interaction.
+       Last-write-wins semantics live in ``write_feedback()``; the
+       widget itself doesn't expose a "change rating" affordance —
+       deliberate, because letting the user toggle endlessly drowns
+       out the signal we're trying to collect.
+
+    Persistence is per-run (``feedback.json`` inside the run dir).
+    Aggregation across runs is left to a later eval script.
+
+    No-ops if ``run_dir`` is None — used by the history-loop render
+    path where some old messages predate the run-dir machinery.
+    """
+    if run_dir is None:
+        return
+
+    # Lazy import — keeps components.py importable in test harnesses
+    # that don't have the full inderes_agent package on the path.
+    from inderes_agent.observability.run_log import (
+        read_feedback,
+        write_feedback,
+    )
+
+    existing = read_feedback(run_dir)
+
+    # State 3: feedback already submitted — show frozen acknowledgement.
+    if existing:
+        emoji = "👍" if existing.get("sentiment") == "up" else "👎"
+        thanks = (
+            "Kiitos palautteesta!" if lang == "fi" else "Thanks for the feedback!"
+        )
+        comment = existing.get("comment")
+        if comment:
+            st.caption(f'{emoji} {thanks} · _{escape_html(comment)}_')
+        else:
+            st.caption(f"{emoji} {thanks}")
+        return
+
+    # Pending-comment state lives in session_state, keyed off run_dir.name
+    # so each historical run has its own flag. Without this, clicking 👎
+    # on the live answer would reveal the comment box on EVERY past run
+    # in the chat history simultaneously.
+    pending_key = f"_fb_down_pending_{run_dir.name}"
+
+    # State 2: 👎 was clicked, show optional-comment composer.
+    if st.session_state.get(pending_key):
+        prompt = (
+            "👎 Mikä meni vikaan? (vapaaehtoinen — voit lähettää myös tyhjänä)"
+            if lang == "fi"
+            else "👎 What went wrong? (optional — you can submit blank)"
+        )
+        comment = st.text_area(
+            prompt,
+            key=f"_fb_comment_{run_dir.name}",
+            height=68,
+            label_visibility="visible",
+        )
+        col_send, col_cancel, _ = st.columns([1, 1, 6])
+        with col_send:
+            send_label = "Lähetä" if lang == "fi" else "Send"
+            if st.button(
+                send_label,
+                key=f"_fb_send_{run_dir.name}",
+                type="primary",
+                use_container_width=True,
+            ):
+                write_feedback(
+                    run_dir,
+                    sentiment="down",
+                    comment=comment.strip() or None,
+                )
+                st.session_state.pop(pending_key, None)
+                st.rerun()
+        with col_cancel:
+            cancel_label = "Peruuta" if lang == "fi" else "Cancel"
+            if st.button(
+                cancel_label,
+                key=f"_fb_cancel_{run_dir.name}",
+                use_container_width=True,
+            ):
+                st.session_state.pop(pending_key, None)
+                st.rerun()
+        return
+
+    # State 1: initial — question + 👍/👎.
+    question = (
+        "Oliko vastaus hyödyllinen?"
+        if lang == "fi"
+        else "Was this answer helpful?"
+    )
+    col_q, col_up, col_down, _ = st.columns([4, 1, 1, 6])
+    with col_q:
+        st.caption(question)
+    with col_up:
+        if st.button(
+            "👍",
+            key=f"_fb_up_{run_dir.name}",
+            help="Hyödyllinen" if lang == "fi" else "Helpful",
+            use_container_width=True,
+        ):
+            write_feedback(run_dir, sentiment="up")
+            st.rerun()
+    with col_down:
+        if st.button(
+            "👎",
+            key=f"_fb_down_{run_dir.name}",
+            help="Ei hyödyllinen" if lang == "fi" else "Not helpful",
+            use_container_width=True,
+        ):
+            st.session_state[pending_key] = True
+            st.rerun()
+
+
 def render_statusbar(meta: dict | None = None, lang: str = "fi") -> None:
     """Tech status footer — only system info, no disclaimer text.
 

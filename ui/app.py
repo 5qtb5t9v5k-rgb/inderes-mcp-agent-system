@@ -108,6 +108,7 @@ from components import (  # noqa: E402
     render_github_link,
     render_lead_answer,
     render_followup_chips,
+    render_feedback_widget,
     render_recommendation_badge,
     render_paattely_b,
     render_plan_expander,
@@ -995,6 +996,11 @@ for msg in st.session_state.history:
             )
             if run_dir is not None:
                 render_trace_expander(run_dir)
+                # 👍/👎 feedback row — Wk 1 #4. Renders a frozen
+                # acknowledgement on history runs that already have a
+                # feedback.json, otherwise gives the user a fresh chance
+                # to rate even on a re-render.
+                render_feedback_widget(run_dir, lang=_lang_main)
         else:
             st.markdown(msg["content"])
 
@@ -1365,6 +1371,9 @@ if prompt:
             _rtc(run_dir, lang=_lang_live)
             render_followup_chips(answer, run_dir_name=run_dir.name)
             render_trace_expander(run_dir)
+            # 👍/👎 feedback widget — Wk 1 #4. Persists to feedback.json
+            # inside the run dir. Same widget renders on history replay.
+            render_feedback_widget(run_dir, lang=_lang_live)
             st.session_state.history.append(
                 {"role": "assistant", "content": answer, "run_dir": str(run_dir)}
             )

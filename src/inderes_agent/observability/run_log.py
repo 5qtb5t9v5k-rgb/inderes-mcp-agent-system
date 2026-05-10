@@ -203,3 +203,58 @@ def write_run(
         ),
         encoding="utf-8",
     )
+
+
+# ---------------------------------------------------------------------------
+# 👍/👎 user feedback — Wk 1 #4 (sprint roadmap 2026-05-09)
+#
+# Feedback is persisted as a sibling file `feedback.json` inside the run dir
+# (NOT folded into write_run() because feedback arrives AFTER the user has
+# read the answer — minutes or never). Schema is intentionally narrow:
+#
+#   {"sentiment": "up" | "down", "comment": str | None, "ts": "2026-05-10T..."}
+#
+# Last-write-wins: a user can change their mind by clicking the other thumb.
+# Aggregation across runs is left to a later eval script (the Tier 0 SQLite
+# indexer can pick up feedback.json by glob); the per-run JSON is the source
+# of truth.
+# ---------------------------------------------------------------------------
+
+
+def write_feedback(
+    run_dir: Path,
+    sentiment: str,
+    comment: str | None = None,
+) -> None:
+    """Persist a thumbs-up/down rating (with optional comment) for one run.
+
+    Always overwrites — last click wins. Caller is responsible for validating
+    `sentiment` before calling, but we double-check here so a typo from a
+    future call site can't silently produce garbage on disk.
+    """
+    if sentiment not in ("up", "down"):
+        raise ValueError(f"sentiment must be 'up' or 'down', got {sentiment!r}")
+    payload = {
+        "sentiment": sentiment,
+        "comment": comment if (comment and comment.strip()) else None,
+        "ts": datetime.now().isoformat(timespec="seconds"),
+    }
+    (run_dir / "feedback.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def read_feedback(run_dir: Path) -> dict | None:
+    """Return the persisted feedback dict, or None if no rating exists yet.
+
+    Returns None on parse errors too — feedback is non-critical telemetry,
+    a corrupt file should not break the UI render path.
+    """
+    path = run_dir / "feedback.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
