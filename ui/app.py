@@ -1094,7 +1094,13 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
         #      to wait on the LLM agreeing.
         # If EITHER says yes, run valuation. The toggle is the user's
         # explicit consent to add valuation to the dispatch list.
-        intent_via_llm = bool(classification.has_valuation_intent)
+        # `getattr` defensively — Streamlit's hot-reload sometimes
+        # caches the OLD QueryClassification class definition in
+        # memory, and a returned instance lacks the new field. Real-
+        # world hit on 2026-05-10 with "arvonääritys valmet?" + Pro
+        # LEAD tier. Treat missing attr as False; keyword fallback
+        # still picks up the obvious cases.
+        intent_via_llm = bool(getattr(classification, "has_valuation_intent", False))
         intent_via_keywords = query_has_valuation_intent(query)
         if (
             st.session_state.get("valuation_mode_on")
