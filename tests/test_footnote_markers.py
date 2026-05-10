@@ -122,29 +122,36 @@ def test_style_each_persona_letter_has_distinct_class():
     assert 'ia-fn-p' in out
 
 
-def test_style_marker_with_definition_gets_title_tooltip():
-    """Definitions populate a browser-native `title=` tooltip."""
+def test_style_marker_with_definition_gets_dual_tooltip_attrs():
+    """Populated markers get BOTH `title` (desktop hover, native +
+    screen-reader-friendly) AND `data-tooltip` (CSS popup that works
+    on mobile tap-focus)."""
     defs = {"Q1": "quant · get-inderes-estimates → target_price=24.00 €"}
     out = _style_footnote_markers("Suositus[Q1] on Vähennä.", defs)
     assert 'title="quant · get-inderes-estimates → target_price=24.00 €"' in out
+    assert 'data-tooltip="quant · get-inderes-estimates → target_price=24.00 €"' in out
+    # tabindex makes the marker focusable so mobile tap brings up the popup
+    assert 'tabindex="0"' in out
 
 
 def test_style_marker_html_escapes_dangerous_chars_in_tooltip():
     """A definition body with `<script>` or quotes must be escaped so
-    the title attribute can't break out of the HTML."""
+    neither the title nor data-tooltip attribute can break out."""
     defs = {"Q1": '<script>alert("xss")</script>'}
     out = _style_footnote_markers("X[Q1]", defs)
-    # Title attr value must NOT contain a raw < or unescaped " inside the value
+    # Both attribute values must NOT contain raw < or unescaped " inside.
     assert "<script>" not in out
     assert "&lt;script&gt;" in out
 
 
 def test_style_marker_without_definition_renders_without_tooltip():
-    """A marker that LEAD emitted but didn't define gets no `title` —
-    UI shows the colored marker but no tooltip."""
+    """A marker that LEAD emitted but didn't define gets no tooltip
+    attributes — UI shows the colored marker but no popup."""
     out = _style_footnote_markers("Suositus[Q1].", {})
     assert 'class="ia-fn ia-fn-q"' in out
     assert 'title=' not in out
+    assert 'data-tooltip=' not in out
+    assert 'tabindex=' not in out
 
 
 # ---------------------------------------------------------------------------

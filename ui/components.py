@@ -1714,32 +1714,35 @@ def _style_footnote_markers(html: str, definitions: dict[str, str] | None = None
     """
     definitions = definitions or {}
 
+    # We emit BOTH `title=""` (browser-native desktop hover, screen-
+    # reader-friendly) AND `data-tooltip=""` (CSS-popup that fires on
+    # `:hover` AND `:focus`, so mobile users can tap the marker to see
+    # the source). `tabindex="0"` makes the <sup> focusable on tap.
+    from html import escape as _esc
+
     def _persona_replacer(m: re.Match[str]) -> str:
         letter, number = m.group(1), m.group(2)
         css_suffix = _PERSONA_LETTER_TO_CSS.get(letter, "")
         klass = f"ia-fn ia-fn-{css_suffix}" if css_suffix else "ia-fn"
         key = f"{letter}{number}"
-        title_attr = ""
+        attrs = ""
         if key in definitions:
-            # HTML-escape the title — definitions can contain `→`, `&`,
-            # quotes, and other browser-significant characters.
-            from html import escape as _esc
-            title_attr = f' title="{_esc(definitions[key], quote=True)}"'
-        return f'<sup class="{klass}"{title_attr}>[{letter}{number}]</sup>'
+            esc = _esc(definitions[key], quote=True)
+            attrs = f' title="{esc}" data-tooltip="{esc}" tabindex="0"'
+        return f'<sup class="{klass}"{attrs}>[{letter}{number}]</sup>'
 
     html = _FOOTNOTE_PERSONA_MARKER_RE.sub(_persona_replacer, html)
 
-    # Legacy plain `[1]` markers (no persona). Skip ones that were
-    # already wrapped above.
+    # Legacy plain `[1]` markers (no persona). Skip ones already wrapped.
     def _plain_replacer(m: re.Match[str]) -> str:
         if "<sup" in (m.string[max(0, m.start() - 10): m.start()]):
             return m.group(0)  # already wrapped
         number = m.group(1)
-        title_attr = ""
+        attrs = ""
         if number in definitions:
-            from html import escape as _esc
-            title_attr = f' title="{_esc(definitions[number], quote=True)}"'
-        return f'<sup class="ia-fn"{title_attr}>[{number}]</sup>'
+            esc = _esc(definitions[number], quote=True)
+            attrs = f' title="{esc}" data-tooltip="{esc}" tabindex="0"'
+        return f'<sup class="ia-fn"{attrs}>[{number}]</sup>'
 
     html = _FOOTNOTE_PLAIN_MARKER_RE.sub(_plain_replacer, html)
     return html

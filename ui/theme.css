@@ -1309,8 +1309,65 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] [data-testid="stExp
 .ia-fn-s { color: var(--p-sentiment); border-color: rgba(255,126,179,.3); }
 .ia-fn-p { color: var(--p-portfolio); border-color: rgba(194,148,255,.3); }
 .ia-fn-v { color: #FFB85F;            border-color: rgba(255,184,95,.3); }
-/* Cursor cue for the browser-native title-tooltip on populated markers */
-.ia-fn[title] { cursor: help; }
+
+/* Tooltip on hover (desktop) AND focus (mobile after tap).
+   `data-tooltip` is preferred over the browser's native `title` for
+   two reasons: title-tooltips don't work on mobile (no hover events),
+   and we get full styling control. The marker is focusable
+   (`tabindex="0"` set in the renderer) so a single tap brings it up,
+   second tap elsewhere dismisses. The popup is positioned absolutely
+   below the marker, with a max-width so long source-explanations
+   wrap nicely instead of pushing off-screen. */
+.ia-fn[data-tooltip] {
+  cursor: help;
+  position: relative;
+  outline: none;
+}
+.ia-fn[data-tooltip]:hover::after,
+.ia-fn[data-tooltip]:focus::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-2);
+  color: var(--ink-0);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  padding: 6px 10px;
+  font-family: var(--ia-mono);
+  font-size: var(--t-meta);
+  font-weight: 400;
+  letter-spacing: var(--ls-tight);
+  text-transform: none;
+  line-height: 1.45;
+  white-space: normal;
+  width: max-content;
+  max-width: 320px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 100;
+  pointer-events: none;
+}
+/* Tiny arrow on top of the tooltip box */
+.ia-fn[data-tooltip]:hover::before,
+.ia-fn[data-tooltip]:focus::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-bottom-color: var(--line-2);
+  z-index: 100;
+  pointer-events: none;
+}
+@media (max-width: 480px) {
+  /* On narrow phones the 320px max would push off-screen — tighten. */
+  .ia-fn[data-tooltip]:hover::after,
+  .ia-fn[data-tooltip]:focus::after {
+    max-width: 240px;
+  }
+}
 
 /* ─────────────────────────  RIGHT-SIDE ACTIVITY PANEL  ─────────────────────
    Position-fixed overlay anchored to the right edge. The :has() selector
