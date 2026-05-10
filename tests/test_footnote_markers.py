@@ -168,6 +168,63 @@ def test_style_marker_definition_wins_over_fallback():
 
 
 # ---------------------------------------------------------------------------
+# Combined markers — `[Q1, Q2]`, `[R1, R2, R3]`, etc.
+#
+# LEAD sometimes writes the combined form when several tool calls back
+# the same sentence. The parser must render each as a separate sup
+# with its own tooltip, NOT leave the bracket-with-comma unstyled.
+# ---------------------------------------------------------------------------
+
+
+def test_style_combined_markers_split_into_separate_sups():
+    """`[Q1, Q2]` becomes two separate <sup> badges, each with its
+    own persona color + tooltip."""
+    defs = {
+        "Q1": "quant · search-companies",
+        "Q2": "quant · get-fundamentals",
+    }
+    out = _style_footnote_markers("Sammon ROE[Q1, Q2] on 14 %.", defs)
+    # Two distinct sup tags emitted
+    assert out.count('<sup') == 2
+    # Both keep persona color
+    assert out.count('ia-fn-q') == 2
+    # Each gets its own tooltip
+    assert 'title="quant · search-companies"' in out
+    assert 'title="quant · get-fundamentals"' in out
+    # The literal "[Q1, Q2]" combined form must NOT survive in the output
+    assert '[Q1, Q2]' not in out
+    # Both Q1 and Q2 surfaces appear
+    assert '[Q1]' in out
+    assert '[Q2]' in out
+
+
+def test_style_combined_markers_mixed_personas():
+    """Combined markers can mix personas: `[Q1, R2, S3]` — each gets
+    its own persona color class."""
+    out = _style_footnote_markers("Vertailu[Q1, R2, S3] osoittaa…", {})
+    assert 'ia-fn-q' in out
+    assert 'ia-fn-r' in out
+    assert 'ia-fn-s' in out
+    # Three separate sups, not one combined
+    assert out.count('<sup') == 3
+
+
+def test_style_combined_markers_handles_whitespace_variants():
+    """`[Q1,Q2]` (no spaces), `[Q1, Q2]`, `[Q1 , Q2]` — all should work."""
+    for variant in ("[Q1,Q2]", "[Q1, Q2]", "[Q1 , Q2]", "[ Q1, Q2 ]"):
+        out = _style_footnote_markers(f"X{variant} Y", {})
+        assert out.count('<sup') == 2, f"failed on variant: {variant!r}"
+
+
+def test_style_legacy_single_marker_still_works_after_combined_support():
+    """Adding combined-marker support must not break the single-marker
+    case — still emits one styled sup."""
+    out = _style_footnote_markers("Suositus[Q1] on Vähennä.", {})
+    assert out.count('<sup') == 1
+    assert 'ia-fn-q' in out
+
+
+# ---------------------------------------------------------------------------
 # _style_footnote_markers — legacy plain markers
 # ---------------------------------------------------------------------------
 

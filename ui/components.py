@@ -1637,9 +1637,18 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
 # definition is found.
 # ────────────────────────────────────────────────────────────────────
 
-# Persona-prefixed marker (canonical, post-2026-05-10):
-#   [Q1], [R2], [S3], [V4], [P5]
-_FOOTNOTE_PERSONA_MARKER_RE = re.compile(r"\[([QRSVP])(\d+)\]")
+# Persona-prefixed marker (canonical, post-2026-05-10).
+# Matches:
+#   [Q1], [R2], [S3], [V4], [P5]                            — single
+#   [Q1, Q2], [R1, R2, R3], [Q1,Q2,S3], [S2, S2]            — combined
+# LEAD sometimes writes a combined form when several tool calls back
+# the same sentence. We match the whole bracket and split inside the
+# replacer so each marker gets its own colored sup + tooltip.
+_FOOTNOTE_PERSONA_MARKER_RE = re.compile(
+    r"\[(\s*[QRSVP]\d+(?:\s*,\s*[QRSVP]\d+)*\s*)\]"
+)
+# Used to split the captured group into individual markers.
+_INDIVIDUAL_PERSONA_MARKER_RE = re.compile(r"([QRSVP])(\d+)")
 
 # Legacy plain marker — surviving runs from before persona prefixes.
 _FOOTNOTE_PLAIN_MARKER_RE = re.compile(r"\[(\d{1,3})\]")
@@ -1730,21 +1739,36 @@ def _style_footnote_markers(html: str, definitions: dict[str, str] | None = None
     # the source). `tabindex="0"` makes the <sup> focusable on tap.
     from html import escape as _esc
 
-    def _persona_replacer(m: re.Match[str]) -> str:
-        letter, number = m.group(1), m.group(2)
+    def _build_single_sup(letter: str, number: str) -> str:
+        """Render one [X<n>] marker as a colored, tooltipped <sup>."""
         css_suffix = _PERSONA_LETTER_TO_CSS.get(letter, "")
         klass = f"ia-fn ia-fn-{css_suffix}" if css_suffix else "ia-fn"
         key = f"{letter}{number}"
         # Definition wins; fall back to a persona-name tooltip when LEAD
-        # forgot to emit the Lähdeviittaukset block (Flash Lite drops
-        # it ~30 % of the time on long syntheses). Better than no
-        # tooltip at all.
-        tooltip_body = definitions.get(key) or _PERSONA_LETTER_TO_FALLBACK_TOOLTIP.get(letter)
+        # forgot to emit the Lähdeviittaukset block.
+        tooltip_body = (
+            definitions.get(key)
+            or _PERSONA_LETTER_TO_FALLBACK_TOOLTIP.get(letter)
+        )
         attrs = ""
         if tooltip_body:
             esc = _esc(tooltip_body, quote=True)
             attrs = f' title="{esc}" data-tooltip="{esc}" tabindex="0"'
         return f'<sup class="{klass}"{attrs}>[{letter}{number}]</sup>'
+
+    def _persona_replacer(m: re.Match[str]) -> str:
+        # Inside the captured group, find each individual `Xn` marker
+        # and render one <sup> per marker. `[Q1, Q2]` becomes
+        # `[Q1][Q2]` visually — each its own colored badge with its
+        # own tooltip. This is more useful than a single combined
+        # badge because each tool-call source can be inspected
+        # separately.
+        inner = m.group(1)
+        parts: list[str] = []
+        for sub in _INDIVIDUAL_PERSONA_MARKER_RE.finditer(inner):
+            letter, number = sub.group(1), sub.group(2)
+            parts.append(_build_single_sup(letter, number))
+        return "".join(parts)
 
     html = _FOOTNOTE_PERSONA_MARKER_RE.sub(_persona_replacer, html)
 
