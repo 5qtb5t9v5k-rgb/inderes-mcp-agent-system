@@ -37,9 +37,13 @@ from .roe_selection import (
 )
 
 # Match the first ```json ... ``` (or just ``` ... ```) fenced block in the text.
-# Greedy-but-non-overlapping; the agent emits exactly one per prompt.
+# Body can be either a JSON object `{...}` (single-company, expected) or a
+# JSON array `[...]` (multi-company; happens when the agent ignores the
+# per-fan-out scope and dumps all companies in one response — the parser
+# below handles both shapes).
+# Greedy-but-non-overlapping; the agent emits exactly one fenced block per prompt.
 _JSON_BLOCK_RE = re.compile(
-    r"```(?:json)?\s*\n(?P<body>\{.*?\})\s*\n?```",
+    r"```(?:json)?\s*\n(?P<body>[\{\[].*?[\}\]])\s*\n?```",
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -316,6 +320,8 @@ def _validate_roe_against_rule(
 
 def parse(
     raw_text: str,
+    *,
+    expected_company: str | None = None,
 ) -> ValuationAgentOutput | ValuationAgentSkipped:
     """Parse + validate one valuation-agent response.
 
@@ -325,6 +331,12 @@ def parse(
         (loss-making company, missing data, etc.)
 
     Raises ``ValuationParseError`` on malformed or schema-violating output.
+
+    ``expected_company`` (optional) — when set, narrows multi-company
+    responses to the matching entry. Useful when the fan-out worker
+    instance dumped all companies into a single JSON array instead of
+    just the one it was asked about. Matched case-insensitively against
+    the ``company`` field in each list element.
     """
     json_str = _extract_json_block(raw_text)
     try:
@@ -333,6 +345,55 @@ def parse(
         raise ValuationParseError(
             f"JSON parse failed: {exc}", raw_text=raw_text
         ) from exc
+
+    # ── Multi-company array: select the relevant element ──
+    # The agent sometimes emits `[{...sampo...}, {...nordea...}, {...aktia...}]`
+    # in every fan-out worker's response (BACKLOG: Wk 2 must-fix). We pick
+    # the matching company if asked, otherwise fall through if there's
+    # exactly one element to disambiguate.
+    if isinstance(blob, list):
+        if not blob:
+            raise ValuationParseError(
+                "JSON root is an empty array — no valuation data",
+                raw_text=raw_text,
+            )
+        if len(blob) == 1:
+            blob = blob[0]
+        elif expected_company is not None:
+            target = expected_company.strip().lower()
+            matches = [
+                item for item in blob
+                if isinstance(item, dict)
+                and isinstance(item.get("company"), str)
+                and item["company"].strip().lower() == target
+            ]
+            if not matches:
+                companies_in_array = [
+                    item.get("company") for item in blob if isinstance(item, dict)
+                ]
+                raise ValuationParseError(
+                    f"Multi-company JSON array did not contain expected "
+                    f"company {expected_company!r}. Companies found: "
+                    f"{companies_in_array}",
+                    raw_text=raw_text,
+                )
+            if len(matches) > 1:
+                raise ValuationParseError(
+                    f"Multi-company JSON array contained {len(matches)} "
+                    f"entries for {expected_company!r} — ambiguous",
+                    raw_text=raw_text,
+                )
+            blob = matches[0]
+        else:
+            companies_in_array = [
+                item.get("company") for item in blob if isinstance(item, dict)
+            ]
+            raise ValuationParseError(
+                f"JSON root is a multi-company array ({len(blob)} entries: "
+                f"{companies_in_array}) but no expected_company was provided "
+                f"to disambiguate",
+                raw_text=raw_text,
+            )
 
     if not isinstance(blob, dict):
         raise ValuationParseError(

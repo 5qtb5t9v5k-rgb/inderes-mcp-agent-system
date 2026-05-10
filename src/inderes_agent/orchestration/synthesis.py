@@ -419,7 +419,10 @@ def _process_valuation_subagents(
             continue
 
         try:
-            parsed = parse_valuation_agent(sr.text)
+            # Pass the fan-out worker's expected company so the parser can
+            # disambiguate when the agent dumps a multi-company JSON array
+            # in every worker's response (Wk 2 fix).
+            parsed = parse_valuation_agent(sr.text, expected_company=company)
         except ValuationParseError as exc:
             log.warning("valuation-parser failed for %s: %s", company, exc)
             records.append(ValuationRecord(

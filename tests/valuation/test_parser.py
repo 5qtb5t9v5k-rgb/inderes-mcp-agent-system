@@ -448,3 +448,132 @@ def test_sibling_field_not_absorbed() -> None:
     text = f"**Ajatus:** test.\n\n```json\n{_json.dumps(blob)}\n```"
     with pytest.raises(ValuationParseError, match="g_rationale"):
         parse(text)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-company JSON array handling (Wk 2 fix — production bug from BACKLOG)
+#
+# Production bug: when valuation runs as a per-company fan-out (e.g. comparing
+# Sampo + Nordea + Aktia), the agent sometimes ignores the per-fan-out scope
+# and returns a JSON array containing all three companies in EVERY worker's
+# response. The parser used to reject this with "JSON root is not an object",
+# which made every multi-company comparison fall back to Tila B ("honest no
+# valuation"). The fix: accept arrays, narrow to the expected company, fail
+# loudly only when truly ambiguous.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _array_text(*objects) -> str:
+    """Build an agent-style fenced ```json [...] ``` array from raw JSON objects."""
+    import json as _json
+    body = _json.dumps(list(objects))
+    return f"**Ajatus:** test.\n\n```json\n{body}\n```"
+
+
+def _build_company_blob(company: str, **overrides):
+    """Helper: produce the inner JSON dict for one company (no fence)."""
+    base = {
+        "company": company, "company_id": f"COMPANY:{abs(hash(company)) % 999}",
+        "ticker": company.upper().replace(" OYJ", ""),
+        "bvps": 10.0, "bvps_date": "2025-12-31",
+        "price": 12.0, "price_date": "2026-05-08",
+        "roe_used": 0.15, "roe_version": "5y_median",
+        "roe_history": {
+            "raw": _DEFAULT_RAW, "lfy": 0.15, "3y_median": 0.15,
+            "5y_median": 0.15, "trend_weighted": 0.15, "trend_label": "vakaa",
+        },
+        "k": 0.09, "g": 0.05,
+        "k_rationale": "test", "g_rationale": "test",
+        "roe_rationale": "test", "warnings": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_array_with_single_element_is_unwrapped() -> None:
+    """If the array contains exactly one entry, use it (no ambiguity)."""
+    text = _array_text(_build_company_blob("Sampo Oyj"))
+    result = parse(text)
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.company == "Sampo Oyj"
+
+
+def test_array_with_expected_company_picks_match() -> None:
+    """Production case: 3 companies in array, parser finds the right one."""
+    text = _array_text(
+        _build_company_blob("Sampo Oyj", price=39.0),
+        _build_company_blob("Nordea Bank", price=10.5),
+        _build_company_blob("Aktia Bank", price=8.2),
+    )
+    result = parse(text, expected_company="Nordea Bank")
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.company == "Nordea Bank"
+    assert result.price == 10.5
+
+
+def test_array_match_is_case_insensitive_and_strips_whitespace() -> None:
+    """Real agent outputs sometimes have casing drift."""
+    text = _array_text(
+        _build_company_blob("Sampo Oyj"),
+        _build_company_blob("Nordea Bank"),
+    )
+    # User-supplied company names may differ in case from the agent's output
+    result = parse(text, expected_company="  sampo oyj  ")
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.company == "Sampo Oyj"
+
+
+def test_array_without_expected_company_raises_ambiguous() -> None:
+    """≥2 entries + no expected_company → can't disambiguate."""
+    text = _array_text(
+        _build_company_blob("Sampo Oyj"),
+        _build_company_blob("Nordea Bank"),
+    )
+    with pytest.raises(ValuationParseError, match="multi-company array"):
+        parse(text)
+
+
+def test_array_with_no_matching_company_raises() -> None:
+    """Expected company not in the array — diagnostic error message."""
+    text = _array_text(
+        _build_company_blob("Sampo Oyj"),
+        _build_company_blob("Nordea Bank"),
+    )
+    with pytest.raises(ValuationParseError, match="did not contain expected"):
+        parse(text, expected_company="Aktia Bank")
+
+
+def test_empty_array_raises() -> None:
+    """Empty `[]` is not a valid valuation."""
+    text = _array_text()
+    with pytest.raises(ValuationParseError, match="empty array"):
+        parse(text)
+
+
+def test_array_with_duplicate_match_raises() -> None:
+    """Same company appears twice in the array — parser refuses to guess."""
+    text = _array_text(
+        _build_company_blob("Sampo Oyj", price=39.0),
+        _build_company_blob("Sampo Oyj", price=40.0),
+    )
+    with pytest.raises(ValuationParseError, match="ambiguous"):
+        parse(text, expected_company="Sampo Oyj")
+
+
+def test_array_with_skipped_entry_works() -> None:
+    """Multi-company array can contain valid=false entries — parser still
+    finds the matched (skipped) one."""
+    text = _array_text(
+        _build_company_blob("Sampo Oyj"),
+        {"company": "LossCo Oyj", "valid": False, "warnings": ["loss-making"]},
+    )
+    result = parse(text, expected_company="LossCo Oyj")
+    assert isinstance(result, ValuationAgentSkipped)
+    assert result.company == "LossCo Oyj"
+
+
+def test_single_company_object_still_works_without_expected() -> None:
+    """The non-array path is unchanged — backwards compat."""
+    result = parse(SAMPO_GOOD)  # no expected_company passed
+    assert isinstance(result, ValuationAgentOutput)
+    assert result.company == "Sampo Oyj"
