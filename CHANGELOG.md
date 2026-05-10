@@ -4,7 +4,188 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com); the project does not yet follow
 [SemVer](https://semver.org) strictly.
 
-## [unreleased] — 2026-05-10
+## [unreleased] — 2026-05-10 (afternoon — Wk 2 foundation + quick wins)
+
+### Added — CI gate (`0a16299`)
+
+First automated test gate on `main`. Closes the Wk 2 #1 priority
+in BACKLOG §6 ("smoke test in pytest CI") and the gap that let the
+morning's `render_feedback_widget` ImportError run on Streamlit
+Cloud unnoticed for ~4 hours.
+
+- **`.github/workflows/ci.yml`** — runs ruff + pytest on every push
+  and PR to `main`. Concurrency cancellation, uv-cache on lock-hash,
+  GEMINI_API_KEY=dummy injection. Ruff format gate intentionally
+  NOT enabled yet (would reformat 33 files; deferred to a separate
+  cleanup commit).
+- **`tests/test_app_imports.py`** — smoke test mimicking Streamlit's
+  runtime sys.path setup; imports `ui/components.py`, py_compiles
+  `ui/app.py`, asserts every name in `from components import (…)`
+  resolves. Would have caught the morning's regression at PR time.
+- Same commit fixed: stale tests after a recent refactor
+  (`test_output_parts.py` × 7, `test_workflows.py` × 3), 68 ruff
+  auto-fixes, and a real bug found by `ruff F821`: `ui/app.py` used
+  `DOMAIN_VERBS_EN` without importing it — would have crashed for
+  English-language users.
+
+### Added — multi-company valuation parser fix (`5f581c5`)
+
+Production bug: when valuation runs as a per-company fan-out (e.g.
+Sampo + Nordea + Aktia), the agent occasionally emits a JSON array
+containing all companies in EVERY worker's response. Pre-fix parser
+rejected non-object roots → silent fall-through to Tila B for every
+multi-company comparison. Single-company queries unaffected, so the
+bug hid for an unknown duration.
+
+- **`valuation/parser.py`** — accepts JSON arrays at the root.
+  `parse()` takes optional `expected_company` keyword to disambiguate.
+  Single-element arrays unwrap; ≥2 entries with no expected company
+  is loud failure (with the list of companies found); duplicate
+  matches refuse to guess.
+- **`orchestration/synthesis.py`** — passes the fan-out worker's
+  `company` name to `parse()` at the only call site.
+- **`tests/valuation/test_parser.py`** — 9 new tests covering
+  single-element unwrap, 3-company match (the production case),
+  case-insensitive matching, ambiguous-without-expected, no-match,
+  empty array, duplicate match, mixed valid+skipped, single-object
+  backwards-compat.
+
+### Added — OAuth runtime tests (`c78607e`)
+
+`mcp/oauth.py` (573 LOC) had ZERO unit tests; single largest Tier-A
+coverage gap from `docs/testing_strategy.md`. The morning's Streamlit
+Cloud failure ran along this exact path (stale `/tmp` tokens.json
+fighting fresh gist copy). 16 new tests:
+
+- **TokenSet behaviour** (4): freshness, refresh-buffer staleness,
+  forward-compat `from_dict` (gist tokens.json carries cron-worker
+  bookkeeping fields), to/from round-trip.
+- **`_refresh_tokens`** (4): happy path; 400 invalid_grant returns
+  None; no refresh token returns None without a network call;
+  response missing `refresh_token` keeps the old one.
+- **Gist push/pull** (5): silent no-op when env vars missing; PATCH
+  with auth header; GET happy path; missing tokens.json returns
+  None; network exception returns None.
+- **`_load_tokens` priority order** (3): first call within process
+  pulls gist and overwrites stale local cache (the morning's bug);
+  subsequent calls hit local cache only; corrupt cache falls
+  through to env bootstrap.
+
+OAuth coverage: 0 % → ~70 % of public surface. Mocking via
+`monkeypatch` on `httpx`; no new dev-deps.
+
+### Added — case_008 + eval status audit (`7a07d06`)
+
+New regression case for the parser bug above, plus a status-audit
+document mapping the 2026-05-09 baseline ("12 pass / 4 fail")
+against fix commits shipped since.
+
+- **`evals/golden.yaml`** —
+  `case_008_multi_company_valuation_comparison` with 10 hard
+  assertions and 3 soft assertions. Exercises the comparison-floor
+  (case_001) and hard-limits (case_006) chain end-to-end.
+- **`evals/findings_2026-05-10.md`** — re-baseline status check.
+  Predicts post-rerun result of 7/8 pass at the case level.
+  Documents what's still missing from coverage: cost-ceiling per
+  case (lands with HITL Step 1), eval-runner CI hook, BUY-only
+  insider quality case, Walkthrough placeholder for Wk 5-6.
+
+### Added — golden.yaml structural CI (`89e8d78`)
+
+`tests/test_evals_yaml.py` — 9 deterministic tests catching yaml
+mistakes that would otherwise only surface during a manual
+`evals/runner.py` run:
+
+- golden.yaml parses, has at least one case; case IDs unique;
+  every case has id + query_match + (hard OR soft) + rationale.
+- Every hard assertion is a syntactically valid Python expression.
+- Every hard assertion only references names exposed by
+  `runner.py:_eval_context` (catches typos like `routing.domain`
+  singular, `tool_calls` instead of `tc_count_per_agent`, etc.).
+- Soft assertions are `{snake_case_key: rubric_string}` dicts.
+- Tier-1 baseline cases remain present — removing one flags
+  in PR review.
+
+Subtle bit: the AST walker for "names referenced" excludes
+comprehension-bound targets, so `all(r.has_synthesis for r in runs)`
+resolves correctly. First-pass implementation got this wrong; the
+failing test caught its own implementation bug.
+
+### Added — smart insider taxonomy + transcript-default (`64c8309`)
+
+Two prompt-quality changes (Wk 2b) plus a docs correction.
+
+**SENTIMENT — `sentiment.md`.** Earlier draft proposed `types=["BUY"]`
+as the default; user push-back caught the cherry-pick — sells ARE
+signal. Real problem was undifferentiated compulsory share-premium
+grants drowning voluntary trades.
+
+Fix at description layer, not data layer:
+- Tool default no longer filters by type; full picture (50 most
+  recent in window).
+- New "Insider transaction taxonomy" section enumerates 19
+  `transactionType` values into three buckets:
+  - **A. Voluntary trades (TRUE signal)** — BUY, SELL, SUBSCRIPTION,
+    EXERCISE_OF_*, SHORT_SELL.
+  - **B. Compensation flow (NOT signal)** — RECEPTION_OF_SHARE_PREMIUM,
+    APPROVAL_OF_SHARE_OPTION, GIFTs, MATURITY_OF_PRODUCT.
+  - **C. Risk indicators** — PLEDGE, BORROWING, LENDING.
+- Net direction computed only over Bucket A; compensation context
+  reported separately. Single voluntary trades >€1M named explicitly.
+
+**RESEARCH — `research.md`.** Workflow case for investment-thesis
+questions: pull `list-transcripts` + `get-transcript` alongside the
+report when query keywords match ("näkymä", "strategia", "kasvu",
+"riskit", "outlook", "thesis", etc.). Management's own words under
+analyst Q&A pressure beat a synthesised summary.
+
+(Initial version added 36 lines; that triggered fabrication-guard
+regressions on Flash-Lite by diluting the HARD GATE — see
+`LESSONS.md` "Prompt length erodes hard gates". Tightened to 6
+lines in a follow-up edit.)
+
+**Docs correction — `data_sources_analysis_2026-05-10.md`.**
+Verified `get-fundamentals` against Sampo (1:5 split in 2024):
+server returns split-adjusted prices, "Plotly cliff" bug doesn't
+exist. Two struck-through sections plus verification notes.
+
+### Changed — `.env` default model
+
+`PRIMARY_MODEL` flipped from `gemini-3.1-flash-lite-preview` to
+`gemini-2.5-flash` after fabrication-guard regressions on the
+weaker model. Cost ~4× per query (~$0.005 → ~$0.020) but
+instruction-following on RESEARCH/QUANT prompts noticeably more
+reliable. `gemini-3.1-flash-lite-preview` remains an option via
+env override for cost-sensitive workloads. Backup file
+`.env.bak` retained.
+
+### Added — HITL proposal + testing strategy docs (`085ab8a`)
+
+Two design docs grounded in the morning's findings (sync audit,
+code structure, test coverage 48 %, no CI). Senior-PM call: do Wk 2
+in two parallel tracks — foundation (CI + tests) and learning
+feature (HITL Level 1).
+
+- **`docs/hitl_proposal.md`** (Human-in-the-Loop, Level 1 MVP) —
+  Pre-flight estimate + risk-tier gate + accept/cancel UI + token/
+  cost tracking + estimator accuracy log. Explicit learning
+  hypotheses: cost-estimator MAPE per query class, gate-show %,
+  cancel/approve ratio. Decision points after 2 weeks of data
+  drive whether Level 2 (mid-run checkpoints) is worth building.
+- **`docs/testing_strategy.md`** — Tier A/B/C module classification,
+  test-category guide (unit/integration/eval/smoke), CI strategy,
+  agent-specific testing patterns at 5 ROI-ranked levels (builder,
+  prompt sanity, output schema, tool-call mocks, evals). Wk 2
+  testing tasks itemised. Anti-patterns explicit.
+
+### Repo hygiene — branch cleanup
+
+23 stale remote branches deleted; `git branch -a` shrank from
+~24 lines to 2. All squash-merged into `main`; no unique work
+recovered. Diagnostic + recipe captured in `LESSONS.md` "Branch
+hygiene needs automation, not discipline".
+
+---
 
 ### Added — eval foundation (Tier 0 + Tier 1)
 

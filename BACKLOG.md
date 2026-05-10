@@ -1,7 +1,9 @@
 # Backlog
 
 A single-file overview of what's done, in flight, paused, and worth thinking
-about. Last updated 2026-05-10 (afternoon, post-MCP-depth audit).
+about. Last updated 2026-05-10 (evening — Wk 2 foundation + quick wins
+shipped; eval baseline status audit + branch cleanup; see CHANGELOG and
+`docs/agentic_dev_session_2026-05-10.md` for the full session arc).
 
 ## Status markers
 
@@ -54,33 +56,59 @@ phase lives elsewhere in the backlog as its own item; this section is the
 
 ### Timeline (2026-05-10 re-prioritisation — see `docs/sprint_lessons_2026-05-09.md`)
 
-| Wk | Phase | Items | Why now |
+| Wk | Phase | Items | Status |
 |---|---|---|---|
-| 1 | **Plotly charts for QUANT** *(1 d)* | §3 → ROE/P/E timeline + peer comparison. `st.plotly_chart` natively. | User-stated top priority; biggest visible-delta-per-hour. Promoted from §3 strategic-large. |
-| 1 | **Hard limits at orchestration boundary** *(0.5 d)* | §4 → max_iter / max_tool_calls / max_cost / max_duration / kill switch | OWASP T1 — prerequisite for all multi-agent expansion. Belt to today's HARD-GATE prompt-side enforcement. |
-| 1 | **👍 / 👎 feedback in UI** *(0.5 d)* | §6 step 1 — `feedback.json` per run | Seeds golden.yaml with real labels; one evening, paid back by every subsequent eval cycle |
-| 2 | **Reflexion / retry on weird output** *(1 d)* | §1 → "#2 Reflection + retry" — per-subagent + pipeline-level | User asked explicitly. Would have prevented 4/5 of today's bugs structurally. |
-| 2 | **Footnote markers + sources panel** *(1 d)* | §1 → activates dead `.ia-fn` CSS. Per-claim `[¹]` → tool call provenance | User asked explicitly. BCBS 239 lineage in user-visible form. |
-| 3 | **Per-claim confidence scoring** *(0.5 d)* | §1 → 🟢🟡🔴 markers. Subagents report 1–5/claim, LEAD propagates | Extends footnotes; user-visible "how much should I trust this number" signal |
-| 3 | **Smoke test in pytest CI** *(0.5 d)* | §6 step 2 — 5–10 known-good queries gated by CI | Locks regressions automatically |
-| 3 | **Tier 2 Supabase migration** *(1–2 h)* | §8 — runs + judgments queryable cross-device | Solo-developer-ergonomics priority surfaced today (relogin from phone blocked) |
-| 4+ | **Devil's advocate** *(2 h)* | §1 — was Wk 1, demoted | Reflexion covers similar trust territory more deeply |
-| 4+ | **Frontend rewrite (Polku B / hybrid)** *(1.5–2 wk)* | §8 → FastAPI + Next.js + Vercel AI SDK | After visible features in Streamlit; rewrite when the contract is clear |
-| 5+ | **Bull/Bear debate** | §1 → "#8 Bull/Bear" + judge | Depends on hard limits + eval foundation locked |
-| 5–6 | **Analyst Walkthrough — in-depth scoring** *(2–3 d)* | §12 → 6-dimension qualitative+quantitative report from multiple Inderes analyst reports | User-proposed flagship feature. Needs Reflexion (Wk 2) + confidence (Wk 3) + Tier 2 (Wk 3) as foundation. Ships alongside Bull/Bear because the same trust scaffolding gates both. |
-| 5+ | **Auto-orchestrator (Magentic ledger)** | §1 + §9 — meta-router decides tier + features | Depends on all above |
-| 6+ | **Autonomous nightly eval + self-repair** | §10 — cron, prompts-only auto-fixes | Needs Tier 2 + smoke test foundation first |
+| 1 | **Plotly charts for QUANT** *(1 d)* | §3 → ROE/P/E timeline + peer comparison | ✅ shipped |
+| 1 | **Hard limits at orchestration boundary** *(0.5 d)* | §4 → max_iter / max_tool_calls / max_cost / max_duration / kill switch (OWASP T1) | ✅ shipped |
+| 1 | **👍 / 👎 feedback in UI** *(0.5 d)* | §6 step 1 — `feedback.json` per run | ✅ shipped |
+| **2a** | **CI gate (pytest + ruff)** *(0.5 d)* | §6 step 2 — was Wk 3, pulled in after morning's deploy incident | ✅ shipped (`0a16299`) |
+| **2a** | **Multi-company valuation parser fix** *(0.5 d)* | §2 — production bug; agent emits JSON array in fan-out, parser rejected; now accepts arrays + disambiguates by company | ✅ shipped (`5f581c5`) |
+| **2a** | **OAuth runtime tests** *(0.5 d)* | §4 — 16 tests covering refresh, gist sync, _load_tokens priorities; was zero coverage on 573 LOC | ✅ shipped (`c78607e`) |
+| **2a** | **case_008 + eval status audit** *(2 h)* | §6 — multi-company regression case + status doc that 4 fail-cases from 2026-05-09 baseline are already fixed | ✅ shipped (`7a07d06`) |
+| **2a** | **Eval golden.yaml structural CI** *(2 h)* | §6 — yaml validation on every push (no live LLM run, but catches typos/dead names) | ✅ shipped (`89e8d78`) |
+| **2b** | **Smart insider taxonomy in SENTIMENT** *(1 h)* | §1 — 19 transactionType values bucketed (voluntary/compensation/risk); fixes share-premium drowning out signal | ✅ shipped (`64c8309`) |
+| **2b** | **Transcript-default for thesis queries** *(0.5 h)* | §1 — RESEARCH pulls `list-transcripts` + `get-transcript` on outlook/strategy/risk queries | ✅ shipped (`64c8309` + tightened in same window) |
+| 3 | **Reflexion / retry on weird output** *(1 d)* | §1 → "#2 Reflection + retry" — per-subagent + pipeline-level; cost tracking from HITL Step 1 makes retries visible | 🟡 next (depends on cost tracking) |
+| 3 | **Footnote markers + sources panel** *(1 d)* | §1 → activates dead `.ia-fn` CSS. Per-claim `[¹]` → tool call provenance | 🟡 next |
+| 3 | **HITL Step 1 — cost tracking + pre-flight gate** *(1 d)* | new §7 — see `docs/hitl_proposal.md`. Cost tracker + estimator + accept/cancel gate + accuracy log | 💭 spec ready |
+| 3 | **Per-claim confidence scoring** *(0.5 d)* | §1 → 🟢🟡🔴 markers. Subagents report 1–5/claim, LEAD propagates | 💭 |
+| 3 | **Tier 2 Supabase migration** *(1–2 h)* | §8 — runs + judgments queryable cross-device | 💭 |
+| 4+ | **Devil's advocate** *(2 h)* | §1 — was Wk 1, demoted | 💭 |
+| 4+ | **Frontend rewrite (Polku B / hybrid)** *(1.5–2 wk)* | §8 → FastAPI + Next.js + Vercel AI SDK | 💭 |
+| 5+ | **Bull/Bear debate** | §1 → "#8 Bull/Bear" + judge | 💭 |
+| 5–6 | **Analyst Walkthrough — in-depth scoring** *(2–3 d)* | §12 → 6-dimension qualitative+quantitative report. User-proposed flagship feature. | 💭 spec in §12 |
+| 5+ | **Auto-orchestrator (Magentic ledger)** | §1 + §9 — meta-router decides tier + features | 💭 |
+| 6+ | **Autonomous nightly eval + self-repair** | §10 — cron, prompts-only auto-fixes | 💭 |
 
 ### Decision log
 
-- **2026-05-10 (this re-prioritisation)**: After 14 commits in one
-  sprint, user explicitly stated priorities: *charts > retry >
+- **2026-05-10 (evening — Wk 2 retrospective)**: Senior-PM-style
+  user push-back caught two spec errors before they ate engineering
+  hours: (a) the BUY-only insider filter would have hidden real
+  signal (cherry-pick), replaced by smart-taxonomy prompt change;
+  (b) the stock-split adjustment "bug" doesn't exist — MCP returns
+  split-adjusted data server-side, verified live. **0.5–1 d of
+  unnecessary work avoided per error.** New rule of thumb: verify
+  any "found a bug" claim in docs against the actual data source
+  before spec'ing a fix. See `LESSONS.md` "Verify before specifying".
+  Also today: discovery that the four 2026-05-09 eval fail-cases
+  were already fixed in `5e5dea7`/`80c6fd0`/`2039967`/`870749a` —
+  baseline was 5 days stale. Re-baseline cadence added as an
+  outstanding action.
+- **2026-05-10 (afternoon — Wk 2a/2b execution)**: Two parallel
+  tracks chosen over the original "Reflexion + Footnotes" Wk 2 plan.
+  Foundation track (CI + valuation parser fix + OAuth tests + eval
+  structural CI) shipped first to unblock all Wk 3+ work. Quick-wins
+  track (smart insider, transcript-default) shipped second. Reflexion
+  + Footnotes pushed to Wk 3, partially because HITL Step 1's cost
+  tracking is a useful prerequisite for "retries don't silently
+  double the bill".
+- **2026-05-10 (morning — re-prioritisation)**: After 14 commits in
+  one sprint, user explicitly stated priorities: *charts > retry >
   sources/footnotes > evals*. Re-ordered Wk 1–3 to match. Devil's
-  advocate demoted from Wk 1 to Wk 4+ because today's experience
-  showed Reflexion is the more pressing trust-amplifier. Tier 2
-  Supabase promoted into Wk 3 because pushing-from-phone friction
-  was a real blocker today. See `docs/sprint_lessons_2026-05-09.md`
-  for the full rationale + 14-commit lesson breakdown.
+  advocate demoted from Wk 1 to Wk 4+ because Reflexion is the more
+  pressing trust-amplifier. Tier 2 Supabase promoted into Wk 3
+  because pushing-from-phone friction was a real blocker.
 - **2026-05-09 (initial roadmap)**: User chose the *visible-feature-first*
   sequencing over the eval-first ordering. Counter-balanced by
   parallel manual eval scaffold + autonomous nightly system as the

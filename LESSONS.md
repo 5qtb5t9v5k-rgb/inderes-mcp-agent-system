@@ -367,6 +367,148 @@ current makes the build itself faster. Why?
 Roughly: the docs are where the project's intent lives. Without them, you
 end up rediscovering decisions you already made.
 
+### Verify before specifying — your own docs lie
+
+Most "obvious" features turn out smaller (or non-existent) once you
+check them against the actual data source. Two examples from one
+afternoon:
+
+- **The "stock-split adjustment" bug that wasn't.** A line in
+  `data_sources_analysis_2026-05-10.md` flagged the Sampo 1:5 split as
+  the cause of a Plotly P/E "cliff" and proposed a 0.5-day chart-side
+  normalisation feature. Verified by querying `get-fundamentals`
+  directly: prices €7-10 across 2020-2026, sharesTotal 2.5-2.8B for
+  the entire window — i.e. **already split-adjusted server-side**.
+  The "cliff" was either a misread of the historical data or a false
+  memory of an earlier rendering bug. Saved 0.5d of unnecessary work
+  by spending 5 minutes calling the tool.
+
+- **The "BUY-only insider filter" that would have hidden signal.** The
+  same document proposed `types=["BUY"]` as the SENTIMENT default —
+  "order-of-magnitude lift in signal quality". A senior-PM-style push-
+  back (from the user, not from me) caught this immediately: sells
+  ARE signal, especially big-ticket sells and cluster patterns
+  preceding guidance cuts. Filtering them out is cherry-picking. The
+  real problem was that SENTIMENT didn't differentiate compulsory
+  share-premium grants from voluntary on-market trades. Different
+  problem, different fix (taxonomy in the prompt, not a filter at the
+  tool boundary).
+
+The pattern: my own docs (data-source analysis, feature menu) made
+strong claims that didn't survive contact with the data. **Treat
+project documentation as a hypothesis until you've poked it with
+the actual tool.** This is especially true for "found a bug" notes
+written in passing — the verification step is part of the spec
+process, not post-implementation.
+
+Cost-benefit: the MCP tool calls that verified these were free and
+took ~5 minutes total. The features they killed would have been ~1
+day each. The ratio is so lopsided it should be a default workflow
+step.
+
+### Eval baselines decay fast — status audit is a real chore
+
+The Tier 1 eval baseline was recorded 2026-05-09: 12 pass / 4 fail
+across 6 cases. **Five days later, all four fail-cases had shipped
+fixes** in commits `5e5dea7` (router comparison floor), `80c6fd0`
+(päättely schema lift), `2039967` (hard MCP gate broadly), and
+`870749a` (fabrication guard). The baseline number was already
+obsolete; nobody had re-run the suite to update it.
+
+The trap: when you cite "12 pass / 4 fail" in a planning doc, that
+number reads as current state and influences priority calls. In
+this case it nearly led me to spend a Wk 2 sprint "fixing" cases
+that were already fixed.
+
+Two practices that emerged from catching this:
+
+1. **Status audit doc.** `evals/findings_2026-05-10.md` was written
+   purely to map the 2026-05-09 baseline against shipped commits.
+   Predicted post-rerun baseline: 7/8 pass. Cheap (no live LLM run
+   needed), keeps the BACKLOG honest.
+
+2. **Live re-baseline cadence.** A baseline that doesn't get re-run
+   weekly is a baseline that lies. Even more so once a repair-agent
+   loop is shipping prompt-only changes nightly. The §10 autonomous
+   nightly eval is partly a forcing function for this.
+
+Lesson: **a number with a date is a hypothesis after the date.**
+Either re-test or qualify it.
+
+### Prompt length erodes hard gates
+
+The `research.md` prompt has a HARD GATE at the top — explicit, all-
+caps, with concrete failure example:
+
+> A response with ZERO MCP tool calls is automatically rejected as
+> fabrication and discarded by the orchestration boundary.
+
+Verified working in commit `2039967` ("verified locally with 2
+diverse queries, all 6 subagent dispatches made tool calls"). Then
+later, a transcript-default workflow case got added to the same
+prompt — 36 new lines between the HARD GATE block and the output-
+format section. **Fabrication guard started firing again.** Same
+prompt, same gate text at the top, but the gate's effective weight
+in the model's attention budget had decayed because of the new
+content in between.
+
+The fix was not to strengthen the gate text — it was to **delete
+30 of those 36 lines** and fold the transcript guidance into a
+6-line addition to an existing workflow pattern. Prompt went from
+174 lines back to 143 lines. Fabrication stopped.
+
+Three takeaways:
+
+1. **Prompt length is itself part of a hard rule's enforcement.**
+   You can write the gate in 100-point bold but if the prompt is
+   long, weaker models will still drift past it.
+2. **Additive prompt edits compound.** Each PR seems harmless ("just
+   adding 5 lines about transcripts"); over a sprint the prompt
+   doubles and the model behaves differently. Version-control the
+   prompt LENGTH, not just the diff.
+3. **When a previously-working gate starts failing, look at what's
+   been added since, not at the gate itself.** The gate didn't
+   change; everything around it did.
+
+### Branch hygiene needs automation, not discipline
+
+Snapshotted today: 23 stale remote branches. Of those, 22 were
+already squash-merged into `main` — the change had landed but the
+branch pointer was never deleted. The 23rd (`feat/trading-desk-ui`)
+was an early UI iteration that had been entirely superseded by
+~12 follow-up commits to `main`. None of the 23 contained unique
+work; all could be deleted with zero risk.
+
+The buildup happened over ~7 days of solo work, mostly because
+**squash-merge in the GitHub UI doesn't auto-delete the source
+branch unless the repo setting is on**. Each merge-then-forget felt
+free in the moment; together they made `git branch -a` unreadable.
+
+Two minutes of repo configuration would have prevented all of it:
+
+```
+GitHub repo → Settings → Pull Requests
+  ☑ Allow squash merging
+  ☑ Automatically delete head branches    ← this one
+```
+
+Lesson: **the squash-merge workflow is incomplete without auto-
+delete.** Set this on day one of any new repo. Discipline alone
+won't catch up — the branch list grows monotonically until you do a
+big cleanup, and the cleanup is uncomfortable enough that you
+delay it (which I did, for a week).
+
+Bonus: when the cleanup did happen, the diagnostic command was a
+one-liner:
+
+```bash
+git for-each-ref --format='%(refname:short) ahead=%(upstream:track)' refs/heads/
+```
+
+Anything `ahead=0` is fully merged. Anything with `ahead=1` is the
+squash-merge artefact. The handful with `ahead>1` are the only ones
+that need a real review.
+
 ---
 
 ## Things I'd do differently next time
@@ -402,6 +544,33 @@ end up rediscovering decisions you already made.
    week two, and I had to recreate observability for the first week's
    runs by hand. If I rebuilt this from scratch I'd write
    `attach_console_log_handler` + `write_run` before the first agent.
+
+6. **Stand up CI on day one, even if it's only `pytest -q`.** I went
+   nine days without CI. The morning's `render_feedback_widget`
+   ImportError ran on Streamlit Cloud for ~4 hours before I noticed —
+   the symptom was a hot-reload cache issue, but the root cause was
+   that no test had ever imported `app.py`, so no signal existed
+   anywhere. Adding the minimum CI on Wk 2 surfaced two latent bugs
+   immediately (an undefined `DOMAIN_VERBS_EN` reference, two stale
+   tests broken by an unrelated refactor). Each of those would have
+   cost real debugging time when discovered in production. The cost
+   of CI is one yaml file; the value is "regressions land in your CI
+   feed, not your user's complaint".
+
+7. **Verify spec claims against the data source before writing code
+   to fix them.** Two features in `data_sources_analysis_2026-05-10`
+   were specified based on misread data — one for a stock-split bug
+   that doesn't exist (server returns adjusted prices), one for a
+   filter that would have hidden real signal. Both took 5 minutes to
+   verify with a single MCP tool call; both would have cost ~1 day
+   of misdirected work each. **The verification step is part of the
+   spec process, not a sanity check after.**
+
+8. **Set GitHub auto-delete head branches on day one.** Solo work
+   over a week accrued 23 stale remote branches, all squash-merged,
+   none cleaned up. The cleanup was zero-risk (one diagnostic, one
+   command) but felt big enough to delay. The setting is one
+   checkbox; it would have prevented the entire pile.
 
 ---
 
