@@ -108,78 +108,100 @@ def _safe_json_load_inline(text: str) -> Any:
 def _extract_fundamentals_series(
     tool_call: dict[str, Any],
     company_name_fallback: str | None,
-) -> tuple[str | None, dict[str, list[tuple[int, float]]]]:
-    """Parse a single `get-fundamentals` result into per-metric year-series.
+) -> list[tuple[str, dict[str, list[tuple[int, float]]]]]:
+    """Parse a `get-fundamentals` result into per-company per-metric year-series.
 
-    Returns (company_name, {metric_name: [(year, value), ...]}). Skips
-    null values and quarters > 0 (we only chart annual fundamentals).
+    QUANT subagents in comparison fan-outs sometimes batch multiple
+    company IDs into a single `get-fundamentals` call (e.g.
+    `companyIds=["COMPANY:382","COMPANY:258"]` for a Nordea-vs-Sampo
+    query). The Inderes API returns ALL of them in `companies[]`,
+    so we must iterate — taking only `companies[0]` would silently
+    drop the second company's data.
+
+    Returns a list of ``(company_name, {metric: [(year, value), ...]})``
+    tuples — one per company in the response. Empty list when the
+    response is malformed.
     """
     blob = _safe_json_load_inline(tool_call.get("result_text") or "")
     if not isinstance(blob, dict):
-        return None, {}
+        return []
     companies = blob.get("companies") or []
     if not companies:
-        return None, {}
-    co = companies[0]  # one fundamentals call = one company
-    name = co.get("companyName") or company_name_fallback
-    transactions = co.get("transactions") or []
-    if not transactions:
-        return name, {}
-    fundamentals = transactions[0].get("fundamentals") or []
+        return []
 
-    series: dict[str, list[tuple[int, float]]] = {m: [] for m in METRIC_CATALOG}
-    for entry in fundamentals:
-        if entry.get("quarter") not in (0, None):
-            continue  # skip quarterly rows; only chart annual
-        year = entry.get("year")
-        if not isinstance(year, int):
+    out: list[tuple[str, dict[str, list[tuple[int, float]]]]] = []
+    for co in companies:
+        name = co.get("companyName") or company_name_fallback
+        if not name:
             continue
-        for metric in METRIC_CATALOG:
-            value = entry.get(metric)
-            if value is None or not isinstance(value, (int, float)):
+        transactions = co.get("transactions") or []
+        if not transactions:
+            out.append((name, {}))
+            continue
+        fundamentals = transactions[0].get("fundamentals") or []
+
+        series: dict[str, list[tuple[int, float]]] = {m: [] for m in METRIC_CATALOG}
+        for entry in fundamentals:
+            if entry.get("quarter") not in (0, None):
+                continue  # skip quarterly rows; only chart annual
+            year = entry.get("year")
+            if not isinstance(year, int):
                 continue
-            series[metric].append((year, float(value)))
-    return name, series
+            for metric in METRIC_CATALOG:
+                value = entry.get(metric)
+                if value is None or not isinstance(value, (int, float)):
+                    continue
+                series[metric].append((year, float(value)))
+        out.append((name, series))
+    return out
 
 
 def _extract_estimates_series(
     tool_call: dict[str, Any],
     company_name_fallback: str | None,
-) -> tuple[str | None, dict[str, list[tuple[int, float]]]]:
-    """Parse a `get-inderes-estimates` result into per-metric year-series.
+) -> list[tuple[str, dict[str, list[tuple[int, float]]]]]:
+    """Parse a `get-inderes-estimates` result into per-company per-metric
+    year-series. Same multi-company batching as fundamentals — iterate
+    every entry in ``companies[]``, not just the first.
 
-    Inderes estimate JSON shape:
+    Inderes estimate JSON shape per company:
         {"estimates": {"period": ["2026", "2027"],
                        "pe": [18.72, 16.0],
                        "dividendYield": [0.0429, 0.045]}}
     """
     blob = _safe_json_load_inline(tool_call.get("result_text") or "")
     if not isinstance(blob, dict):
-        return None, {}
+        return []
     companies = blob.get("companies") or []
     if not companies:
-        return None, {}
-    co = companies[0]
-    name = co.get("companyName") or company_name_fallback
-    transactions = co.get("transactions") or []
-    if not transactions:
-        return name, {}
-    estimates = transactions[0].get("estimates") or {}
-    periods = estimates.get("period") or []
+        return []
 
-    series: dict[str, list[tuple[int, float]]] = {m: [] for m in METRIC_CATALOG}
-    for metric in METRIC_CATALOG:
-        values = estimates.get(metric)
-        if not isinstance(values, list) or not values:
+    out: list[tuple[str, dict[str, list[tuple[int, float]]]]] = []
+    for co in companies:
+        name = co.get("companyName") or company_name_fallback
+        if not name:
             continue
-        for period_str, value in zip(periods, values):
-            if value is None or not isinstance(value, (int, float)):
+        transactions = co.get("transactions") or []
+        if not transactions:
+            out.append((name, {}))
+            continue
+        estimates = transactions[0].get("estimates") or {}
+        periods = estimates.get("period") or []
+
+        series: dict[str, list[tuple[int, float]]] = {m: [] for m in METRIC_CATALOG}
+        for metric in METRIC_CATALOG:
+            values = estimates.get(metric)
+            if not isinstance(values, list) or not values:
                 continue
-            year = _coerce_period_to_year(period_str)
-            if year is None:
-                continue
-            series[metric].append((year, float(value)))
-    return name, series
+            for period_str, value in zip(periods, values):
+                if value is None or not isinstance(value, (int, float)):
+                    continue
+                year = _coerce_period_to_year(period_str)
+                if year is None:
+                    continue
+                series[metric].append((year, float(value)))
+        out.append((name, series))
+    return out
 
 
 _YEAR_RE = re.compile(r"\d{4}")
@@ -229,31 +251,30 @@ def extract_time_series_from_run(run_dir: Path) -> dict[str, dict[str, Any]]:
         for tc in sub.get("tool_calls") or []:
             tool_name = tc.get("name")
             if tool_name == "get-fundamentals":
-                name, series = _extract_fundamentals_series(tc, company_fallback)
+                per_company = _extract_fundamentals_series(tc, company_fallback)
             elif tool_name == "get-inderes-estimates":
-                name, series = _extract_estimates_series(tc, company_fallback)
+                per_company = _extract_estimates_series(tc, company_fallback)
             else:
                 continue
-            if not name:
-                continue
-            for metric, points in series.items():
-                if not points:
-                    continue
-                slot = result.setdefault(metric, {
-                    "label": METRIC_CATALOG[metric]["label_fi"],
-                    "label_en": METRIC_CATALOG[metric]["label_en"],
-                    "axis_format": METRIC_CATALOG[metric]["axis_format"],
-                    "decimals": METRIC_CATALOG[metric]["decimals"],
-                    "min_points": METRIC_CATALOG[metric]["min_points"],
-                    "companies": {},
-                })
-                co_slot = slot["companies"].setdefault(name, {"actuals": [], "estimates": []})
-                # Categorise by tool: get-fundamentals → actuals,
-                # get-inderes-estimates → estimates. The list-merge
-                # below dedupes by (year) — last one wins, which is
-                # fine because both sides are sorted ascending.
-                key = "actuals" if tool_name == "get-fundamentals" else "estimates"
-                co_slot[key].extend(points)
+            # Categorise by tool: get-fundamentals → actuals,
+            # get-inderes-estimates → estimates.
+            key = "actuals" if tool_name == "get-fundamentals" else "estimates"
+            for name, series in per_company:
+                for metric, points in series.items():
+                    if not points:
+                        continue
+                    slot = result.setdefault(metric, {
+                        "label": METRIC_CATALOG[metric]["label_fi"],
+                        "label_en": METRIC_CATALOG[metric]["label_en"],
+                        "axis_format": METRIC_CATALOG[metric]["axis_format"],
+                        "decimals": METRIC_CATALOG[metric]["decimals"],
+                        "min_points": METRIC_CATALOG[metric]["min_points"],
+                        "companies": {},
+                    })
+                    co_slot = slot["companies"].setdefault(
+                        name, {"actuals": [], "estimates": []}
+                    )
+                    co_slot[key].extend(points)
 
     # Sort each series by year for stable rendering.
     for slot in result.values():

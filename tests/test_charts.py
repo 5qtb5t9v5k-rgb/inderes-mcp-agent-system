@@ -45,7 +45,8 @@ from charts import (  # noqa: E402
 
 
 def _fundamentals_blob(company_name: str, fundamentals: list[dict]) -> str:
-    """Build a JSON-string mimicking get-fundamentals' wire format."""
+    """Build a JSON-string mimicking get-fundamentals' wire format
+    (single-company case)."""
     return json.dumps({
         "companies": [{
             "companyId": "COMPANY:1",
@@ -56,6 +57,28 @@ def _fundamentals_blob(company_name: str, fundamentals: list[dict]) -> str:
                 "fundamentals": fundamentals,
             }],
         }],
+    })
+
+
+def _fundamentals_blob_multi(
+    items: list[tuple[str, list[dict]]],
+) -> str:
+    """Build a multi-company get-fundamentals response — agent
+    sometimes batches `companyIds=[a,b]` into one call. Each
+    `(name, fundamentals)` tuple becomes its own companies[] entry."""
+    return json.dumps({
+        "companies": [
+            {
+                "companyId": f"COMPANY:{idx + 1}",
+                "companyName": name,
+                "transactions": [{
+                    "transactionDate": "2026-05-06T00:00:00Z",
+                    "transactionId": f"test-{idx}",
+                    "fundamentals": fundamentals,
+                }],
+            }
+            for idx, (name, fundamentals) in enumerate(items)
+        ],
     })
 
 
@@ -223,6 +246,41 @@ def test_extract_combines_fundamentals_and_estimates(tmp_path):
 # ---------------------------------------------------------------------------
 # extract_time_series_from_run — multi-company (comparison)
 # ---------------------------------------------------------------------------
+
+
+def test_extract_multi_company_in_one_batched_call(tmp_path):
+    """Regression for the comparison-chart-only-shows-one-company
+    bug (2026-05-10). QUANT subagents in comparison fan-outs
+    sometimes batch `companyIds=[a, b]` into a single
+    get-fundamentals call. The response then has TWO entries in
+    `companies[]` — the parser must extract both, not just companies[0]."""
+    _write_quant_subagent(tmp_path, [{
+        "name": "get-fundamentals",
+        "arguments": {"companyIds": ["COMPANY:1", "COMPANY:2"]},
+        "result_text": _fundamentals_blob_multi([
+            ("Nordea Bank", [
+                {"year": 2023, "quarter": 0, "roe": 0.16},
+                {"year": 2024, "quarter": 0, "roe": 0.15},
+                {"year": 2025, "quarter": 0, "roe": 0.14},
+            ]),
+            ("Sampo", [
+                {"year": 2023, "quarter": 0, "roe": 0.18},
+                {"year": 2024, "quarter": 0, "roe": 0.20},
+                {"year": 2025, "quarter": 0, "roe": 0.17},
+            ]),
+        ]),
+    }])
+    result = extract_time_series_from_run(tmp_path)
+    assert "roe" in result
+    roe_companies = set(result["roe"]["companies"].keys())
+    # Both companies must appear, not just companies[0]
+    assert roe_companies == {"Nordea Bank", "Sampo"}
+    assert result["roe"]["companies"]["Nordea Bank"]["actuals"] == [
+        (2023, 0.16), (2024, 0.15), (2025, 0.14),
+    ]
+    assert result["roe"]["companies"]["Sampo"]["actuals"] == [
+        (2023, 0.18), (2024, 0.20), (2025, 0.17),
+    ]
 
 
 def test_extract_multi_company_each_in_own_bucket(tmp_path):
