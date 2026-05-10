@@ -110,11 +110,23 @@ Output only the JSON. No markdown fences. No prose.
 # Keywords that strongly suggest the user wants the alternative valuation.
 # Lowercase substring matches — Finnish stems are partial so morphology
 # variants ("arvostus", "arvostuksen", "arvostusta") all hit "arvostu".
+#
+# Typo tolerance: the toggle is the user's EXPLICIT intent declaration,
+# so we accept common keyboard typos for the most common stems. If a
+# user toggles "Käytä vaihtoehtoista arvonmääritystä" and types
+# "arvonääritys valmet?" (m dropped), the toggle should fire — getting
+# bounced for a one-character typo is bad UX. Caught real-world by
+# user 2026-05-10 ("arvonääritys valmet?" run 20260510-125558-639).
 _VALUATION_INTENT_KEYWORDS: tuple[str, ...] = (
-    # Explicit valuation requests
+    # Canonical valuation request stems
     "arvonmääritys", "arvonmääritystä", "arvonmäärität",
     "arvostus", "arvostuks", "arvostust", "arvosta nordeaa", "arvosta sampoa",
-    "fair value", "valuation",
+    "fair value", "valuation", "valuaatio",
+    # Common typos for "arvonmääritys"
+    "arvonääritys", "arvonääritystä", "arvonääritystäs",  # m dropped (most common)
+    "arvomääritys", "arvomääritystä",                       # n dropped
+    "arvonmaarit",  # umlauts dropped (covers "arvonmaaritys", "arvonmaaritystä", etc.)
+    "arvomäärit", "arvonmäärit",  # short stems catching "määritys" typoed forms
     # Sensitivity / scenario probes (explicit numeric parameter changes)
     "mitä jos roe", "mitä jos k", "mitä jos g",
     "entäs jos roe", "entäs jos k", "entäs jos g",

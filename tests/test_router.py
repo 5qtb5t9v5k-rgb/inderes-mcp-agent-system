@@ -140,6 +140,44 @@ def test_valuation_intent_handles_typos_and_morphology():
 
 
 # ---------------------------------------------------------------------------
+# Real-world typo tolerance
+#
+# User caught (2026-05-10): toggled "Käytä vaihtoehtoista arvonmääritystä"
+# and typed "arvonääritys valmet?" (m missing). The intent gate didn't
+# match the typo so valuation was skipped despite the toggle being on.
+# The toggle is the user's EXPLICIT intent — small typos shouldn't
+# bounce the request.
+# ---------------------------------------------------------------------------
+
+
+def test_valuation_intent_handles_dropped_m_typo():
+    """The exact bug case from run 20260510-125558-639."""
+    assert query_has_valuation_intent("arvonääritys valmet?")
+    assert query_has_valuation_intent("arvonääritystä Sammolle")
+
+
+def test_valuation_intent_handles_dropped_n_typo():
+    """`arvomääritys` (n dropped) is the second-most-common typo."""
+    assert query_has_valuation_intent("arvomääritys nordealle")
+
+
+def test_valuation_intent_handles_dropped_umlaut_typo():
+    """ASCII-only writers drop the umlauts → "arvonmaaritys"."""
+    assert query_has_valuation_intent("arvonmaaritys nordeasta")
+    assert query_has_valuation_intent("arvonmaaritystä Sampolle")
+
+
+def test_valuation_intent_still_rejects_qualitative_questions():
+    """Typo tolerance must NOT loosen the qualitative-question filter.
+    'selitä mistä Nordean kannattavuus tulee' should still NOT trigger
+    valuation even when the toggle is on — the user wants explanation,
+    not a Greenwald-Gordon table."""
+    assert not query_has_valuation_intent("selitä mistä Nordean kannattavuus tulee")
+    assert not query_has_valuation_intent("kerro Sammon strategiasta")
+    assert not query_has_valuation_intent("nokia")  # bare company name
+
+
+# ---------------------------------------------------------------------------
 # Comparison-floor enforcement
 #
 # Eval baseline (evals/golden.yaml case_001) caught the router emitting
