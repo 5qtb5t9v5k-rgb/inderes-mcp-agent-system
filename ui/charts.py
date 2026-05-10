@@ -231,11 +231,20 @@ def extract_time_series_from_run(run_dir: Path) -> dict[str, dict[str, Any]]:
               "Sampo": {
                 "actuals": [(2019, 0.18), (2020, 0.05), ...],
                 "estimates": [(2026, 0.16), (2027, 0.18)],
+                "provenance": [
+                  ("get-fundamentals", "quant", "subagent-01-quant.json"),
+                  ("get-inderes-estimates", "quant", "subagent-01-quant.json"),
+                ],
               },
             },
           },
           ...
         }
+
+    The `provenance` list captures which subagent + tool produced each
+    series — used by the UI to surface "Lähde: quant — get-fundamentals
+    (Sampo)" under each chart so the user can see who decided to fetch
+    this and why it ended up on screen.
 
     Metrics with no companies' data are omitted from the result so the
     caller doesn't have to filter empty series.
@@ -248,6 +257,7 @@ def extract_time_series_from_run(run_dir: Path) -> dict[str, dict[str, Any]]:
         except (OSError, json.JSONDecodeError):
             continue
         company_fallback = sub.get("company")
+        agent_domain = sub.get("domain") or "quant"
         for tc in sub.get("tool_calls") or []:
             tool_name = tc.get("name")
             if tool_name == "get-fundamentals":
@@ -272,9 +282,12 @@ def extract_time_series_from_run(run_dir: Path) -> dict[str, dict[str, Any]]:
                         "companies": {},
                     })
                     co_slot = slot["companies"].setdefault(
-                        name, {"actuals": [], "estimates": []}
+                        name, {"actuals": [], "estimates": [], "provenance": []}
                     )
                     co_slot[key].extend(points)
+                    co_slot["provenance"].append(
+                        (tool_name, agent_domain, subagent_file.name)
+                    )
 
     # Sort each series by year for stable rendering.
     for slot in result.values():
@@ -548,6 +561,45 @@ def _compute_smart_y_range(
 # ---------------------------------------------------------------------------
 
 
+def _build_provenance_caption(slot: dict[str, Any], lang: str) -> str:
+    """Build a small "Lähde: ..." caption shown under each chart so the
+    user can see which subagent + tool produced the data and why this
+    chart was drawn.
+
+    Example output (FI):
+      "Lähde: quant · get-fundamentals + get-inderes-estimates ·
+       Sampo (2019–2025), Nordea (2019–2025)"
+    """
+    fi = lang == "fi"
+    by_company_lines: list[str] = []
+    all_tools: set[str] = set()
+    all_agents: set[str] = set()
+    for company_name, co_slot in slot["companies"].items():
+        actuals = co_slot.get("actuals") or []
+        estimates = co_slot.get("estimates") or []
+        years = [y for y, _ in actuals] + [y for y, _ in estimates]
+        if not years:
+            continue
+        year_lo, year_hi = min(years), max(years)
+        # Estimate years marked with `e` so the user sees what's projection
+        actual_hi = max((y for y, _ in actuals), default=year_lo)
+        suffix = f"e" if year_hi > actual_hi else ""
+        by_company_lines.append(f"{company_name} ({year_lo}–{year_hi}{suffix})")
+        for tool_name, agent_domain, _ in co_slot.get("provenance") or []:
+            all_tools.add(tool_name)
+            all_agents.add(agent_domain)
+
+    if not by_company_lines:
+        return ""
+
+    agents_str = ", ".join(sorted(all_agents)) or "quant"
+    tools_str = " + ".join(sorted(all_tools)) or "get-fundamentals"
+    companies_str = ", ".join(by_company_lines)
+    if fi:
+        return f"Lähde: {agents_str} · {tools_str} · {companies_str}"
+    return f"Source: {agents_str} · {tools_str} · {companies_str}"
+
+
 def render_time_series_charts(run_dir: Path, lang: str = "fi") -> None:
     """Render a collapsible "📊 Aikasarjat" expander with one chart
     per metric that has enough data.
@@ -565,17 +617,37 @@ def render_time_series_charts(run_dir: Path, lang: str = "fi") -> None:
 
     # Build figures up-front so we know whether the expander has
     # anything worth opening.
-    figures: list[tuple[str, "go.Figure"]] = []
+    figures: list[tuple[str, "go.Figure", dict[str, Any]]] = []
     for metric, slot in series_data.items():
         fig = _build_figure(metric, slot, lang)
         if fig is not None:
-            figures.append((metric, fig))
+            figures.append((metric, fig, slot))
     if not figures:
         return
 
     label = "📊 Aikasarjat" if lang == "fi" else "📊 Time series"
     with st.expander(label, expanded=False):
-        for metric, fig in figures:
+        # Decision rationale at the top — same trust philosophy as
+        # footnotes + päättely + fabrication-guard: tell the user WHY
+        # these charts are here and who decided to make them.
+        if lang == "fi":
+            st.caption(
+                "Aikasarjat näytetään automaattisesti kun **QUANT-agentti** "
+                "hakee yhtiön historiaa työkaluilla `get-fundamentals` tai "
+                "`get-inderes-estimates` ja kullekin mittarille löytyy "
+                "**vähintään 3 vuoden** dataa. Ei manuaalista valintaa — "
+                "graafi piirretään aina kun datapisteitä riittää."
+            )
+        else:
+            st.caption(
+                "Time-series charts render automatically when the "
+                "**QUANT subagent** fetches historical data via "
+                "`get-fundamentals` or `get-inderes-estimates` and each "
+                "metric has **at least 3 years** of points. No manual "
+                "selection — charts appear whenever there's enough data."
+            )
+
+        for metric, fig, slot in figures:
             st.plotly_chart(
                 fig,
                 use_container_width=True,
@@ -586,3 +658,10 @@ def render_time_series_charts(run_dir: Path, lang: str = "fi") -> None:
                 },
                 key=f"chart-{run_dir.name}-{metric}",
             )
+            # Per-chart provenance — small caption under each figure
+            # naming the agent + tool + companies + year range. Lets
+            # the user trace any chart back to the specific tool call
+            # via the activity panel ("AVAA LOKI ›").
+            caption = _build_provenance_caption(slot, lang)
+            if caption:
+                st.caption(caption)

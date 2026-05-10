@@ -34,6 +34,7 @@ if str(_UI_DIR) not in sys.path:
 from charts import (  # noqa: E402
     METRIC_CATALOG,
     _build_figure,
+    _build_provenance_caption,
     _coerce_period_to_year,
     _filter_ratio_outliers,
     extract_time_series_from_run,
@@ -179,6 +180,27 @@ def test_extract_skips_quarterly_rows(tmp_path):
     result = extract_time_series_from_run(tmp_path)
     assert result["roe"]["companies"]["Sampo"]["actuals"] == [
         (2024, 0.20), (2025, 0.17),
+    ]
+
+
+def test_extract_records_provenance_per_company(tmp_path):
+    """Each company slot tracks which subagent file + tool produced
+    its data. Lets the UI show "Lähde: quant · get-fundamentals" so
+    the user can trace any chart back to the source tool call."""
+    fundamentals = [
+        {"year": 2023, "quarter": 0, "roe": 0.18},
+        {"year": 2024, "quarter": 0, "roe": 0.20},
+        {"year": 2025, "quarter": 0, "roe": 0.17},
+    ]
+    _write_quant_subagent(tmp_path, [{
+        "name": "get-fundamentals", "arguments": {},
+        "result_text": _fundamentals_blob("Sampo", fundamentals),
+    }])
+    result = extract_time_series_from_run(tmp_path)
+    sampo = result["roe"]["companies"]["Sampo"]
+    # Provenance recorded as (tool_name, agent_domain, file_name)
+    assert sampo["provenance"] == [
+        ("get-fundamentals", "quant", "subagent-01-quant.json"),
     ]
 
 
@@ -498,6 +520,114 @@ def test_ratio_outliers_zero_median_no_filter():
     points = [(2020, 0.0), (2021, 0.0), (2022, 0.0), (2023, 0.0)]
     filtered = _filter_ratio_outliers(points)
     assert filtered == points
+
+
+# ---------------------------------------------------------------------------
+# Smoke: METRIC_CATALOG sanity
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# _build_provenance_caption — chart "who decided / why" trail
+# ---------------------------------------------------------------------------
+
+
+def test_provenance_caption_names_agent_tool_company_years():
+    """User asked: 'missä näkyy kuka päätti tehdä kuvaajan ja miksi?'
+    Answer: a small caption under each chart names the agent + tool +
+    companies + year range. Let's lock that contract."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [(2020, 0.18), (2021, 0.20), (2022, 0.17),
+                            (2023, 0.19), (2024, 0.22), (2025, 0.21)],
+                "estimates": [],
+                "provenance": [
+                    ("get-fundamentals", "quant", "subagent-01-quant.json"),
+                ],
+            },
+        },
+    }
+    caption = _build_provenance_caption(slot, lang="fi")
+    assert "Lähde:" in caption
+    assert "quant" in caption
+    assert "get-fundamentals" in caption
+    assert "Sampo" in caption
+    assert "2020" in caption
+    assert "2025" in caption
+
+
+def test_provenance_caption_marks_estimate_year_with_e():
+    """When the year range extends past the last actual into an
+    estimate year, the caption marks the upper bound with `e` so
+    the user knows it's a forecast (e.g. "2019–2026e")."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [(2023, 0.18), (2024, 0.20), (2025, 0.17)],
+                "estimates": [(2026, 0.16), (2027, 0.18)],
+                "provenance": [
+                    ("get-fundamentals", "quant", "subagent-01-quant.json"),
+                    ("get-inderes-estimates", "quant", "subagent-01-quant.json"),
+                ],
+            },
+        },
+    }
+    caption = _build_provenance_caption(slot, lang="fi")
+    assert "2027e" in caption
+    # Both tools listed
+    assert "get-fundamentals" in caption
+    assert "get-inderes-estimates" in caption
+
+
+def test_provenance_caption_lists_multiple_companies():
+    """Comparison chart caption names ALL companies + their year ranges,
+    not just the first."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [(2020, 0.18), (2021, 0.20), (2022, 0.17),
+                            (2023, 0.19), (2024, 0.22), (2025, 0.21)],
+                "estimates": [],
+                "provenance": [("get-fundamentals", "quant", "subagent-01-quant.json")],
+            },
+            "Nordea": {
+                "actuals": [(2021, 0.16), (2022, 0.15), (2023, 0.14),
+                            (2024, 0.15), (2025, 0.16)],
+                "estimates": [],
+                "provenance": [("get-fundamentals", "quant", "subagent-02-quant.json")],
+            },
+        },
+    }
+    caption = _build_provenance_caption(slot, lang="fi")
+    assert "Sampo" in caption
+    assert "Nordea" in caption
+    # Each gets its own year range
+    assert "(2020–2025)" in caption
+    assert "(2021–2025)" in caption
+
+
+def test_provenance_caption_returns_empty_for_empty_slot():
+    """Defensive: no companies → no caption rendered (would be a
+    misleading empty 'Lähde:' line)."""
+    slot = {"companies": {}}
+    assert _build_provenance_caption(slot, lang="fi") == ""
+
+
+def test_provenance_caption_english():
+    """EN variant uses 'Source:' instead of 'Lähde:'"""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [(2023, 0.18), (2024, 0.20), (2025, 0.17)],
+                "estimates": [],
+                "provenance": [("get-fundamentals", "quant", "subagent-01-quant.json")],
+            },
+        },
+    }
+    caption = _build_provenance_caption(slot, lang="en")
+    assert caption.startswith("Source:")
+    assert "Lähde" not in caption
 
 
 # ---------------------------------------------------------------------------
