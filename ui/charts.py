@@ -363,12 +363,12 @@ def _build_figure(
     else:
         tickformat = f".{decimals}f"
 
-    # Smart Y-range — outliers in early years (e.g. 2020 ROE collapse,
-    # or one-off accounting write-down) used to stretch the auto-axis
-    # and squash the relevant 80 % of the chart. Compute percentile-
-    # based bounds with padding so outliers stay visible but don't
-    # dominate. Fallback to auto when there are too few points.
-    y_range = _compute_smart_y_range(slot, axis_format)
+    # Plotly auto-range — Plotly is interactive (drag-select to zoom,
+    # double-click to reset, pinch on mobile) so we let the user
+    # focus on the part they care about rather than guessing for them.
+    # An earlier IQR-clip approach (commit 8db106c) tried to clip
+    # outliers from the visible axis but created its own surprises;
+    # auto + interactive zoom is more honest.
 
     show_legend = qualifying_companies > 1
     fig.update_layout(
@@ -399,12 +399,16 @@ def _build_figure(
             zeroline=False,
             tickfont=dict(size=10, color="#7a828d"),
             tickformat=tickformat,
-            range=y_range,  # None = auto, list = explicit
+            # range=None = auto. User pans/zooms interactively.
         ),
     )
     return fig
 
 
+# NOTE: _compute_smart_y_range is preserved as dead code (not called
+# from _build_figure any more). Deleting it would lose the IQR
+# implementation if we want to switch back. Kept untested too so its
+# behaviour doesn't drift silently.
 def _compute_smart_y_range(
     slot: dict[str, Any], axis_format: str,
 ) -> list[float] | None:
