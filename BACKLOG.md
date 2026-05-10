@@ -1,7 +1,7 @@
 # Backlog
 
 A single-file overview of what's done, in flight, paused, and worth thinking
-about. Last updated 2026-05-09.
+about. Last updated 2026-05-10.
 
 ## Status markers
 
@@ -24,6 +24,7 @@ about. Last updated 2026-05-09.
 - [§9 Agentic patterns from *State of the possible*](#9-agentic-patterns-from-state-of-the-possible)
 - [§10 Autonomous nightly eval + self-repair loop](#10-autonomous-nightly-eval--self-repair-loop)
 - [§11 AI Lab — public lab-notebook page](#11-ai-lab--public-lab-notebook-page)
+- [§12 Analyst Walkthrough — in-depth analysis & scoring](#12-analyst-walkthrough--in-depth-analysis--scoring)
 
 ---
 
@@ -66,6 +67,7 @@ phase lives elsewhere in the backlog as its own item; this section is the
 | 4+ | **Devil's advocate** *(2 h)* | §1 — was Wk 1, demoted | Reflexion covers similar trust territory more deeply |
 | 4+ | **Frontend rewrite (Polku B / hybrid)** *(1.5–2 wk)* | §8 → FastAPI + Next.js + Vercel AI SDK | After visible features in Streamlit; rewrite when the contract is clear |
 | 5+ | **Bull/Bear debate** | §1 → "#8 Bull/Bear" + judge | Depends on hard limits + eval foundation locked |
+| 5–6 | **Analyst Walkthrough — in-depth scoring** *(2–3 d)* | §12 → 6-dimension qualitative+quantitative report from multiple Inderes analyst reports | User-proposed flagship feature. Needs Reflexion (Wk 2) + confidence (Wk 3) + Tier 2 (Wk 3) as foundation. Ships alongside Bull/Bear because the same trust scaffolding gates both. |
 | 5+ | **Auto-orchestrator (Magentic ledger)** | §1 + §9 — meta-router decides tier + features | Depends on all above |
 | 6+ | **Autonomous nightly eval + self-repair** | §10 — cron, prompts-only auto-fixes | Needs Tier 2 + smoke test foundation first |
 
@@ -1112,6 +1114,169 @@ PALAUTE        — GitHub, email
 - No new dependencies
 - Port to Next.js becomes part of §8 (it's just another route in
   the new frontend)
+
+---
+
+## 12. Analyst Walkthrough — in-depth analysis & scoring
+
+**Status:** 💭 idea, captured 2026-05-10. Provisional Wk 5–6 slot.
+User-proposed flagship feature. PM-level analysis below; not yet
+committed to roadmap because it depends on three Wk 2–3 prerequisites
+shipping first (Reflexion, per-claim confidence, Tier 2 Supabase).
+
+### Product vision (one sentence)
+
+> **The agent reads several recent Inderes analyst reports on a single
+> company and synthesises a structured, multi-dimensional analyst-style
+> walkthrough — not just a Q&A answer, but an opinionated investment
+> thesis with a transparent score and the data trail to back it.**
+
+### Why this, why now
+
+The current LEAD synthesis answers a question. The Analyst Walkthrough
+**produces a thesis** — closer to what an Inderes analyst delivers
+internally before publishing a recommendation. It's the natural
+endgame of every trust-building feature we've shipped:
+
+- **Footnotes** (Wk 2) say *"this number came from this tool call"*
+- **Confidence** (Wk 3) says *"how much should you trust this number"*
+- **Walkthrough** (Wk 5–6) says *"here's the whole picture, scored,
+  with the lineage to verify every dimension"*
+
+It also positions the product clearly: not a chat-with-a-stock app, but
+**"Inderes-grade analyst output, on demand, for any of the 200+
+covered companies."**
+
+### What it is (output shape)
+
+A long-form report with **6 dimensions**, each scored 1–5 and backed
+by a 2–4 sentence rationale + footnoted data points:
+
+```
+1. LAATU (Quality)        — ROE, margins, capital efficiency,
+                            management track record
+2. KASVU (Growth)          — revenue trajectory, organic vs M&A,
+                            forward estimates, TAM trends
+3. ARVOSTUS (Valuation)    — fv (Gordon, multiples), peer multiples,
+                            DCF if available, vs historical band
+4. STRATEGIA (Strategy)    — moat, segment mix, ESG, capital allocation,
+                            recent strategic moves
+5. RISKI (Risk)            — cyclicality, leverage, regulatory,
+                            geographic, single-customer
+6. SENTIMENTTI (Sentiment) — analyst recos, insider flow, forum tone,
+                            short interest where available
+```
+
+Plus a **composite score** (weighted average) and a one-paragraph
+"BOTTOM LINE" — the agent's synthesis of *what would an analyst say
+about this company today*.
+
+### What makes it different from today's LEAD synthesis
+
+| Today's LEAD synthesis | Analyst Walkthrough |
+|---|---|
+| Answers one question | Produces a structured report |
+| Single-dimension (whatever was asked) | Always 6 dimensions |
+| Reads tool data | Reads tool data **+ recent analyst reports as documents** |
+| ~400 token answer | ~2,000–3,000 token report |
+| Free-form prose | Fixed structure, rendered as cards |
+| Triggered by question | Triggered by toggle / button on company page |
+
+### Architecture paths (3 candidates)
+
+**Path A: New "ANALYST" subagent**
+- Adds a 6th persona to the current 5
+- Owns the report structure, called only when the toggle fires
+- Pros: clean separation, can be evolved independently
+- Cons: requires new prompt + persona; another model call layer
+
+**Path B: Deep mode of existing LEAD**
+- Same 5 subagents fan out, but LEAD's prompt switches to
+  "produce a 6-dimension report" instead of "answer the question"
+- Pros: reuses entire infrastructure; no new persona
+- Cons: prompt becomes a megaswitch; harder to eval cleanly
+
+**Path C: Sequential refinement (recommended)**
+- Phase 1: existing 5 subagents fan out as today
+- Phase 2: a new **REPORT** synthesiser (separate from LEAD) reads
+  all 5 outputs + pulls 2–3 most recent Inderes reports via
+  `read-document-sections` and produces the structured 6-dimension
+  output
+- Pros: each phase is independently eval-able; document-reading
+  isolated to Phase 2 (today's subagents already have that tool but
+  rarely use it well); can ship Path C incrementally — even just the
+  document-reader without scoring is useful on day 1
+- Cons: slower (extra LLM round), more cost per query
+
+**Recommendation:** Path C. The sequential separation matches how a
+human analyst actually works: gather data first, structure the
+opinion second.
+
+### Prerequisites (must be shipped before this lands)
+
+| Prereq | Status | Why |
+|---|---|---|
+| ✅ Hard limits + cancel token (Wk 1 #3) | shipped | A 3,000-token report could runaway-loop without budgets |
+| ✅ Persona-prefixed footnotes (Wk 2 → done in Wk 1) | shipped | Each scored dimension needs `[X<n>]` provenance |
+| 🟡 Reflexion / retry on weird output (Wk 2) | pending | Self-correction matters more for a long-form report than for a Q&A — one bad dimension poisons the whole score |
+| 🟡 Per-claim confidence scoring (Wk 3) | pending | The composite score needs per-dimension confidence to weight; otherwise "5/5" on a thinly-sourced dimension drags the average |
+| 🟡 Tier 2 Supabase migration (Wk 3) | pending | Reports are heavy artifacts — running them on phone but reading them on laptop is the obvious workflow |
+| 🟡 Smoke test in CI (Wk 3) | pending | Walkthrough is the highest-stakes output; needs golden examples gated by CI before it goes near users |
+
+### Open PM decisions (resolve before kicking off)
+
+1. **Trigger:** dedicated toggle (*"📊 Analyytikon syväanalyysi"*) or
+   inferred from query intent (*"give me a full picture of Sampo"*)?
+   - *Lean:* explicit toggle at v0 — costs 5–10× a normal query, must
+     be opt-in. Add intent inference later if usage validates.
+2. **Scope:** single company only, or also peer-comparison walkthroughs?
+   - *Lean:* single company at v0. Peer comparison is its own beast
+     (axis × dimension matrix) — separate v2.
+3. **Document corpus:** all available Inderes reports for the company,
+   or last N (3? 5?) by date?
+   - *Lean:* last 3 by date + the most recent quarterly. Caps token
+     usage; freshness wins over depth at this stage.
+4. **Score weighting:** equal across dimensions, or domain-specific
+   (banks weight risk more, growth co's weight growth more)?
+   - *Lean:* equal at v0, log the weighted score for offline analysis.
+   Domain-specific weighting once we have data on what correlates
+   with Inderes' published recommendation.
+5. **Output format:** rendered cards in app, or exportable PDF/markdown?
+   - *Lean:* cards in app at v0; export comes after Tier 2 lands and
+     reports are first-class persisted artifacts.
+6. **Evals:** golden walkthroughs for 3–5 well-known companies
+   (Sampo, Nordea, Kone, UPM, Nokia)? Judge prompt that scores
+   "would a real analyst sign this"?
+   - *Lean:* yes — this is exactly why the smoke-test infra needs to
+     ship first.
+
+### Why this could be the killer feature
+
+Every other Inderes-data product (the website, the iPad app) lets a
+user *read* analyst output. None lets a user *ask for a synthesis on
+demand*. If Walkthrough produces output an Inderes analyst would
+recognise as "yes, that's how I'd structure it", it's a category-
+defining feature — not a faster Bloomberg, but an *agentic analyst
+desk*.
+
+The risk is the inverse: produce output that's plausibly-wrong, and
+the trust deficit poisons the rest of the product. That's why the
+prereq stack matters — Reflexion + confidence + smoke tests are not
+nice-to-haves before shipping this; they're the gate.
+
+### Implementation note when we resume
+
+- New module `src/inderes_agent/orchestration/walkthrough.py` —
+  Phase 2 synthesiser. Phase 1 reuses existing `run_workflow()`.
+- New prompt `src/inderes_agent/agents/prompts/walkthrough.md`
+- Output schema as a Pydantic model (`WalkthroughReport`) with the
+  6 dimensions + scores + bottom line + footnote refs
+- New UI render `render_walkthrough_report(report)` in components.py
+  — card-per-dimension with score chip, rationale, footnote markers
+- CSS namespace `.ia-walk-*`
+- Toggle in the existing `render_feature_toggles()` panel
+- Eval set in `evals/walkthrough_golden.yaml` — 3–5 companies, judge
+  prompt that scores structural completeness + factual grounding
 
 ---
 
