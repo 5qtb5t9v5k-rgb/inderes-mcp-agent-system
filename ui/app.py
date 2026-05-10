@@ -976,6 +976,16 @@ for msg in st.session_state.history:
 
             # 3. Answer body (Perustelut already extracted out of it).
             render_lead_answer(_cleaned_text)
+
+            # 4. Time-series charts (📊 Aikasarjat) — additive context
+            # alongside LEAD's tables. Parses QUANT's get-fundamentals
+            # + get-inderes-estimates results into Plotly line charts.
+            # Silent no-op when no QUANT data or insufficient points
+            # (< 3 actuals per metric).
+            if run_dir is not None:
+                from charts import render_time_series_charts
+                render_time_series_charts(run_dir, lang=_lang_main)
+
             # Followup question chips — extracted from the LEAD synthesis
             # itself; clicking one writes to st.session_state.pending_query
             # and triggers a rerun that submits it as a new query.
@@ -1321,6 +1331,10 @@ if prompt:
 
             # Answer body (Perustelut already extracted out)
             render_lead_answer(_cleaned_live)
+            # Time-series charts — same additive panel as in history
+            # rendering. Silent no-op without QUANT data.
+            from charts import render_time_series_charts as _rtc
+            _rtc(run_dir, lang=_lang_live)
             render_followup_chips(answer, run_dir_name=run_dir.name)
             render_trace_expander(run_dir)
             st.session_state.history.append(

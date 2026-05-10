@@ -33,6 +33,7 @@ dev = [
 ]
 ui = [
     "streamlit>=1.40",
+    "plotly>=6.0",
 ]
 
 [project.scripts]
