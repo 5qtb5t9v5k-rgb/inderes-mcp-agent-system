@@ -439,6 +439,72 @@ The README's pre-flight checklist mandates 20 GB free as a guardrail.
 
 ---
 
+## Trust + reliability defenses (post-2026-05-10)
+
+Three layers protecting the system against fabricated subagent output,
+all added or strengthened in the 2026-05-09 sprint after the
+[Vincit fabrication case](docs/sprint_lessons_2026-05-09.md):
+
+### 1. Prompt-side HARD GATE (each subagent's `.md`)
+
+Every subagent prompt now opens with an explicit **HARD GATE** block
+listing the MCP tool calls it MUST execute before emitting output:
+
+```markdown
+## ⛔ HARD GATE — MCP TOOL CALLS ARE MANDATORY ⛔
+
+Before you emit any output, you MUST execute these tool calls:
+1. search-companies(query) — resolve id
+2. <agent-specific tools>
+
+A response with ZERO MCP tool calls is automatically rejected as
+fabrication. Numbers/quotes from training memory are FORBIDDEN.
+```
+
+The block is intentionally placed at the TOP of the prompt so Flash
+Lite reads it before the rest of the (often 200+ line) instructions.
+
+### 2. Runtime fabrication guard (`workflows.py`)
+
+`_detect_fabrication()` runs at the dispatch boundary on every
+subagent result. If a subagent emits ≥300 chars of domain-loaded
+text (containing markers like `€`, `tavoitehint`, `sources:`, etc.)
+but ZERO MCP tool calls, the text is replaced with empty + error:
+
+```python
+result.error = "fabricated_no_tool_calls: agent emitted N chars ..."
+result.text = ""
+```
+
+Downstream consumers (LEAD prompt assembly, conflict detector,
+forensic logs) see the failure honestly. `synthesize()` further
+short-circuits to a fixed *"En löytänyt yhtiötä X..."* answer when
+ALL subagents fail this way — no LEAD call, no fabricated synthesis.
+
+### 3. Eval foundation (`evals/`)
+
+Three-tier scaffold making invisible bugs visible:
+
+- **Tier 0** (`scripts/build_runs_index.py` → SQLite): fast SQL
+  across every historical run for diagnostics.
+- **Tier 1** (`evals/golden.yaml` + `evals/runner.py` +
+  `evals/judge.py`): 7 golden cases each tied to a real
+  weakness; hard (deterministic) + soft (Gemini-Pro judge)
+  assertions per case. `evals/results/baseline_*/` committed
+  as the regression contract.
+- **Tier 2 (planned)**: Supabase migration so judgments are
+  queryable cross-device.
+- **Tier 3 (planned)**: autonomous nightly cron with
+  prompts-only auto-fixes to `auto-fixes/yyyy-mm-dd` branch.
+
+The combination implements OWASP Agentic Top 10 #T3 (tool misuse
+/ hallucinated outputs) defense at three layers: prompt-side,
+runtime, and post-hoc measurement. The judge model selection
+(Gemini 2.5 Pro) is benchmark-backed via Vectara HHEM v2 and
+RewardBench 2 — see `evals/judge_selection.md`.
+
+---
+
 ## What this is and isn't
 
 This is an **orchestrator-worker multi-agent system** in the loose, current-industry

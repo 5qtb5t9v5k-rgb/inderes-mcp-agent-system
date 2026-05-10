@@ -4,6 +4,135 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com); the project does not yet follow
 [SemVer](https://semver.org) strictly.
 
+## [unreleased] — 2026-05-10
+
+### Added — eval foundation (Tier 0 + Tier 1)
+
+Two-layer eval scaffold built in one sprint. Tier 0 indexes every
+historical run for fast diagnostic queries; Tier 1 grades captured
+runs against a golden case set with an LLM-judge.
+
+- **`scripts/build_runs_index.py`** (`9bcf4f0`) — walks
+  `~/.inderes_agent/runs/<ts>/` and writes a SQLite database with
+  two tables (`runs`, `tool_calls`). Idempotent. 183 existing runs +
+  457 tool calls indexed in ~1 s.
+- **`evals/sample_queries.sql`** — 10 diagnostic SQL queries, each
+  targeting a specific weakness category (under-routed comparisons,
+  noise runs, repeat queries, conflict-detector hit rate, tool error
+  rates, latency outliers).
+- **`evals/findings_2026-05-09.md`** — 7 systemic weaknesses surfaced
+  on the first diagnostic pass.
+- **`evals/judge_selection.md`** — benchmark-backed model choice
+  (Vectara HHEM v2, RewardBench 2, Arena-Hard, JudgeBench). Gemini
+  2.5 Pro picked over Sonnet 4.5 / GPT-5 because reasoning models
+  hallucinate >10 % on grounded summarisation — exactly the failure
+  mode we cannot import into a finance-research judge.
+- **`evals/golden.yaml`** (`8971f66`) — 7 cases, each tied to a real
+  finding. Hard (deterministic) + soft (judge-graded) assertions.
+- **`evals/judge.py`** — `JudgeBackend` Protocol + `GeminiJudge` impl.
+  Designed so GPT-4.1 can be added later as cross-family validator
+  without runner changes.
+- **`evals/runner.py`** — orchestrator. Picks most-recent matching
+  run from index, runs hard expressions in sandboxed eval(), calls
+  judge for soft criteria, writes timestamped report.
+
+### Added — fabrication guard at orchestration boundary
+
+- **`workflows.py:_detect_fabrication`** (`870749a`) — universal
+  trust-killer defence. If a subagent emits ≥300 char domain-loaded
+  text but ZERO MCP calls, the result is replaced with
+  `error="fabricated_no_tool_calls: ..."`. Closes the trust-killer
+  pattern from run `20260502-205706-108` ("Vincit: VÄHENNÄ 1,25 €"
+  fabricated).
+- **`synthesis.py:_no_data_response`** — when ALL subagents errored,
+  short-circuit to a fixed honest "ei löytynyt"-style answer. No
+  euros, no recommendations, no fabricated context.
+- 14 unit tests in `tests/test_fabrication_guard.py`.
+
+### Added — agent-prompt HARD GATE on all 5 subagents
+
+Universal prompt-side enforcement that all subagents MUST execute
+their MCP tool calls before emitting output.
+
+- `valuation.md` (`08e7e93`), `sentiment.md` (`d36dd72`),
+  `research.md` + `quant.md` + `portfolio.md` (`2039967`) — same
+  pattern, agent-specific tool lists. Forbidden-numbers-from-memory
+  clause. "Yhtiö ei ole seurannassa" treated as a fine finding when
+  it's true (Konecranes).
+- Verified: 12/12 subagent dispatches in a 4-bank comparison
+  (Nordea/Aktia/Ålandsbanken/OmaSP) made tool calls, zero
+  fabrication-guard rejections.
+
+### Added — Tila C activation banner for LEAD synthesis
+
+- **`synthesis.py`** (`08e7e93`) — when the valuation engine actually
+  computed, pre-pend a high-visibility banner to LEAD's prompt
+  enumerating the 4 required Tila C section headings. The banner is
+  the FIRST thing LEAD reads, before the 600-line prompt body.
+  Pre-fix Tila C reliability ~2/3; post-fix 5/5 verified.
+- 4 unit tests in `tests/test_tila_c_banner.py`.
+
+### Fixed — comparison routing floor
+
+- **`router.py`** (`5e5dea7`) — both prompt rule (comparison MUST
+  include `{quant, research, sentiment}`) AND `_enforce_comparison_floor()`
+  post-processor as belt-and-braces. The previous few-shot example
+  for "Compare Sampo and Nordea" was the bug source itself, showing
+  `["quant"]` only.
+- 5 unit tests cover both layers.
+
+### Fixed — päättely structured-form lift + conflict-naming
+
+- **`synthesis.py:_extract_paattely`** (`80c6fd0`) — when prose
+  conforms to the 4-paragraph spec, lift to structured slots
+  (`disagree`, `resolution`, `uncertain`, `skipped`). The lead.md
+  spec was perfect; the parser was the missing link. 0 of 183
+  historical runs produced JSON form, but 55 had perfect
+  4-paragraph prose.
+- **`scripts/reclassify_paattely.py`** — applies same lift
+  retroactively. 56/59 historical prose päättelys converted.
+- **`lead.md`** — HARD REQUIREMENT for conflict naming.
+  Päättely §1 MUST name the conflict topic verbatim, §2 MUST state
+  which value was kept and why.
+
+### Fixed — trend classifier severe-decline branch
+
+- **`roe_selection.py`** (`152c3bf`) — UPM-Kymmene regression. ROE
+  `[12.7, 13.1, 3.3, 3.9, 4.5] %` (delta -48 %) was misclassified
+  vakaa because lfy ticked up within the depressed window. **Three
+  UPM runs failed in a row.** Fix: severe-decline branch fires on
+  `delta < -0.20` regardless of LFY position. Symmetric severe-rise
+  branch added.
+- 5 new tests in `tests/valuation/test_roe_selection.py`.
+
+### UI — major polish pass
+
+- **`render_feature_toggles`** — collapsed `<details>` expander
+  matching results-section "AVAA PÄÄTTELY ›" look (caps-micro amber
+  summary, mono-meta body).
+- **FI / EN switcher** — tiny inline toggle in titlebar via
+  `?lang=` query param.
+- **Plan expander** — converted to `st.button + session_state` after
+  `<details>` proved unreliable in `chat_message`. Matches AVAA LOKI
+  / AVAA PÄÄTTELY visually.
+- **Material Icons leak fix** — `:not([class*="material"])` selectors
+  prevent "keyboard_arrow_down" text from leaking through.
+- **Statusbar trim** — dropped `virheet: 0 / fallbackit: 0` noise.
+- **Tier label clarity** — radio options now name the model exactly
+  ("Vakio (Gemini 3.1 Flash Lite)", etc.). Native `?` help icon for
+  trade-off explanations.
+
+### Documentation
+
+- **`docs/sprint_lessons_2026-05-09.md`** — long-form session
+  retrospective: 7 lesson categories, chronological commit
+  walkthrough, user emotional arc, re-prioritised backlog rationale.
+- **`BACKLOG.md §0`** — re-prioritised. Plotly charts promoted to
+  Wk 1 #1 (user-stated top priority). Hard limits + 👍/👎 Wk 1.
+  Reflexion + footnotes Wk 2. Devil's advocate demoted to Wk 4+.
+
+---
+
 ## [unreleased] — 2026-05-09
 
 ### Added — alternative valuation feature (opt-in Greenwald-Gordon)

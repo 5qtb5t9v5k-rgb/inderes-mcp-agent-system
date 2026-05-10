@@ -320,6 +320,37 @@ For a full architectural walkthrough including the OAuth flow, the schema-saniti
 shim, the Gemini fallback wrapper, the valuation engine, and per-tool-call observability,
 see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+### Trust + reliability layers (post-2026-05-10)
+
+The system has two independent layers protecting against fabricated
+output and a third measuring real-world quality:
+
+1. **HARD GATE in agent prompts** — every subagent (`quant`, `research`,
+   `sentiment`, `portfolio`, `valuation`) starts with an explicit
+   block requiring MCP tool calls before any output. *"Numbers from
+   training memory are FORBIDDEN. A response with ZERO MCP tool
+   calls is automatically rejected as fabrication."*
+2. **Fabrication guard at orchestration boundary**
+   (`workflows.py:_detect_fabrication`) — runtime safety net. If a
+   subagent emits ≥300 char domain-loaded text but ZERO MCP calls,
+   the result is replaced with `error="fabricated_no_tool_calls"`
+   so LEAD synthesises on top of an honest failure rather than a
+   plausible-looking invention. When ALL subagents fail this way,
+   `synthesize()` short-circuits to a fixed *"En löytänyt yhtiötä
+   X Inderes-tietokannasta"* answer — no euros, no recommendations,
+   no fabricated context.
+3. **Eval foundation** (`evals/`) — Tier 0 SQLite indexer over
+   `~/.inderes_agent/runs/` enables fast diagnostic SQL across all
+   historical runs; Tier 1 `golden.yaml` + Gemini-Pro judge grades
+   captured runs against deterministic + qualitative rubrics. 7
+   golden cases lock concrete weakness categories. Score deltas
+   between runs make regressions impossible to ship silently.
+
+The combination implements OWASP Agentic Top 10 #T3 (tool misuse /
+hallucinated outputs) defense at three layers: prompt-side, runtime,
+and post-hoc measurement. See `docs/sprint_lessons_2026-05-09.md`
+for the empirical patterns that drove these.
+
 ---
 
 ## Configuration
