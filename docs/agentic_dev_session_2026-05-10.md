@@ -188,6 +188,168 @@ fresh:
   If the curve plateaus, our cap is well-calibrated; if it climbs
   through the cap, we're capping useful exploration.
 
+## The arc — 9 days, 182 commits
+
+The same session that produced the stats above also produced an entire
+shippable agent system. Repo-side numbers, mirroring the Claude Code
+session view:
+
+```
+182 commits   10 active days   16,182 Python LOC   13,161 markdown LOC
+154 tests     223 agent runs   11M run-log size    79.2k session tokens
+```
+
+### Commits per day
+
+The intensity is bursty, not linear — two clear peak days plus a
+weekend lull:
+
+| Date | Commits | Diff (net LOC) | Phase |
+|---|---:|---:|---|
+| 2026-05-01 | 4 | (initial) | Bootstrap — Initial commit + AGENT_FRAMEWORK primer |
+| 2026-05-02 | 11 | | Auth + sandboxed Python on QUANT/PORTFOLIO |
+| 2026-05-03 | 26 | | Plan-then-execute toggle, Pro tier groundwork |
+| 2026-05-04 | 15 | | Valuation engine wiring (Greenwald-Gordon hybrid) |
+| 2026-05-05 | 10 | | Valuation polish — typo-tolerant parser, Tila C banner |
+| 2026-05-06 | 5 | | Weekend lull |
+| 2026-05-07 | **40** | | **Peak day** — UI redesign §6.x: timeline strip, activity panel, conflict callout, persona-prefixed footnotes |
+| 2026-05-08 | 13 | | Pro-tier `tool_config` bug, Tarkka kaikki tier shipped |
+| 2026-05-09 | **35** | **+7,283 / −691 = +6,592** | **Eval foundation day** — Tier 0 SQLite + Tier 1 golden + Gemini Pro judge + 5 HARD GATEs |
+| 2026-05-10 | 23 (in progress) | **+4,518 / −358 = +4,160** | Wk 1 wrap — charts (Plotly), hard limits, semantic intent, feedback widget |
+
+The two peak days each correspond to a coherent theme — UI architecture
+(5/7) and trust foundation (5/9). The pattern is **architectural-
+inflection days punctuating polish days**, not steady increment.
+
+### Shipped features (organised by trust layer)
+
+Reading the BACKLOG's ✅ entries by category — what's actually in
+production after 9 days:
+
+**Foundation (orchestration + eval):**
+- ✅ Multi-agent fan-out (5 personas — QUANT, RESEARCH, SENTIMENT,
+  PORTFOLIO, VALUATION) with classifier router + LEAD synthesiser
+- ✅ Plan-then-execute toggle — pre-dispatch strategic plan
+- ✅ Conflict detector (separate LLM call between subagents and LEAD)
+- ✅ Provenance threading — tool-call trace fed into LEAD as ground
+  truth
+- ✅ Tier 0 SQLite indexer over 183 historical runs
+- ✅ Tier 1 golden.yaml + Gemini Pro judge
+- ✅ Hard limits + cancel token (RunBudget, BudgetExceededError)
+
+**Trust layer (visible-reasoning + grounding):**
+- ✅ Subagent thought traces (`**Ajatus:**` opener, mandatory)
+- ✅ LEAD Päättely block — 4-paragraph slot grid (disagree /
+  resolution / uncertain / skipped)
+- ✅ Persona-prefixed footnote markers `[Q1]`, `[R2]`, `[S3]`,
+  `[V4]`, `[P5]` with combined-marker support + persona-name
+  fallback tooltips
+- ✅ HARD GATE prompt-side enforcement on all 5 subagents (forces
+  MCP calls before output)
+- ✅ Fabrication guard at orchestration boundary (rejects valuation
+  outputs with zero MCP calls)
+
+**Valuation engine:**
+- ✅ Deterministic Greenwald-Gordon hybrid (`valuation/engine.py`)
+- ✅ Excel parity — 10 hand-picked Finnish companies regression-tested
+- ✅ EPV / growth-pricing decomposition + dual implied-g (g vs ROE)
+- ✅ Sustainable-ROE rule + parser validation
+- ✅ Typo-tolerant parser (Levenshtein-≤2 fuzzy match)
+- ✅ Toggle intent gate — semantic LLM detection (not keyword)
+- ✅ Always-on disclaimers for price + BVPS freshness limits
+
+**UI / UX (Streamlit):**
+- ✅ Aikajana strip + persona-coloured agent badges
+- ✅ Right activity panel (Claude.ai-style) with summary / agents /
+  tools / conflicts tabs
+- ✅ Inderes recommendation badge (INCREASE / REDUCE / HOLD with
+  persona colours)
+- ✅ Plotly time-series charts — multi-company support, IQR-based
+  outlier filtering, provenance trail
+- ✅ Conflict callout embedded in Päättely
+- ✅ Followup chips (extracted from LEAD synthesis)
+- ✅ Tier toggle (Vakio / Tarkka LEAD / Tarkka kaikki)
+- ✅ FI / EN switcher
+- ✅ 👍 / 👎 feedback widget (this last commit, Wk 1 #4)
+- ✅ Plan-expander, perustelut box, sources as clickable links
+- ✅ Inderes-grade typography + colour token system
+
+**Authentication + deployment:**
+- ✅ OAuth 2.1 + PKCE for Inderes MCP
+- ✅ Public recovery counter (replaces Resend email auth-expired)
+- ✅ Daily query cap enforcement
+- ✅ GitHub Actions cron token rotation
+
+**Documentation:**
+- ✅ ARCHITECTURE.md, README, TROUBLESHOOTING, CONTRIBUTING
+- ✅ AGENT_FRAMEWORK.md primer
+- ✅ BACKLOG.md (1,283 lines, 12 sections)
+- ✅ Sprint lessons doc + this meta-analysis doc
+
+### Commit type distribution
+
+```
+33  fix(ui)            ← UI iteration loop dominated
+19  feat(ui)
+17  docs
+ 9  feat(valuation)
+ 8  style(ui)
+ 7  fix(valuation)
+ 5  feat(infra)
+ 4  fix(oauth)         ← auth was the longest-tail bug class
+ 4  fix(deploy)
+ 4  fix
+```
+
+The **2:1 fix-to-feat ratio in UI** is the honest signal that
+Streamlit is the highest-friction surface — every UI commit averaged
+~one follow-up fix. That's part of why §8 frontend rewrite is in the
+roadmap. Valuation by contrast is at ~0.8:1 (more disciplined; the
+valuation engine has property tests).
+
+### Burned tokens — what's measurable vs what isn't
+
+Three different token costs were in play during the sprint, only one
+of which is captured in the screenshot:
+
+| Cost source | Visible in 79.2k? | Estimated scale |
+|---|---|---|
+| **Claude Code session** (this dev convo) | ✅ yes — 79.2k | The headline number |
+| **Inderes-agent runs** (223 production runs over the same period) | ❌ no | ~$50–150 in Gemini API spend total, not metered here |
+| **Eval judge calls** (Tier 1 Gemini Pro judge over golden cases) | ❌ no | ~$5–15 |
+
+The 79.2k is the **dev-loop cost**, not the **product-loop cost**.
+The latter lives in `~/.inderes_agent/runs/*/meta.json` per-run and
+hasn't been aggregated yet — that's exactly the dashboard work
+flagged in §4 Tech debt above.
+
+For comparison: 79.2k tokens at Sonnet pricing is roughly $0.30–1.00
+of Anthropic spend. **Nine days of agentic pair-programming for under
+a dollar of context cost** is the takeaway. The compression strategy
+isn't just nice-to-have — it's the difference between sustainable
+session length and a per-day budget reset.
+
+### Run logs as a parallel artefact
+
+Cross-referencing `~/.inderes_agent/runs/`:
+
+- **223 runs** between 2026-05-01 20:21 and 2026-05-10 13:28
+- **11 MB** total run-log size (~50 kB per run on average)
+- ~25 runs/day mean — but bursty, with smoke-test sessions producing
+  10+ runs in an hour and quiet days with 5–10
+
+Each run dir has: `query.txt`, `routing.json`, `subagent-*.json`,
+`synthesis.txt`, `meta.json`, `console.log`, `paattely.json`,
+`conflicts.json`, optional `plan.json`, `valuation.json`,
+`narrative.md`. With this commit, also `feedback.json` going forward.
+
+That's the **product side** of the same dev session — every time a
+feature was tested live in Streamlit, a run dir was added. The
+Tier 0 indexer treats this as the eval substrate; the live UI treats
+it as the message history. Same data, two consumers — exactly the
+shape that makes the Wk 5–6 Analyst Walkthrough feature (§12) fit
+naturally on top.
+
 ---
 
 *Captured automatically via screenshot during a Claude Code session
