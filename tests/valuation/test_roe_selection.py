@@ -19,7 +19,6 @@ from inderes_agent.valuation.roe_selection import (
     validate_agent_roe_choice,
 )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Trend classification
 # ─────────────────────────────────────────────────────────────────────────────

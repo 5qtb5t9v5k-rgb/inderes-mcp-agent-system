@@ -26,7 +26,6 @@ from inderes_agent.orchestration.router import Domain, QueryClassification
 from inderes_agent.orchestration.synthesis import _process_valuation_subagents
 from inderes_agent.orchestration.workflows import SubagentResult, WorkflowResult
 
-
 # ── Fixture: realistic JSON output that LOOKS valid but has no MCP backing ──
 # Mirrors the Q2 ("entäs jos roe olisi 13%") production hallucination.
 HALLUCINATED_AGENT_TEXT = """\
@@ -263,8 +262,8 @@ def test_format_block_flags_extreme_negative_margin() -> None:
     show a confident "buy at 0.83€" entry level.
     """
     from inderes_agent.orchestration.synthesis import (
-        _format_valuation_block,
         ValuationRecord,
+        _format_valuation_block,
     )
     from inderes_agent.valuation import value_stock
     from inderes_agent.valuation.parser import ValuationAgentOutput
@@ -297,8 +296,8 @@ def test_format_block_flags_tuhoutuva_with_manual_override() -> None:
     with manual_override deserves a softer warning — the user-imposed ROE
     caused the verdict, not an objective observation."""
     from inderes_agent.orchestration.synthesis import (
-        _format_valuation_block,
         ValuationRecord,
+        _format_valuation_block,
     )
     from inderes_agent.valuation import value_stock
     from inderes_agent.valuation.parser import ValuationAgentOutput
@@ -333,8 +332,8 @@ def test_format_block_no_warning_for_normal_case() -> None:
     """Normal valuation (laatu, modest margin) must NOT include a warning —
     we don't want noise on every output."""
     from inderes_agent.orchestration.synthesis import (
-        _format_valuation_block,
         ValuationRecord,
+        _format_valuation_block,
     )
     from inderes_agent.valuation import value_stock
     from inderes_agent.valuation.parser import ValuationAgentOutput
@@ -402,8 +401,9 @@ def test_price_freshness_disclaimer_always_emitted_for_recent_price() -> None:
     """Even ≤ 30 days old, the disclaimer is always emitted (Inderes MCP
     has no real-time price). The user must always know the price is not
     live and what date it's from."""
-    from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
+
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
     fresh = (date.today() - timedelta(days=5)).isoformat()
     rec = _make_record_with_price_date(fresh)
     block = _format_valuation_block([rec])
@@ -416,8 +416,9 @@ def test_price_freshness_disclaimer_always_emitted_for_recent_price() -> None:
 
 def test_price_freshness_info_note_at_30_to_90_days() -> None:
     """31-90 days old → ℹ️ KURSSI HIEMAN VANHENTUNUT (heightened tone)."""
-    from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
+
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
     age = (date.today() - timedelta(days=45)).isoformat()
     rec = _make_record_with_price_date(age)
     block = _format_valuation_block([rec])
@@ -427,8 +428,9 @@ def test_price_freshness_info_note_at_30_to_90_days() -> None:
 
 def test_price_freshness_strong_warning_over_90_days() -> None:
     """>90 days → ⚠️ MERKITTÄVÄSTI VANHENTUNUT, must mention age in days."""
-    from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
+
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
     age = (date.today() - timedelta(days=120)).isoformat()
     rec = _make_record_with_price_date(age)
     block = _format_valuation_block([rec])
@@ -441,8 +443,9 @@ def test_price_freshness_handles_iso_datetime() -> None:
     Inderes' transactionDate field). The helper must extract the date
     portion correctly.
     """
-    from inderes_agent.orchestration.synthesis import _format_valuation_block
     from datetime import date, timedelta
+
+    from inderes_agent.orchestration.synthesis import _format_valuation_block
     # 60 days old, with a full ISO datetime suffix
     age_date = (date.today() - timedelta(days=60)).isoformat()
     iso_datetime = f"{age_date}T16:17:30.000Z"
@@ -455,7 +458,8 @@ def test_price_freshness_handles_missing_or_unparseable() -> None:
     """Empty / None / garbage price_date returns None (no disclaimer to
     avoid spurious "X pv vanha" messages on missing data)."""
     from inderes_agent.orchestration.synthesis import (
-        _format_valuation_block, _price_date_age_days,
+        _format_valuation_block,
+        _price_date_age_days,
     )
     # Direct helper unit test
     assert _price_date_age_days(None) is None
@@ -473,8 +477,9 @@ def test_price_freshness_handles_missing_or_unparseable() -> None:
 
 def test_price_freshness_helper_returns_today_zero_days() -> None:
     """Sanity: today's date should yield age=0."""
-    from inderes_agent.orchestration.synthesis import _price_date_age_days
     from datetime import date
+
+    from inderes_agent.orchestration.synthesis import _price_date_age_days
     today = date.today().isoformat()
     assert _price_date_age_days(today) == 0
 
@@ -482,7 +487,8 @@ def test_price_freshness_helper_returns_today_zero_days() -> None:
 def test_price_freshness_helper_ignores_future_dates() -> None:
     """Future dates (clock skew, agent typo) shouldn't trigger negative age
     or false warnings — return None and stay silent."""
-    from inderes_agent.orchestration.synthesis import _price_date_age_days
     from datetime import date, timedelta
+
+    from inderes_agent.orchestration.synthesis import _price_date_age_days
     future = (date.today() + timedelta(days=30)).isoformat()
     assert _price_date_age_days(future) is None

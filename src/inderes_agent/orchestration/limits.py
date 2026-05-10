@@ -40,9 +40,7 @@ clock budget so a runaway self-correction can't escape the cap.
 from __future__ import annotations
 
 import asyncio
-import time
-from dataclasses import dataclass, field
-
+from dataclasses import dataclass
 
 # Empirical baselines from the Tier 0 SQLite index (183 real runs):
 #
@@ -135,7 +133,7 @@ class RunBudget:
     max_cost_usd: float = DEFAULT_MAX_COST_USD
 
     @classmethod
-    def for_pro_tier(cls) -> "RunBudget":
+    def for_pro_tier(cls) -> RunBudget:
         """Loosened budget for runs where subagents use Gemini 2.5 Pro
         instead of Flash Lite. Pro is empirically 2-3× slower per
         tool-call cycle (research subagent timed out at 90s on Pro
@@ -185,7 +183,7 @@ async def with_subagent_timeout(coro, *, budget: RunBudget, label: str):
     """
     try:
         return await asyncio.wait_for(coro, timeout=budget.max_subagent_duration_s)
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise BudgetExceededError(
             BudgetExceededError.KIND_TIMEOUT_SUBAGENT,
             f"Subagent {label!r} exceeded {budget.max_subagent_duration_s}s "

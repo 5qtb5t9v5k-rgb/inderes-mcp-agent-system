@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from inderes_agent.observability.output_parts import (
     _looks_like_python,
     _strip_dangling_image_refs,
     extract_parts,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fakes mimicking the shape of MAF Content / Message / AgentResponse
@@ -92,7 +90,7 @@ def test_text_only(tmp_path):
     response = FakeResponse(messages=[FakeMessage(contents=[
         FakeContent(type="text", text="Sammon P/E on 12,53."),
     ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    md, images, _tool_calls = extract_parts(response, run_dir=tmp_path, agent_label="quant")
     assert md == "Sammon P/E on 12,53."
     assert images == []
 
@@ -102,7 +100,7 @@ def test_python_text_wrapped_as_code_block(tmp_path):
     response = FakeResponse(messages=[FakeMessage(contents=[
         FakeContent(type="text", text=code),
     ])])
-    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    md, _images, _tool_calls = extract_parts(response, run_dir=tmp_path, agent_label="quant")
     assert md.startswith("```python\n")
     assert md.rstrip().endswith("```")
     assert "import pandas" in md
@@ -115,7 +113,7 @@ def test_mixed_prose_and_code(tmp_path):
         FakeContent(type="text", text="import math\ncagr = (b/a) ** (1/n) - 1\nprint(cagr)"),
         FakeContent(type="text", text="Tulos: 7,4 %."),
     ])])
-    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    md, _images, _tool_calls = extract_parts(response, run_dir=tmp_path, agent_label="quant")
     assert "Lasken CAGR:n:" in md
     assert "```python\nimport math" in md
     assert "Tulos: 7,4 %." in md
@@ -128,7 +126,7 @@ def test_function_calls_skipped(tmp_path):
         FakeContent(type="function_result", text="this should not appear"),
         FakeContent(type="text", text="Final answer."),
     ])])
-    md, _ = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    md, _images, _tool_calls = extract_parts(response, run_dir=tmp_path, agent_label="quant")
     assert md == "Final answer."
     assert "should not appear" not in md
 
@@ -137,7 +135,7 @@ def test_dangling_image_ref_stripped(tmp_path):
     response = FakeResponse(messages=[FakeMessage(contents=[
         FakeContent(type="text", text="Tässä: ![chart](revenue.png) and ![](other.png)"),
     ])])
-    md, images = extract_parts(response, run_dir=tmp_path, agent_label="quant")
+    md, images, _tool_calls = extract_parts(response, run_dir=tmp_path, agent_label="quant")
     assert images == []
     assert "![chart]" not in md
     assert "![" not in md
@@ -148,7 +146,7 @@ def test_fallback_when_no_messages(tmp_path):
     class WeirdResponse:
         text: str = "fallback content"
 
-    md, images = extract_parts(WeirdResponse(), run_dir=tmp_path, agent_label="quant")
+    md, images, _tool_calls = extract_parts(WeirdResponse(), run_dir=tmp_path, agent_label="quant")
     assert md == "fallback content"
     assert images == []
 
@@ -159,5 +157,5 @@ def test_empty_response_returns_empty_text(tmp_path):
         messages: list = field(default_factory=list)
         text: str = ""
 
-    md, _ = extract_parts(EmptyResponse(), run_dir=tmp_path, agent_label="quant")
+    md, _images, _tool_calls = extract_parts(EmptyResponse(), run_dir=tmp_path, agent_label="quant")
     assert md == ""

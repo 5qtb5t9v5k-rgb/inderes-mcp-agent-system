@@ -172,7 +172,7 @@ def summarize_run(run_dir: Path) -> str:
         domains = " + ".join(routing.get("domains", []))
         companies = ", ".join(routing.get("companies", [])) or "—"
         comp = " (vertailu)" if routing.get("is_comparison") else ""
-        lines.append(f"## 🧭 Reititys")
+        lines.append("## 🧭 Reititys")
         lines.append(f"- domains: **{domains}**{comp}")
         lines.append(f"- companies: {companies}")
         if routing.get("reasoning"):

@@ -17,7 +17,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from ..agents import build_conflict_detector_agent, build_lead_agent
@@ -26,8 +26,10 @@ from ..valuation import (
     ValuationAgentOutput,
     ValuationAgentSkipped,
     ValuationParseError,
-    parse as parse_valuation_agent,
     value_stock,
+)
+from ..valuation import (
+    parse as parse_valuation_agent,
 )
 from .router import Domain
 from .workflows import WorkflowResult
@@ -640,8 +642,8 @@ def _format_valuation_block(records: list[ValuationRecord]) -> str:
             f"{v.growth_priced_in_share*100:+.1f}%."
         )
         lines.append(
-            f"  Markkinan implisiittinen näkemys (DUAALI — sama hinta selittyy "
-            f"joko alemmalla g:llä TAI alemmalla ROE:lla):"
+            "  Markkinan implisiittinen näkemys (DUAALI — sama hinta selittyy "
+            "joko alemmalla g:llä TAI alemmalla ROE:lla):"
         )
         lines.append(
             f"    • Kun ROE pidetään mallin arvossa ({a.roe_used:.1%}): "

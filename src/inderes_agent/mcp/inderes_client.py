@@ -17,8 +17,8 @@ token rather than racing to authenticate.
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from typing import Any, Iterable
+from collections.abc import Generator, Iterable
+from typing import Any
 
 import httpx
 from agent_framework import MCPStreamableHTTPTool

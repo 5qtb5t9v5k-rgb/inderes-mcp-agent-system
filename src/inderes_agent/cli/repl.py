@@ -60,7 +60,7 @@ async def handle_query(query: str, state: ConversationState) -> None:
     log_handler = attach_console_log_handler(run_dir)
     t0 = time.time()
     try:
-        console.print(f"[dim]·[/dim] [cyan]reitittäjä päättää mitä subagentteja käytetään…[/cyan]")
+        console.print("[dim]·[/dim] [cyan]reitittäjä päättää mitä subagentteja käytetään…[/cyan]")
         t = time.time()
         classification = await classify_query(query, conversation_context=_build_context(state))
         console.print(f"[dim]· reititys valmis ({time.time()-t:.1f}s)[/dim]")
@@ -71,7 +71,7 @@ async def handle_query(query: str, state: ConversationState) -> None:
 
         render.render_routing(classification)
 
-        console.print(f"[dim]·[/dim] [cyan]subagentit ajetaan, voi kestää 30–90 s…[/cyan]")
+        console.print("[dim]·[/dim] [cyan]subagentit ajetaan, voi kestää 30–90 s…[/cyan]")
         t = time.time()
         workflow_result = await run_workflow(query, classification, run_dir=run_dir)
         for sr in workflow_result.subagent_results:
@@ -80,7 +80,7 @@ async def handle_query(query: str, state: ConversationState) -> None:
             console.print(f"[dim]·   {sr.domain.value}{company}: {tag} ({sr.model_used})[/dim]")
         console.print(f"[dim]· subagentit valmiit ({time.time()-t:.1f}s)[/dim]")
 
-        console.print(f"[dim]·[/dim] [cyan]lead syntesoi vastauksen…[/cyan]")
+        console.print("[dim]·[/dim] [cyan]lead syntesoi vastauksen…[/cyan]")
         t = time.time()
         answer, lead_model, synth_trace = await synthesize(query, workflow_result)
         conflict_report = synth_trace.conflict_report
@@ -172,8 +172,9 @@ async def repl() -> None:
             continue
         if line == "/explain":
             if state.last_run_dir:
-                from rich.markdown import Markdown
                 from pathlib import Path
+
+                from rich.markdown import Markdown
 
                 console.print(Markdown(summarize_run(Path(state.last_run_dir))))
             else:

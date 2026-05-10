@@ -21,13 +21,14 @@ import json
 import logging
 import os
 import time
-from datetime import date
+from datetime import UTC, date
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-import streamlit as st
-from dotenv import load_dotenv
+import streamlit as st  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+
 
 # IMPORTANT: bridge Streamlit secrets to os.environ BEFORE importing any
 # inderes_agent module — oauth.py reads INDERES_OAUTH_TOKENS_JSON at module
@@ -71,6 +72,39 @@ def _bridge_secrets_to_env() -> None:
 
 _bridge_secrets_to_env()
 
+# Trading Desk visual layer — pure cosmetics, no agent-pipeline impact.
+# `streamlit run ui/app.py` puts `ui/` on sys.path (not the repo root), so we
+# import the sibling module by its bare name. Works the same in cloud + local.
+from components import (  # noqa: E402
+    DOMAIN_VERBS_EN,
+    DOMAIN_VERBS_FI,
+    PERSONAS,
+    CustomStatus,
+    build_conflict_html,
+    extract_perustelut,
+    inject_theme,
+    render_about_panel,
+    render_activity_panel,
+    render_agent_output,
+    render_agent_row,
+    render_disclaimer,
+    render_feedback_widget,
+    render_followup_chips,
+    render_github_link,
+    render_lead_answer,
+    render_metrics_row,
+    render_paattely_b,
+    render_personas_panel,
+    render_perustelut_box,
+    render_plan_expander,
+    render_recommendation_badge,
+    render_routing_card,
+    render_sidebar_disclaimer,
+    render_statusbar,
+    render_timeline_strip,
+    render_titlebar,
+)
+
 from inderes_agent.cli.repl import ConversationState  # noqa: E402
 from inderes_agent.llm.gemini_client import QuotaExhaustedError  # noqa: E402
 from inderes_agent.logging import configure_logging  # noqa: E402
@@ -87,41 +121,6 @@ from inderes_agent.observability.run_log import (  # noqa: E402
 from inderes_agent.orchestration.router import classify_query  # noqa: E402
 from inderes_agent.orchestration.synthesis import synthesize  # noqa: E402
 from inderes_agent.orchestration.workflows import run_planner, run_workflow  # noqa: E402
-
-# Trading Desk visual layer — pure cosmetics, no agent-pipeline impact.
-# `streamlit run ui/app.py` puts `ui/` on sys.path (not the repo root), so we
-# import the sibling module by its bare name. Works the same in cloud + local.
-from components import (  # noqa: E402
-    inject_theme,
-    render_titlebar,
-    render_ticker,
-    render_disclaimer,
-    render_routing_card,
-    render_metrics_row,
-    render_agent_row,
-    render_agent_output,
-    render_statusbar,
-    render_personas_panel,
-    render_about_panel,
-    render_full_narrative,
-    render_sidebar_disclaimer,
-    render_github_link,
-    render_lead_answer,
-    render_followup_chips,
-    render_feedback_widget,
-    render_recommendation_badge,
-    render_paattely_b,
-    render_plan_expander,
-    render_timeline_strip,
-    render_activity_panel,
-    build_conflict_html,
-    render_perustelut_box,
-    extract_perustelut,
-    CustomStatus,
-    PERSONAS,
-    DOMAIN_VERBS_FI,
-)
-
 
 # ---------------------------------------------------------------------------
 # Page setup
@@ -320,10 +319,10 @@ def _record_help_request() -> tuple[bool, dict]:
         return False, {"count": 0, "last_at": None}
 
     current = _read_help_request_state()
-    from datetime import datetime, timezone
+    from datetime import datetime
     new_payload = {
         "count": current["count"] + 1,
-        "last_request_at": datetime.now(timezone.utc).isoformat(),
+        "last_request_at": datetime.now(UTC).isoformat(),
     }
 
     try:
@@ -1089,6 +1088,8 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
         # jos…", "tavoitehinta", explicit "arvonmääritys", etc.).
         from inderes_agent.orchestration.router import (
             Domain as _Dom,
+        )
+        from inderes_agent.orchestration.router import (
             query_has_valuation_intent,
         )
         # Two-channel intent detection:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -22,7 +21,7 @@ async def test_comparison_fans_out_per_company(monkeypatch, run_dir):
     """Two companies × one domain = 2 subagent invocations; portfolio domain doesn't fan out."""
     invocations: list[tuple[str, str | None]] = []
 
-    async def fake_run_one(domain, query, company, sem, run_dir):
+    async def fake_run_one(domain, query, company, sem, run_dir, plan=None, deep=False, *, budget=None, cancel_token=None):
         invocations.append((domain.value, company))
         return wf.SubagentResult(domain=domain, company=company, text="x", model_used="primary")
 
@@ -47,7 +46,7 @@ async def test_comparison_fans_out_per_company(monkeypatch, run_dir):
 async def test_single_domain_no_fanout(monkeypatch, run_dir):
     invocations: list[tuple[str, str | None]] = []
 
-    async def fake_run_one(domain, query, company, sem, run_dir):
+    async def fake_run_one(domain, query, company, sem, run_dir, plan=None, deep=False, *, budget=None, cancel_token=None):
         invocations.append((domain.value, company))
         return wf.SubagentResult(domain=domain, company=company, text="x", model_used="primary")
 
@@ -74,7 +73,7 @@ async def test_concurrency_capped(monkeypatch, run_dir):
     in_flight = 0
     peak = 0
 
-    async def fake_run_one(domain, query, company, sem, run_dir):
+    async def fake_run_one(domain, query, company, sem, run_dir, plan=None, deep=False, *, budget=None, cancel_token=None):
         nonlocal in_flight, peak
         async with sem:
             in_flight += 1

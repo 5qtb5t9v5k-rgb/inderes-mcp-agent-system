@@ -14,8 +14,6 @@ The guard belongs in two places, tested in parallel here:
 
 from __future__ import annotations
 
-import pytest
-
 from inderes_agent.orchestration.router import Domain, QueryClassification
 from inderes_agent.orchestration.synthesis import (
     _all_subagents_failed_or_fabricated,
@@ -27,7 +25,6 @@ from inderes_agent.orchestration.workflows import (
     _apply_fabrication_guard,
     _detect_fabrication,
 )
-
 
 # ---------------------------------------------------------------------------
 # Layer 1 — _detect_fabrication (the heuristic itself)

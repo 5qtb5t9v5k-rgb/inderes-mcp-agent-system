@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from ..llm.gemini_client import build_chat_client
 
 
-class Domain(str, Enum):
+class Domain(str, Enum):  # noqa: UP042  # StrEnum migration deferred — touches every consumer
     QUANT = "quant"
     RESEARCH = "research"
     SENTIMENT = "sentiment"

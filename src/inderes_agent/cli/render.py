@@ -21,7 +21,7 @@ def render_routing(classification, *, dim: bool = True) -> None:
     summary = (
         f"→ domains: {[d.value for d in classification.domains]}"
         + (f"  · companies: {classification.companies}" if classification.companies else "")
-        + (f"  · comparison" if classification.is_comparison else "")
+        + ("  · comparison" if classification.is_comparison else "")
     )
     console.print(summary, style=style)
 

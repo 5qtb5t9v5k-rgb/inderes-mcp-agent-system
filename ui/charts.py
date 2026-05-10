@@ -35,7 +35,6 @@ except ImportError:  # pragma: no cover
 
 import streamlit as st
 
-
 # ---------------------------------------------------------------------------
 # Metric catalogue
 # ---------------------------------------------------------------------------
@@ -193,7 +192,7 @@ def _extract_estimates_series(
             values = estimates.get(metric)
             if not isinstance(values, list) or not values:
                 continue
-            for period_str, value in zip(periods, values):
+            for period_str, value in zip(periods, values, strict=False):
                 if value is None or not isinstance(value, (int, float)):
                     continue
                 year = _coerce_period_to_year(period_str)
@@ -344,7 +343,7 @@ def _build_figure(
     metric: str,
     slot: dict[str, Any],
     lang: str,
-) -> "go.Figure | None":
+) -> go.Figure | None:
     """Build a single time-series figure for one metric.
 
     Skips returning a figure when no company has enough points (per
@@ -583,7 +582,7 @@ def _build_provenance_caption(slot: dict[str, Any], lang: str) -> str:
         year_lo, year_hi = min(years), max(years)
         # Estimate years marked with `e` so the user sees what's projection
         actual_hi = max((y for y, _ in actuals), default=year_lo)
-        suffix = f"e" if year_hi > actual_hi else ""
+        suffix = "e" if year_hi > actual_hi else ""
         by_company_lines.append(f"{company_name} ({year_lo}–{year_hi}{suffix})")
         for tool_name, agent_domain, _ in co_slot.get("provenance") or []:
             all_tools.add(tool_name)
@@ -617,7 +616,7 @@ def render_time_series_charts(run_dir: Path, lang: str = "fi") -> None:
 
     # Build figures up-front so we know whether the expander has
     # anything worth opening.
-    figures: list[tuple[str, "go.Figure", dict[str, Any]]] = []
+    figures: list[tuple[str, go.Figure, dict[str, Any]]] = []
     for metric, slot in series_data.items():
         fig = _build_figure(metric, slot, lang)
         if fig is not None:

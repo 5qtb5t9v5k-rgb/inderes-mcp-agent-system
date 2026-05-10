@@ -40,7 +40,6 @@ from charts import (  # noqa: E402
     extract_time_series_from_run,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures — minimal valid quant subagent JSON
 # ---------------------------------------------------------------------------

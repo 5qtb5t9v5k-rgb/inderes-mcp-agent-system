@@ -32,14 +32,13 @@ The agent persona table mirrors the five-agent system in
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
 from html import escape as escape_html
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
-
 
 # ---------------------------------------------------------------------------
 # Persona table — purely cosmetic. Matches src/inderes_agent/agents/* codes.
@@ -552,7 +551,8 @@ def render_metrics_row(run_dir: Path, lang: str = "fi") -> None:
     div_label = "DIV YIELD" if lang == "en" else "OSINKOTUOTTO"
 
     def _fmt(v):
-        if v is None: return "—"
+        if v is None:
+            return "—"
         if isinstance(v, (int, float)):
             s = f"{v:.2f}" if v % 1 else f"{v:.0f}"
             return s.replace(".", ",") if lang == "fi" else s
@@ -704,7 +704,7 @@ def _wrap_python_output(text: str) -> str:
         re.MULTILINE | re.DOTALL,
     )
 
-    def _replace(m: "re.Match[str]") -> str:
+    def _replace(m: re.Match[str]) -> str:
         end_fence = m.group(1)
         candidate = m.group(2)
         if _looks_like_python_output(candidate):
@@ -2545,7 +2545,7 @@ class CustomStatus:
             self._expanded = expanded
         self._render()
 
-    def __enter__(self) -> "CustomStatus":
+    def __enter__(self) -> CustomStatus:
         return self
 
     def __exit__(self, *_args: Any) -> None:

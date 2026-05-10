@@ -31,7 +31,6 @@ import pytest
 
 from inderes_agent.valuation import value_stock
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixture: 10 Finnish companies, hand-picked from
 # /Users/juhorissanen/Downloads/Arvonmääritys2023.xlsx, Data-sheet, 2026-05-08.

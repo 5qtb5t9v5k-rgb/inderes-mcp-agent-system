@@ -41,7 +41,11 @@ def test_query_classification_validates_domains():
 
 
 def test_query_classification_rejects_invalid_domain():
-    with pytest.raises(Exception):
+    # Pydantic raises ValidationError, but we don't import it here to avoid
+    # coupling the test to the validation library. ValueError is the parent
+    # class and is specific enough to catch real bugs while not being a
+    # blanket Exception catch.
+    with pytest.raises((ValueError, TypeError)):
         QueryClassification(
             domains=["not-a-domain"],  # type: ignore[list-item]
             companies=[],

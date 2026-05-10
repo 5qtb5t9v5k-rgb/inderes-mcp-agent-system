@@ -18,7 +18,6 @@ is the read/write layer in `run_log.py`. These tests cover:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -27,7 +26,6 @@ from inderes_agent.observability.run_log import (
     read_feedback,
     write_feedback,
 )
-
 
 # ---------------------------------------------------------------------------
 # write_feedback — happy path

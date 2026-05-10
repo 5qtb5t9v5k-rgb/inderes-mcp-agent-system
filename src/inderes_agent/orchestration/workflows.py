@@ -28,7 +28,6 @@ from .limits import (
     BudgetExceededError,
     CancelToken,
     RunBudget,
-    check_tool_call_caps,
     with_subagent_timeout,
 )
 from .router import Domain, QueryClassification
@@ -316,6 +315,7 @@ async def run_planner(
     """
     import json
     import re
+
     from ..agents import build_lead_planner_agent
     from ..agents._common import today_prompt_prefix
 
@@ -452,7 +452,7 @@ async def run_workflow(
             asyncio.gather(*tasks),
             timeout=budget.max_workflow_duration_s,
         )
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         # Cancel any still-running tasks so they don't keep running
         # after we've given up on them.
         for task in tasks:

@@ -14,10 +14,7 @@ UI's prose fallback still works.
 
 from __future__ import annotations
 
-import pytest
-
 from inderes_agent.orchestration.synthesis import _extract_paattely
-
 
 # ---------------------------------------------------------------------------
 # Four-paragraph prose → structured slots

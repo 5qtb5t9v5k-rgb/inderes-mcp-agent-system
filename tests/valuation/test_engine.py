@@ -14,13 +14,10 @@ These run in milliseconds; no LLM, no MCP, no I/O.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from inderes_agent.valuation import value_stock
 from inderes_agent.valuation.engine import Valuation
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Happy path — laatuyhtiö
@@ -300,11 +297,10 @@ def test_implied_g_returns_none_when_pb_near_one() -> None:
 
 def test_implied_g_returns_none_when_explosion() -> None:
     """If implied_g would be ≥ k, return None rather than a misleading number."""
-    # Construct an extreme case: very high P/B, low ROE → implied g would explode
-    v = value_stock(bvps=1.0, roe=0.10, k=0.08, g=0.04, price=20.0)
-    # P/B = 20. (20 × 0.08 - 0.10) / 19 = 1.5 / 19 = 0.079 < 0.08
-    # So implied_g ≈ 7.9% < k=8% — actually NOT explosive
-    # Let me use a case that actually explodes:
+    # First a case that does NOT actually explode (kept as a learning comment):
+    # value_stock(bvps=1.0, roe=0.10, k=0.08, g=0.04, price=20.0)
+    # P/B = 20. (20 × 0.08 - 0.10) / 19 = 1.5 / 19 = 0.079 < 0.08 → not explosive.
+    # Now a case that does explode:
     v2 = value_stock(bvps=1.0, roe=0.05, k=0.08, g=0.04, price=20.0)
     # P/B = 20. (20 × 0.08 - 0.05) / 19 = 1.55 / 19 = 0.0816 > 0.08 → None
     assert v2.implied_g is None
