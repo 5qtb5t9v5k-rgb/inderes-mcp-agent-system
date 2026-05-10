@@ -1612,40 +1612,137 @@ def render_timeline_strip(run_dir: Path, lang: str = "fi") -> None:
         st.rerun()
 
 
-# Inline footnote markers in answer text. LEAD's prompt should produce
-# `[¹]` / `[²]` style numbered superscript markers at the end of sentences
-# that are backed by specific tool calls. Here we post-process the
-# rendered HTML to wrap those markers in persona-colored spans so they
-# stand out (and later: become clickable to scroll the activity panel).
+# ────────────────────────────────────────────────────────────────────
+# Footnote markers in LEAD's answer text
 #
-# The model isn't disciplined about always producing them, so this is
-# best-effort styling: we match `[1]`, `[2]`, etc. (or unicode ¹²³),
-# and color them by the persona that backed the claim — IF the surrounding
-# text gave a hint via class="fn q/r/s/p" (translated from the redesign).
-# When no hint is present we color them neutrally.
-_FOOTNOTE_MARKER_RE = re.compile(
-    r"\[(\d+)\]"  # plain ASCII [N] form — model emits this
+# LEAD's prompt requires persona-prefixed markers `[Q1]`, `[R2]`,
+# `[S3]`, `[V4]`, `[P5]` after every numerical/recommendation/quote
+# claim, plus a `**📚 Lähdeviittaukset:**` section at the end mapping
+# each marker to its source. Format example:
+#
+#   "Suositus on Vähennä[Q1] ja tavoitehinta 24,00 €[Q1]."
+#   ...
+#   **📚 Lähdeviittaukset:**
+#   - [Q1] quant · get-inderes-estimates → target_price=24.00 €
+#   - [R2] research · read-document-sections → Q1'26-raportti
+#
+# Two passes:
+#   1. _extract_footnote_definitions(text) — pulls the definitions
+#      block off the synthesis and returns (cleaned_text, def_map).
+#   2. _style_footnote_markers(html) — wraps `[X<n>]` markers in
+#      persona-colored <sup> with browser-native title-tooltip.
+#
+# The legacy plain-ASCII `[1]` form is still recognised for backward
+# compatibility — colored neutrally and tooltip-less when no
+# definition is found.
+# ────────────────────────────────────────────────────────────────────
+
+# Persona-prefixed marker (canonical, post-2026-05-10):
+#   [Q1], [R2], [S3], [V4], [P5]
+_FOOTNOTE_PERSONA_MARKER_RE = re.compile(r"\[([QRSVP])(\d+)\]")
+
+# Legacy plain marker — surviving runs from before persona prefixes.
+_FOOTNOTE_PLAIN_MARKER_RE = re.compile(r"\[(\d{1,3})\]")
+
+# Definitions block at the end of the synthesis. We capture the body
+# until the next markdown heading or another bold marker (📖 Lähteet,
+# 💡 Voisit kysyä myös). Anchored on a line-start so a literal
+# 📚-emoji inside body prose doesn't false-match. Header form is
+# `**📚 Lähdeviittaukset:**` (FI), `**📚 Sources:**` (EN), or the
+# H2/H3 heading variants — we accept all.
+_FOOTNOTE_DEFINITIONS_RE = re.compile(
+    # opening: optional ** OR #-heading prefix
+    r"(?:^|\n)\s*(?:\*\*|#{1,3})?\s*"
+    # the marker emoji + heading word
+    r"📚\s*(?:Lähdeviittaukset|Sources|Footnotes)"
+    # optional `:` and optional closing `**` — handles `:**` AND `**`
+    # AND `:` AND no terminator
+    r"\s*:?\s*(?:\*\*)?\s*\n+"
+    r"(?P<body>.+?)"
+    r"(?=\n\s*#{1,3}\s|\n\s*\*\*\s*(?:📖|💡)|\Z)",
+    re.DOTALL | re.IGNORECASE,
 )
-_FOOTNOTE_PERSONA_HINT_RE = re.compile(
-    r'<sup\s+class="fn-([qrsp])"[^>]*>(\d+)</sup>'  # hinted form
+
+# Single definition line: `- [Q1] quant · get-inderes-estimates → ...`
+_FOOTNOTE_DEFINITION_LINE_RE = re.compile(
+    r"^\s*-\s*\[([QRSVP]?)(\d+)\]\s*(?P<body>.+?)\s*$"
 )
 
+# Map persona letter → CSS suffix used by .ia-fn-q / -r / -s / -v / -p
+_PERSONA_LETTER_TO_CSS = {
+    "Q": "q", "R": "r", "S": "s", "V": "v", "P": "p",
+}
 
-def _style_footnote_markers(html: str) -> str:
-    """Wrap `[N]` markers in styled <sup> tags so they read as inline footnotes.
 
-    `[1]` → `<sup class="ia-fn">[1]</sup>` (color-neutral baseline).
-    Sentences with persona hints get persona-colored markers later.
+def _extract_footnote_definitions(text: str) -> tuple[str, dict[str, str]]:
+    """Pull the **📚 Lähdeviittaukset:** block off the synthesis text.
 
-    This is best-effort: the model sometimes uses `(1)` or `[1.]` or
-    parenthetical citations; we only catch the canonical `[N]` form and
-    leave others as-is. The risk of false positives (a literal `[1]` in
-    a quoted text) is low in this domain.
+    Returns (cleaned_text, definitions) where definitions maps the
+    full marker key (e.g. ``"Q1"``, or ``"1"`` for legacy plain
+    markers) to the human-readable explanation following it.
+
+    The block itself is removed from cleaned_text so the UI doesn't
+    render it twice (once as the body trailer, once as tooltips on
+    the markers above). When no block is present, returns
+    ``(text, {})`` unchanged.
     """
-    return _FOOTNOTE_MARKER_RE.sub(
-        r'<sup class="ia-fn">[\1]</sup>',
-        html,
-    )
+    m = _FOOTNOTE_DEFINITIONS_RE.search(text)
+    if not m:
+        return text, {}
+    body = m.group("body")
+    definitions: dict[str, str] = {}
+    for line in body.splitlines():
+        line_match = _FOOTNOTE_DEFINITION_LINE_RE.match(line)
+        if not line_match:
+            continue
+        persona_letter, number, definition_body = line_match.groups()
+        # Key uses the persona letter when present (canonical form).
+        key = f"{persona_letter}{number}" if persona_letter else number
+        definitions[key] = definition_body.strip()
+
+    cleaned = (text[: m.start()] + text[m.end():]).rstrip() + "\n"
+    return cleaned, definitions
+
+
+def _style_footnote_markers(html: str, definitions: dict[str, str] | None = None) -> str:
+    """Wrap `[Q1]` / `[R2]` / etc. markers in styled, persona-colored
+    <sup> tags with browser-native ``title`` tooltips populated from
+    the definitions map.
+
+    Persona-prefixed markers are matched first; remaining plain-ASCII
+    `[1]`-style markers (legacy) are wrapped color-neutrally.
+    """
+    definitions = definitions or {}
+
+    def _persona_replacer(m: re.Match[str]) -> str:
+        letter, number = m.group(1), m.group(2)
+        css_suffix = _PERSONA_LETTER_TO_CSS.get(letter, "")
+        klass = f"ia-fn ia-fn-{css_suffix}" if css_suffix else "ia-fn"
+        key = f"{letter}{number}"
+        title_attr = ""
+        if key in definitions:
+            # HTML-escape the title — definitions can contain `→`, `&`,
+            # quotes, and other browser-significant characters.
+            from html import escape as _esc
+            title_attr = f' title="{_esc(definitions[key], quote=True)}"'
+        return f'<sup class="{klass}"{title_attr}>[{letter}{number}]</sup>'
+
+    html = _FOOTNOTE_PERSONA_MARKER_RE.sub(_persona_replacer, html)
+
+    # Legacy plain `[1]` markers (no persona). Skip ones that were
+    # already wrapped above.
+    def _plain_replacer(m: re.Match[str]) -> str:
+        if "<sup" in (m.string[max(0, m.start() - 10): m.start()]):
+            return m.group(0)  # already wrapped
+        number = m.group(1)
+        title_attr = ""
+        if number in definitions:
+            from html import escape as _esc
+            title_attr = f' title="{_esc(definitions[number], quote=True)}"'
+        return f'<sup class="ia-fn"{title_attr}>[{number}]</sup>'
+
+    html = _FOOTNOTE_PLAIN_MARKER_RE.sub(_plain_replacer, html)
+    return html
 
 
 def build_conflict_html(run_dir: Path, lang: str = "fi") -> str:
@@ -2105,6 +2202,11 @@ def render_lead_answer(text: str | None) -> None:
     if not text:
         text = "_(empty)_"
     main, _followups = split_followups(text)
+    # Strip the **📚 Lähdeviittaukset:** definitions block off so the
+    # body doesn't render the same content twice (once as marker
+    # tooltips, once as a trailer block). The extracted definitions
+    # populate the title="" attribute on each `[X<n>]` marker below.
+    main, footnote_definitions = _extract_footnote_definitions(main)
     main = _ensure_python_fenced(main)
     main = _wrap_python_output(main)
     try:
@@ -2117,7 +2219,7 @@ def render_lead_answer(text: str | None) -> None:
 
         html_content = f"<pre>{_html_escape(main)}</pre>"
     html_content = _externalize_links(html_content)
-    html_content = _style_footnote_markers(html_content)
+    html_content = _style_footnote_markers(html_content, footnote_definitions)
     st.html(f'<div class="ia-lead-answer">{html_content}</div>')
 
 

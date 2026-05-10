@@ -1308,6 +1308,9 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] [data-testid="stExp
 .ia-fn-r { color: var(--p-research);  border-color: rgba(106,169,255,.3); }
 .ia-fn-s { color: var(--p-sentiment); border-color: rgba(255,126,179,.3); }
 .ia-fn-p { color: var(--p-portfolio); border-color: rgba(194,148,255,.3); }
+.ia-fn-v { color: #FFB85F;            border-color: rgba(255,184,95,.3); }
+/* Cursor cue for the browser-native title-tooltip on populated markers */
+.ia-fn[title] { cursor: help; }
 
 /* ─────────────────────────  RIGHT-SIDE ACTIVITY PANEL  ─────────────────────
    Position-fixed overlay anchored to the right edge. The :has() selector
