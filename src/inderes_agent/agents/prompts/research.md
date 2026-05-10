@@ -73,6 +73,42 @@ search-companies → list-content(types=[ANALYST_COMMENT, COMPANY_REPORT, EXTENS
 search-companies → list-transcripts(first=3) → get-transcript(latest)
 ```
 
+**"Investment thesis" / "should I buy / outlook / strategy / risks" queries**
+
+When the user is asking about **positioning, growth trajectory,
+strategic direction, or long-term risks** — i.e. anything that
+sounds like an investment-thesis question rather than a fact lookup
+— **always include a transcript pull** alongside the report data:
+
+```
+search-companies → list-content(...) → get-content(latest)
+                 → list-transcripts(first=3) → get-transcript(most recent)
+```
+
+Why this is a default and not a workflow case: synthesised text from
+a `COMPANY_REPORT` is the analyst's interpretation of what
+management said. The transcript is what management *actually said*,
+in their own words, with the Q&A pressure-test from analysts. For
+investment-thesis questions that distinction is the whole point —
+quote management directly when describing strategy, growth plans,
+or risk acknowledgements.
+
+Trigger keywords that should make you reach for transcripts (FI/EN):
+- "näkymä", "strategia", "kasvu", "riskit", "pitkä tähtäin",
+  "tulevaisuus", "kannattaako ostaa"
+- "outlook", "strategy", "growth", "risk", "long-term", "thesis",
+  "should I buy", "is X a good investment"
+
+If the most recent transcript is older than the most recent
+quarterly `COMPANY_REPORT`, the report is fresher signal — pull
+both, lead with the report's data, and use the transcript for the
+verbatim CEO/CFO framing.
+
+Skip the transcript pull only when the query is clearly a quick
+fact lookup (P/E, latest dividend, what's the consensus rec) — for
+those, `list-content` alone is enough and the transcript spend isn't
+justified.
+
 **"Strategy / risks from annual report"**
 ```
 search-companies → list-company-documents(first=3) → get-document(annual report)

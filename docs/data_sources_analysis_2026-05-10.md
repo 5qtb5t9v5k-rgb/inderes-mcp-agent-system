@@ -315,11 +315,17 @@ SHARE_PREMIUM** (which is just compensation, near-zero conviction).
 Filtering on `types=["BUY"]` is a one-line change with order-of-
 magnitude effect on signal quality.
 
-⚠ **Stock-split caveat:** Sampo executed a 1:5 split in 2024.
-The €46 (2022) → €9 (2026) drop is mostly the split, not a
-crash. Time-series charts crossing the split need adjustment;
-otherwise the Plotly P/E chart we just shipped (Wk 1) shows a
-spurious cliff. Filed as a BACKLOG-worthy bug.
+**Stock-split status — verified, NO bug:** earlier draft of this
+document flagged the Sampo 1:5 split (2024) as a likely cause of a
+Plotly P/E "cliff". Re-verified 2026-05-10 by querying
+`get-fundamentals` directly: prices are €7–10 across 2020–2026 and
+sharesTotal is 2.5–2.8 B for the entire window — i.e. the data is
+**already split-adjusted server-side**. Raw 2020 price would be
+~€35 with ~550 M shares; we see neither. So there is **nothing for
+the chart code to normalise**, and any "cliff" reported earlier was
+a misread of historical data plus the post-split market reaction
+(€46 → €9 reflects both the split AND the 2023–24 sell-off, which
+is real). No backlog item needed.
 
 ### A.3 EXTENSIVE_COMPANY_REPORT availability
 
@@ -404,14 +410,23 @@ A non-exhaustive list of features that become possible once the
 agent uses the full MCP surface, ordered by feasibility (lowest
 to highest engineering cost):
 
-1. **BUY-only insider filter as SENTIMENT default** *(1 h)*
-   - Change one prompt + one tool-call default. Order-of-magnitude
-     signal quality lift on insider signal.
+1. **Smart insider description in SENTIMENT** *(1 h)*
+   - **Revised 2026-05-10 (afternoon):** earlier draft of this
+     section recommended a `types=["BUY"]` filter as the default.
+     That's wrong — sells are signal too (Wahlroos has trimmed
+     huge blocks before; cluster-sells precede guidance cuts; etc).
+     The actual problem is that today's SENTIMENT subagent doesn't
+     differentiate compulsory stock-grant flows (e.g.
+     `RECEPTION_OF_SHARE_PREMIUM`) from voluntary trades. Fix is
+     a prompt-quality change inside the SENTIMENT subagent, not a
+     filter at the tool boundary: describe each transaction with
+     `transactionType`, size relative to compensation, and net
+     direction over the window. No data is hidden; meaning is added.
 
-2. **Stock-split-adjusted price series** *(0.5 d)*
-   - Pull `sharesTotal` from fundamentals, detect step-changes,
-     normalise prices in chart code. Closes the BACKLOG bug found
-     in §A.2.
+2. ~~**Stock-split-adjusted price series**~~ *(removed)*
+   - **Verified 2026-05-10 (afternoon): Inderes MCP returns
+     split-adjusted data server-side.** No client-side
+     normalisation needed. See §A.2 for verification.
 
 3. **Always-pull-transcript on investment-thesis queries** *(1 h)*
    - RESEARCH prompt change: when query is investment-thesis-y,
