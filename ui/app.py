@@ -1085,10 +1085,21 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
             Domain as _Dom,
             query_has_valuation_intent,
         )
+        # Two-channel intent detection:
+        #   1. classification.has_valuation_intent — semantic decision
+        #      from the router LLM (post-2026-05-10 change). Handles
+        #      typos and morphology cleanly.
+        #   2. query_has_valuation_intent() — keyword/stem fallback,
+        #      kept as a safety net so a hard-coded match never has
+        #      to wait on the LLM agreeing.
+        # If EITHER says yes, run valuation. The toggle is the user's
+        # explicit consent to add valuation to the dispatch list.
+        intent_via_llm = bool(classification.has_valuation_intent)
+        intent_via_keywords = query_has_valuation_intent(query)
         if (
             st.session_state.get("valuation_mode_on")
             and classification.companies
-            and query_has_valuation_intent(query)
+            and (intent_via_llm or intent_via_keywords)
         ):
             if _Dom.VALUATION not in classification.domains:
                 classification.domains.append(_Dom.VALUATION)

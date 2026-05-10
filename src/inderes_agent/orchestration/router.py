@@ -32,6 +32,19 @@ class QueryClassification(BaseModel):
     domains: list[Domain] = Field(description="Subagents to invoke; can be 1..4")
     companies: list[str] = Field(default_factory=list, description="Company names mentioned")
     is_comparison: bool = False
+    has_valuation_intent: bool = Field(
+        default=False,
+        description=(
+            "True when the user is asking for a valuation, fair value, "
+            "target-price assessment, or 'is this stock cheap/expensive?' "
+            "type question. Decided semantically by the router LLM rather "
+            "than via keyword matching, so typos like 'arvonääritys' (m "
+            "missing) and morphology variants ('arvonmäärityksen', "
+            "'arvonarviointia') are handled correctly. Used by the UI "
+            "to gate the alternative-valuation toggle: the toggle adds "
+            "VALUATION only when this flag is True."
+        ),
+    )
     reasoning: str = ""
 
 
@@ -43,6 +56,7 @@ Output ONLY a JSON object matching this schema:
   "domains":      array of strings, any subset of ["quant","research","sentiment","portfolio"],
   "companies":    array of strings (company names mentioned by user, may be empty),
   "is_comparison": boolean (true if user wants two or more companies compared),
+  "has_valuation_intent": boolean (true if the user is asking for a valuation / fair value / "is X cheap or expensive?"),
   "reasoning":    short string explaining your routing choice (max 1 sentence)
 }
 
@@ -51,6 +65,28 @@ Domain meanings:
 - research   → Inderes' analyst reports, articles, earnings call transcripts, company filings
 - sentiment  → insider transactions, forum buzz, calendar events (earnings dates etc.)
 - portfolio  → Inderes' model portfolio (holdings, performance)
+
+`has_valuation_intent` — set to TRUE when the user is asking:
+  • for an explicit valuation / fair value / arvonmääritys (Finnish)
+  • whether a stock is over- or under-valued ("yliarvostettu", "halpa")
+  • for a target-price assessment beyond just looking up the current Inderes target
+  • about valuation multiples in a "is this expensive" sense (P/E, P/B, EV/EBIT)
+  • a "what if ROE were X%" / "entäs jos k=10%" sensitivity probe
+Set FALSE when:
+  • the user asks for a fact lookup (P/E now, recommendation, EPS forecast)
+    that doesn't imply a valuation judgment
+  • the user asks for qualitative explanation ("selitä", "miksi", "kerro")
+  • the user asks about news, sentiment, insider trades, forum discussion
+
+Use SEMANTIC understanding — common typos and morphology should NOT
+bounce a clearly-valuation-intent query. Examples:
+  • "arvonääritys valmet?" (m missing) → has_valuation_intent: TRUE
+  • "arvonmaaritys Sampolle" (umlauts dropped) → TRUE
+  • "valuation of Nordea" → TRUE
+  • "onko sampo halpa?" → TRUE
+  • "selitä miksi Nordea kannattava" → FALSE (qualitative)
+  • "Sammon P/E?" → FALSE (fact lookup unless the user asked "is the P/E
+    high?" which would shift to TRUE)
 
 ROUTING RULES (apply in order):
 
@@ -70,17 +106,20 @@ ROUTING RULES (apply in order):
    + sentiment.
 
 Few-shot examples:
-- "What's Konecranes' P/E?"                     → {"domains":["quant"], "companies":["Konecranes"], "is_comparison":false}
-- "Compare Sampo and Nordea on profitability"   → {"domains":["quant","research","sentiment"], "companies":["Sampo","Nordea"], "is_comparison":true}
-- "Vertaile Sammon ja Nordean kannattavuutta"   → {"domains":["quant","research","sentiment"], "companies":["Sampo","Nordea"], "is_comparison":true}
-- "nordea vs aktia"                             → {"domains":["quant","research","sentiment"], "companies":["Nordea","Aktia"], "is_comparison":true}
-- "Selitä mistä Nordean kannattavuus tulee"     → {"domains":["research","quant","sentiment"], "companies":["Nordea"], "is_comparison":false}
-- "Should I be worried about Sampo?"            → {"domains":["quant","research","sentiment"], "companies":["Sampo"], "is_comparison":false}
-- "What does Inderes hold right now?"           → {"domains":["portfolio"], "companies":[], "is_comparison":false}
-- "Earnings reports this week?"                 → {"domains":["sentiment"], "companies":[], "is_comparison":false}
-- "What's interesting in industrials?"          → {"domains":["research","sentiment","portfolio"], "companies":[], "is_comparison":false}
-- "Insider activity at Nokia 90 days?"          → {"domains":["sentiment"], "companies":["Nokia"], "is_comparison":false}
-- "Latest analyst note on Wärtsilä"             → {"domains":["research"], "companies":["Wärtsilä"], "is_comparison":false}
+- "What's Konecranes' P/E?"                     → {"domains":["quant"], "companies":["Konecranes"], "is_comparison":false, "has_valuation_intent":false}
+- "tee arvonmääritys Sampolle"                  → {"domains":["quant","research"], "companies":["Sampo"], "is_comparison":false, "has_valuation_intent":true}
+- "arvonääritys valmet?" (typo)                 → {"domains":["quant","research"], "companies":["Valmet"], "is_comparison":false, "has_valuation_intent":true}
+- "onko nordea yliarvostettu?"                  → {"domains":["quant","research","sentiment"], "companies":["Nordea"], "is_comparison":false, "has_valuation_intent":true}
+- "Compare Sampo and Nordea on profitability"   → {"domains":["quant","research","sentiment"], "companies":["Sampo","Nordea"], "is_comparison":true, "has_valuation_intent":false}
+- "Vertaile Sammon ja Nordean kannattavuutta"   → {"domains":["quant","research","sentiment"], "companies":["Sampo","Nordea"], "is_comparison":true, "has_valuation_intent":false}
+- "nordea vs aktia"                             → {"domains":["quant","research","sentiment"], "companies":["Nordea","Aktia"], "is_comparison":true, "has_valuation_intent":false}
+- "Selitä mistä Nordean kannattavuus tulee"     → {"domains":["research","quant","sentiment"], "companies":["Nordea"], "is_comparison":false, "has_valuation_intent":false}
+- "Should I be worried about Sampo?"            → {"domains":["quant","research","sentiment"], "companies":["Sampo"], "is_comparison":false, "has_valuation_intent":false}
+- "What does Inderes hold right now?"           → {"domains":["portfolio"], "companies":[], "is_comparison":false, "has_valuation_intent":false}
+- "Earnings reports this week?"                 → {"domains":["sentiment"], "companies":[], "is_comparison":false, "has_valuation_intent":false}
+- "What's interesting in industrials?"          → {"domains":["research","sentiment","portfolio"], "companies":[], "is_comparison":false, "has_valuation_intent":false}
+- "Insider activity at Nokia 90 days?"          → {"domains":["sentiment"], "companies":["Nokia"], "is_comparison":false, "has_valuation_intent":false}
+- "Latest analyst note on Wärtsilä"             → {"domains":["research"], "companies":["Wärtsilä"], "is_comparison":false, "has_valuation_intent":false}
 
 If the user follow-up is ambiguous (e.g. "and the dividend yield?"), assume continuation: copy companies from previous turn (if provided in CONVERSATION_CONTEXT) and pick the matching domain.
 
