@@ -24,6 +24,13 @@ from ..agents import (
 )
 from ..observability.output_parts import ToolCallTrace, extract_parts
 from ..settings import get_settings
+from .limits import (
+    BudgetExceededError,
+    CancelToken,
+    RunBudget,
+    check_tool_call_caps,
+    with_subagent_timeout,
+)
 from .router import Domain, QueryClassification
 
 
@@ -196,9 +203,34 @@ async def _run_one(
     run_dir: Path,
     plan: PlanResult | None = None,
     deep: bool = False,
+    *,
+    budget: RunBudget | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> SubagentResult:
+    """Run one subagent with optional hard limits + cooperative cancel.
+
+    `budget` and `cancel_token` are optional so existing callers (CLI,
+    older tests) work unchanged. When supplied, the agent.run() coroutine
+    is wrapped in a wall-clock timeout and the cancel-token is checked
+    before/after the call. Either firing produces a SubagentResult with
+    `error="budget_exceeded:..."` so downstream consumers see a clean
+    failure, not a partial response.
+    """
+    budget = budget or RunBudget()
+    cancel_token = cancel_token or CancelToken()
     builder = _AGENT_BUILDERS[domain]
+    label = f"{domain.value}-{company}" if company else domain.value
     async with sem:
+        # Honour cancel BEFORE we even build the agent — saves cost when
+        # the user clicked "🛑 Pysäytä" while still in the queue.
+        try:
+            cancel_token.check()
+        except BudgetExceededError as exc:
+            return SubagentResult(
+                domain=domain, company=company, text="",
+                model_used="cancelled", error=f"budget_exceeded: {exc.reason}",
+                duration_seconds=0.0,
+            )
         t_start = time.time()
         try:
             async with builder(deep=deep) as agent:
@@ -212,11 +244,16 @@ async def _run_one(
                 # this composition safe in all cases.
                 plan_snippet = _format_plan_for_subagent(plan, domain) if plan else ""
                 prompt = today_prompt_prefix() + base + plan_snippet
-                result = await agent.run(prompt)
+                # Per-subagent wall-clock cap — Vincit-style 308 s
+                # loops get cut at 90 s. The timeout fires the OWASP
+                # T1 hard limit; agent.run() is cancelled cleanly via
+                # asyncio's CancelledError propagation.
+                result = await with_subagent_timeout(
+                    agent.run(prompt), budget=budget, label=label,
+                )
                 model_used = getattr(agent.client, "last_used_model", "unknown")
                 # Walk response parts so code blocks, code outputs and images
                 # land structured rather than flattened into one text blob.
-                label = f"{domain.value}-{company}" if company else domain.value
                 text, image_paths, tool_calls = extract_parts(
                     result, run_dir=run_dir, agent_label=label
                 )
@@ -233,6 +270,18 @@ async def _run_one(
                     tool_calls=tool_calls,
                     duration_seconds=time.time() - t_start,
                 ))
+        except BudgetExceededError as exc:
+            # Hard-limit fire — flagged with structured `kind` for the
+            # UI to render an appropriate banner. The subagent didn't
+            # finish so we have no usable text or tool_calls to surface.
+            return SubagentResult(
+                domain=domain,
+                company=company,
+                text="",
+                model_used="budget_exceeded",
+                error=f"budget_exceeded:{exc.kind} — {exc.reason}",
+                duration_seconds=time.time() - t_start,
+            )
         except Exception as exc:
             return SubagentResult(
                 domain=domain,
@@ -348,6 +397,8 @@ async def run_workflow(
     *,
     plan: PlanResult | None = None,
     subagents_deep: bool = False,
+    budget: RunBudget | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> WorkflowResult:
     """Spawn subagents per the classification, respecting MAX_CONCURRENT_AGENTS.
 
@@ -367,6 +418,8 @@ async def run_workflow(
     """
     settings = get_settings()
     sem = asyncio.Semaphore(settings.MAX_CONCURRENT_AGENTS)
+    budget = budget or RunBudget()
+    cancel_token = cancel_token or CancelToken()
 
     tasks: list[asyncio.Task[SubagentResult]] = []
 
@@ -380,12 +433,35 @@ async def run_workflow(
     for domain in classification.domains:
         if fanout and domain != Domain.PORTFOLIO:
             for company in classification.companies:
-                tasks.append(asyncio.create_task(_run_one(domain, query, company, sem, run_dir, plan, subagents_deep)))
+                tasks.append(asyncio.create_task(_run_one(
+                    domain, query, company, sem, run_dir, plan, subagents_deep,
+                    budget=budget, cancel_token=cancel_token,
+                )))
         else:
-            tasks.append(asyncio.create_task(_run_one(domain, query, None, sem, run_dir, plan, subagents_deep)))
+            tasks.append(asyncio.create_task(_run_one(
+                domain, query, None, sem, run_dir, plan, subagents_deep,
+                budget=budget, cancel_token=cancel_token,
+            )))
 
     t_fanout_start = time.time()
-    results = await asyncio.gather(*tasks)
+    # Workflow-level wall-clock cap — even with each subagent capped
+    # at 90s, fan-out across 4 companies × 3 domains can drag if every
+    # agent uses near-budget. 180s is the global safety net.
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks),
+            timeout=budget.max_workflow_duration_s,
+        )
+    except asyncio.TimeoutError as exc:
+        # Cancel any still-running tasks so they don't keep running
+        # after we've given up on them.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        raise BudgetExceededError(
+            BudgetExceededError.KIND_TIMEOUT_WORKFLOW,
+            f"Workflow exceeded {budget.max_workflow_duration_s}s wall-clock",
+        ) from exc
     fanout_seconds = time.time() - t_fanout_start
 
     fallback_events = sum(
