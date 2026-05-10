@@ -122,16 +122,21 @@ def test_style_each_persona_letter_has_distinct_class():
     assert 'ia-fn-p' in out
 
 
-def test_style_marker_with_definition_gets_dual_tooltip_attrs():
-    """Populated markers get BOTH `title` (desktop hover, native +
-    screen-reader-friendly) AND `data-tooltip` (CSS popup that works
-    on mobile tap-focus)."""
+def test_style_marker_with_definition_gets_data_tooltip_and_aria_label():
+    """Populated markers get `data-tooltip` (drives the CSS popup, works
+    on hover AND tap) plus `aria-label` for screen-reader access. The
+    browser's native `title` is intentionally omitted: emitting both
+    `title` and a CSS popup made the user see two stacked tooltips on
+    hover (reported 2026-05-10)."""
     defs = {"Q1": "quant · get-inderes-estimates → target_price=24.00 €"}
     out = _style_footnote_markers("Suositus[Q1] on Vähennä.", defs)
-    assert 'title="quant · get-inderes-estimates → target_price=24.00 €"' in out
+    # CSS-popup driver + a11y label both present
+    assert 'aria-label="quant · get-inderes-estimates → target_price=24.00 €"' in out
     assert 'data-tooltip="quant · get-inderes-estimates → target_price=24.00 €"' in out
     # tabindex makes the marker focusable so mobile tap brings up the popup
     assert 'tabindex="0"' in out
+    # Native title attribute MUST NOT appear (would produce double tooltip)
+    assert 'title=' not in out
 
 
 def test_style_marker_html_escapes_dangerous_chars_in_tooltip():
@@ -152,7 +157,7 @@ def test_style_marker_without_definition_uses_persona_fallback_tooltip():
     out = _style_footnote_markers("Suositus[Q1].", {})
     assert 'class="ia-fn ia-fn-q"' in out
     # Fallback tooltip present — uses persona name
-    assert 'title="quant' in out
+    assert 'aria-label="quant' in out
     assert 'data-tooltip="quant' in out
     assert 'tabindex="0"' in out
 
@@ -162,7 +167,7 @@ def test_style_marker_definition_wins_over_fallback():
     defs = {"Q1": "quant · get-fundamentals → P/E=14.0"}
     out = _style_footnote_markers("Suositus[Q1].", defs)
     # Real definition is used, not the persona fallback
-    assert 'title="quant · get-fundamentals → P/E=14.0"' in out
+    assert 'aria-label="quant · get-fundamentals → P/E=14.0"' in out
     # Fallback string should NOT appear
     assert 'numero / suositus' not in out
 
@@ -188,9 +193,9 @@ def test_style_combined_markers_split_into_separate_sups():
     assert out.count('<sup') == 2
     # Both keep persona color
     assert out.count('ia-fn-q') == 2
-    # Each gets its own tooltip
-    assert 'title="quant · search-companies"' in out
-    assert 'title="quant · get-fundamentals"' in out
+    # Each gets its own tooltip via aria-label
+    assert 'aria-label="quant · search-companies"' in out
+    assert 'aria-label="quant · get-fundamentals"' in out
     # The literal "[Q1, Q2]" combined form must NOT survive in the output
     assert '[Q1, Q2]' not in out
     # Both Q1 and Q2 surfaces appear
@@ -259,9 +264,9 @@ def test_full_pipeline_synthesis_to_tooltipped_html():
     assert 'ia-fn-q' in out
     assert 'ia-fn-r' in out
 
-    # Each populated marker has a title tooltip
-    assert 'title="quant · get-inderes-estimates' in out
-    assert 'title="research · read-document-sections' in out
+    # Each populated marker has an aria-label (drives the CSS tooltip)
+    assert 'aria-label="quant · get-inderes-estimates' in out
+    assert 'aria-label="research · read-document-sections' in out
 
     # The definitions trailer block is gone
     assert "Lähdeviittaukset" not in out

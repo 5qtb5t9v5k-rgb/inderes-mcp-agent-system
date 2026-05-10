@@ -117,6 +117,9 @@ class RunBudget:
         # Streamlit UI — generous to allow Pro-tier + valuation
         budget = RunBudget()
 
+        # Pro-tier subagents — Pro is 2-3× slower than Flash Lite
+        budget = RunBudget.for_pro_tier()
+
         # Nightly eval — tighter, no Reflexion
         budget = RunBudget(
             max_workflow_duration_s=120,
@@ -130,6 +133,21 @@ class RunBudget:
     max_total_tool_calls: int = DEFAULT_MAX_TOTAL_TOOL_CALLS
     max_reflexion_iterations: int = DEFAULT_MAX_REFLEXION_ITERATIONS
     max_cost_usd: float = DEFAULT_MAX_COST_USD
+
+    @classmethod
+    def for_pro_tier(cls) -> "RunBudget":
+        """Loosened budget for runs where subagents use Gemini 2.5 Pro
+        instead of Flash Lite. Pro is empirically 2-3× slower per
+        tool-call cycle (research subagent timed out at 90s on Pro
+        in run 20260510-131450-759 — same prompt completes in ~30s
+        on Flash Lite). Triple the wall-clock budgets and double
+        the cost cap (Pro is ~10× more expensive too).
+        """
+        return cls(
+            max_subagent_duration_s=180,
+            max_workflow_duration_s=360,
+            max_cost_usd=2.00,
+        )
 
 
 @dataclass

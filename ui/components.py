@@ -1753,7 +1753,11 @@ def _style_footnote_markers(html: str, definitions: dict[str, str] | None = None
         attrs = ""
         if tooltip_body:
             esc = _esc(tooltip_body, quote=True)
-            attrs = f' title="{esc}" data-tooltip="{esc}" tabindex="0"'
+            # data-tooltip drives the CSS popup (works on hover AND tap).
+            # aria-label preserves screen-reader access without the
+            # browser's native title-tooltip showing simultaneously
+            # (which produced the user-reported double-tooltip).
+            attrs = f' aria-label="{esc}" data-tooltip="{esc}" tabindex="0"'
         return f'<sup class="{klass}"{attrs}>[{letter}{number}]</sup>'
 
     def _persona_replacer(m: re.Match[str]) -> str:
@@ -2512,6 +2516,7 @@ class CustomStatus:
     """
 
     def __init__(self, label: str, expanded: bool = True) -> None:
+        import time as _time
         self._placeholder = st.empty()
         self._label = label
         # Each entry is (kind, content). kind="text" gets HTML-escaped on
@@ -2520,6 +2525,14 @@ class CustomStatus:
         self._lines: list[tuple[str, str]] = []
         self._state = "running"
         self._expanded = expanded
+        # Track wall-clock from creation so each _render() can show
+        # elapsed time next to the label. Streamlit doesn't run inline
+        # JS via unsafe_allow_html, so we can't do a true millisecond
+        # ticking clock — but every write()/update() call re-renders
+        # with the current elapsed, so the user sees the counter
+        # advance at each phase boundary (router done, planner done,
+        # each subagent done, LEAD synthesised, …).
+        self._t_start = _time.time()
         self._render()
 
     def write(self, text: str, html: bool = False) -> None:
@@ -2548,15 +2561,27 @@ class CustomStatus:
         return None
 
     def _render(self) -> None:
+        import time as _time
         details_attr = " open" if self._expanded else ""
         rendered_lines = []
         for kind, content in self._lines:
             rendered_lines.append(content if kind == "html" else _esc(content))
         body_html = "<br>".join(rendered_lines)
+        # Elapsed counter in the summary, right-aligned via CSS class
+        # `.ia-cs-elapsed`. Updates on every render — per phase
+        # boundary, not per millisecond, but enough to signal "the
+        # system is still working" through long Pro-tier runs.
+        elapsed_s = _time.time() - self._t_start
+        elapsed_html = (
+            f'<span class="ia-cs-elapsed">{elapsed_s:.1f}s</span>'
+        )
         html = (
             f'<details class="ia-cs ia-cs-{_esc(self._state)}"{details_attr}>'
-            f'<summary><span class="ia-cs-dot"></span>'
-            f'<span class="ia-cs-label">{_esc(self._label)}</span></summary>'
+            f'<summary>'
+            f'<span class="ia-cs-dot"></span>'
+            f'<span class="ia-cs-label">{_esc(self._label)}</span>'
+            f'{elapsed_html}'
+            f'</summary>'
             f'<div class="ia-cs-body">{body_html}</div>'
             f'</details>'
         )

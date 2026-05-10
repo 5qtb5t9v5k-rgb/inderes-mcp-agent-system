@@ -382,9 +382,24 @@ input:focus, textarea:focus { border-color: var(--p-lead) !important; }
   font-family: var(--ia-mono);
   letter-spacing: 0.04em;
   font-size: 12px;
+  flex: 1;  /* push the elapsed counter to the right */
 }
 .ia-cs.ia-cs-complete .ia-cs-label { color: var(--p-quant); }
 .ia-cs.ia-cs-error    .ia-cs-label { color: var(--err);   }
+/* Elapsed-time counter in the status header — updates at every
+   phase boundary (router done, planner done, each subagent done).
+   Mono font so the digits don't shift, muted ink so it doesn't
+   compete with the label for attention. */
+.ia-cs .ia-cs-elapsed {
+  font-family: var(--ia-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  flex-shrink: 0;
+}
+.ia-cs.ia-cs-complete .ia-cs-elapsed { color: var(--p-quant); }
+.ia-cs.ia-cs-error    .ia-cs-elapsed { color: var(--err); }
 .ia-cs .ia-cs-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--p-lead);

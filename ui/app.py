@@ -1212,9 +1212,20 @@ async def run_pipeline(query: str, state: ConversationState, status) -> tuple[st
                 html=True,
             )
 
+        # Tier-aware hard-limit budget: Pro tier subagents are 2-3×
+        # slower than Flash Lite, so a 90s/subagent cap (calibrated for
+        # Flash) bites legitimate Pro runs. Use the loosened budget
+        # for "Pro kaikki" (deep_subagents=True). Run 20260510-131450
+        # showed research timing out at 90s with Pro before tool calls
+        # could even start.
+        from inderes_agent.orchestration.limits import RunBudget
+        run_budget = (
+            RunBudget.for_pro_tier() if deep_subagents else RunBudget()
+        )
         workflow_result = await run_workflow(
             augmented_query, classification, run_dir=run_dir,
             plan=plan, subagents_deep=deep_subagents,
+            budget=run_budget,
         )
 
         # Phase 4: per-agent results
