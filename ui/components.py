@@ -1320,6 +1320,7 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
         ds = blob.get("duration_seconds", 0) or 0
         n_calls = len(blob.get("tool_calls") or [])
         text = blob.get("text") or ""
+        err = blob.get("error")
         # Take the "Ajatus:" line as a compact preview if present, else first 200 chars.
         thought = ""
         m = re.search(r"\*\*Ajatus:\*\*\s*(.+?)(?:\n\n|$)", text, re.DOTALL)
@@ -1396,18 +1397,51 @@ def render_activity_panel(run_dir: Path, lang: str = "fi", active_tab: str = "su
 
         label = domain + (f" / {company}" if company else "")
 
+        # Status pill: green ✓ on success, red ⚠ on error.
+        status_pill = (
+            f'<span class="err" style="color:#ff6b6b">⚠ {("VIRHE" if fi else "ERROR")}</span>'
+            if err
+            else f'<span class="ok">✓ {t("valmis")}</span>'
+        )
+
+        # Error block: surface the actual error message in the card body so
+        # the user doesn't have to dig into the per-run JSON to see why a
+        # subagent stopped. Common cases include `fabricated_no_tool_calls`
+        # (HARD GATE rejection), `400 INVALID_ARGUMENT` (Gemini config
+        # mismatch), `budget_exceeded:duration_s` (hard limit). The text
+        # is the raw `error` field from the subagent JSON.
+        error_html = ""
+        if err:
+            err_label = "VIRHE" if fi else "ERROR"
+            # Truncate long traces for readability; full text lives in the
+            # forensic per-run JSON.
+            err_text = err if len(err) < 600 else (err[:597] + "…")
+            error_html = (
+                f'<div class="agcard-error" style="margin-top: var(--s-1); '
+                f'padding: var(--s-1) var(--s-2); '
+                f'background: rgba(255, 107, 107, 0.08); '
+                f'border-left: 2px solid #ff6b6b; '
+                f'border-radius: var(--r-sm); '
+                f'font-size: var(--t-meta); color: var(--ink-1); '
+                f'line-height: 1.5; font-family: var(--font-mono, monospace);">'
+                f'<b style="color:#ff6b6b; letter-spacing: var(--ls-caps); '
+                f'font-size: var(--t-micro);">{err_label}:</b> '
+                f'{escape_html(err_text)}</div>'
+            )
+
         agent_cards.append(
             f'<div class="ia-panel-agcard" style="border-left:2px solid {persona["color"]}">'
             f'<div class="head">'
             f'<span class="glyph" style="color:{persona["color"]}">{persona["glyph"]}</span>'
             f'<span class="nm" style="color:{persona["color"]}">{label}</span>'
             f'<span class="role">{role}</span>'
-            f'<span class="meta"><span class="ok">✓ {t("valmis")}</span> '
+            f'<span class="meta">{status_pill} '
             f'<span>{ds:.1f}s</span> <span>{n_calls} {t("kutsua")}</span></span>'
             f'</div>'
             f'<div class="body"><div class="think"><b>Ajatus:</b> {thought}</div>'
             f'{summary_html}'
             f'{tool_chips_html}'
+            f'{error_html}'
             f'</div>'
             # Tool list as native <details> — click summary to expand. Default
             # closed so a fan-out with 10 agents × 4 tools doesn't dump 40
