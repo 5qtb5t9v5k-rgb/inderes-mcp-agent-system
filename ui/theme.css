@@ -1304,6 +1304,27 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] [data-testid="stExp
   font-family: var(--ia-mono);
 }
 .ia-fn:hover { border-color: var(--line-2); }
+/* Lead answer links — explicitly clickable, visible blue,
+   underline on hover. Some browsers (and Streamlit's own theme)
+   render markdown links as nearly-invisible body text on dark
+   backgrounds; force a clear affordance so the user sees they're
+   tappable. */
+[data-testid="stMarkdown"] a[href],
+.ia-lead-answer a[href],
+.stMarkdown a[href] {
+  color: var(--link) !important;
+  text-decoration: underline !important;
+  text-decoration-color: rgba(126, 184, 255, 0.4) !important;
+  text-underline-offset: 2px;
+  cursor: pointer !important;
+}
+[data-testid="stMarkdown"] a[href]:hover,
+.ia-lead-answer a[href]:hover,
+.stMarkdown a[href]:hover {
+  color: var(--p-lead) !important;
+  text-decoration-color: var(--p-lead) !important;
+}
+
 .ia-fn-q { color: var(--p-quant);     border-color: rgba(95,210,138,.3); }
 .ia-fn-r { color: var(--p-research);  border-color: rgba(106,169,255,.3); }
 .ia-fn-s { color: var(--p-sentiment); border-color: rgba(255,126,179,.3); }

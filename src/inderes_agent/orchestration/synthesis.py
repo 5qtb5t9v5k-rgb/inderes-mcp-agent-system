@@ -950,6 +950,30 @@ How to use the alternative valuation:
 Now synthesize a final answer for the user, following your instructions.
 """
 
+    # ── Footnote-definitions banner — code-level pre-pend ──
+    # The lead.md prompt requires the **📚 Lähdeviittaukset:** block
+    # at the end of every synthesis, but Flash Lite empirically drops
+    # it on ~30 % of runs even with the prompt rule (especially on
+    # comparison runs with long synthesis). Without the block, the
+    # `[Q1]` / `[R3]` markers in the body render as colored sup-tags
+    # but the hover/tap tooltips have nothing to show. Pre-pending a
+    # high-visibility banner BEFORE the 600-line LEAD body makes the
+    # contract visible upfront — same pattern as Tila C below.
+    prompt = (
+        "⚠️ FOOTNOTE-DEFINITIONS REQUIRED ⚠️\n\n"
+        "After your synthesis body and BEFORE the **📖 Lähteet:**\n"
+        "section, you MUST emit a **📚 Lähdeviittaukset:** block\n"
+        "listing every `[Q<n>]` / `[R<n>]` / `[S<n>]` / `[V<n>]` /\n"
+        "`[P<n>]` marker you used in the body. Format:\n\n"
+        "    **📚 Lähdeviittaukset:**\n"
+        "    - [Q1] quant · get-inderes-estimates → target_price=24.00 €\n"
+        "    - [R2] research · read-document-sections → \"UPM Q1'26...\"\n"
+        "    - [V4] valuation · engine output → fv_gordon=19.97 €\n\n"
+        "Skipping this block makes every footnote marker in your\n"
+        "answer a dead-end for the user. The block is REQUIRED.\n\n"
+        "─" * 60 + "\n\n"
+    ) + prompt
+
     # ── Tila C activation banner — code-level pre-pend ──
     # When the valuation engine actually computed (block contains
     # `Engine: quality=...` lines), prepend a high-visibility banner

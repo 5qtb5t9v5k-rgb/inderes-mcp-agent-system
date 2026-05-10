@@ -300,6 +300,33 @@ def _format_value(value: float, axis_format: str, decimals: int) -> str:
     return f"{value:.{decimals}f}"
 
 
+def _filter_ratio_outliers(
+    points: list[tuple[int, float]],
+) -> list[tuple[int, float]]:
+    """For ratio metrics (P/E, EV/EBIT) drop points whose absolute value
+    is more than 5× the median of the series. Such spikes are almost
+    always division artefacts from near-zero denominators (Sampo 2020
+    P/E = 500 because COVID year had near-zero earnings, not because
+    the company was being valued at 500× earnings). Keeping them
+    stretches the y-axis and squashes the readable cluster.
+
+    Filtered values still exist in the underlying tool_calls log —
+    users curious about the "missing" year can open the activity panel
+    and inspect the raw `get-fundamentals` response.
+
+    No-op when there are fewer than 4 points (need a stable median to
+    judge against).
+    """
+    if len(points) < 4:
+        return points
+    sorted_values = sorted(abs(v) for _, v in points)
+    median = sorted_values[len(sorted_values) // 2]
+    if median <= 0:
+        return points  # all zeros / negatives — can't define a threshold
+    threshold = median * 5.0
+    return [(year, v) for year, v in points if abs(v) <= threshold]
+
+
 def _build_figure(
     metric: str,
     slot: dict[str, Any],
@@ -323,6 +350,15 @@ def _build_figure(
     for company_name, points in slot["companies"].items():
         actuals = points.get("actuals") or []
         estimates = points.get("estimates") or []
+        # For ratio metrics (P/E, EV/EBIT) drop spike-outliers that
+        # are >5× the median. Sampo 2020 P/E = 500 because COVID-year
+        # earnings collapsed near zero — the chart gets unreadable
+        # with the spike present, and the value isn't a meaningful
+        # valuation signal anyway. Filtered actuals are still in the
+        # tool_calls log for users who want the raw number.
+        if axis_format == "ratio":
+            actuals = _filter_ratio_outliers(actuals)
+            estimates = _filter_ratio_outliers(estimates)
         # Skip companies that have too few actual data points to make
         # a meaningful line.
         if len(actuals) < min_points:

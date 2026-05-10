@@ -35,6 +35,7 @@ from charts import (  # noqa: E402
     METRIC_CATALOG,
     _build_figure,
     _coerce_period_to_year,
+    _filter_ratio_outliers,
     extract_time_series_from_run,
 )
 
@@ -453,8 +454,50 @@ def test_build_figure_assigns_distinct_colors_to_companies():
 
 
 # ---------------------------------------------------------------------------
-# Smoke: METRIC_CATALOG sanity
+# _filter_ratio_outliers — P/E spike handling
 # ---------------------------------------------------------------------------
+
+
+def test_ratio_outliers_filters_500x_spike():
+    """User report (Sampo 2020 P/E = 500): one extreme year ruins the
+    chart. Median-based filter drops anything > 5× median."""
+    points = [
+        (2019, 14.5),
+        (2020, 500.0),  # COVID-year earnings collapse → division artefact
+        (2021, 16.0),
+        (2022, 17.5),
+        (2023, 14.0),
+        (2024, 13.5),
+    ]
+    filtered = _filter_ratio_outliers(points)
+    years_kept = [y for y, _ in filtered]
+    assert 2020 not in years_kept
+    # Real history preserved
+    assert {2019, 2021, 2022, 2023, 2024} == set(years_kept)
+
+
+def test_ratio_outliers_keeps_normal_history_intact():
+    """Series of typical P/E values 12-25 → no filtering."""
+    points = [
+        (2020, 14.0), (2021, 16.0), (2022, 18.0),
+        (2023, 22.0), (2024, 25.0), (2025, 19.0),
+    ]
+    filtered = _filter_ratio_outliers(points)
+    assert filtered == points  # untouched
+
+
+def test_ratio_outliers_too_few_points_no_filter():
+    """Below 4 points, can't compute a stable median — no filter."""
+    points = [(2024, 14.0), (2025, 500.0)]
+    filtered = _filter_ratio_outliers(points)
+    assert filtered == points
+
+
+def test_ratio_outliers_zero_median_no_filter():
+    """All-zero series shouldn't produce a divide-by-zero crash."""
+    points = [(2020, 0.0), (2021, 0.0), (2022, 0.0), (2023, 0.0)]
+    filtered = _filter_ratio_outliers(points)
+    assert filtered == points
 
 
 # ---------------------------------------------------------------------------

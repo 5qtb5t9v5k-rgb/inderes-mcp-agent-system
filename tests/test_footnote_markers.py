@@ -144,14 +144,27 @@ def test_style_marker_html_escapes_dangerous_chars_in_tooltip():
     assert "&lt;script&gt;" in out
 
 
-def test_style_marker_without_definition_renders_without_tooltip():
-    """A marker that LEAD emitted but didn't define gets no tooltip
-    attributes — UI shows the colored marker but no popup."""
+def test_style_marker_without_definition_uses_persona_fallback_tooltip():
+    """A marker that LEAD emitted but didn't define falls back to a
+    persona-name tooltip ("quant — numero / suositus / tavoitehinta")
+    so the user gets at least the source category. Better than an
+    empty tooltip when LEAD drops the Lähdeviittaukset block."""
     out = _style_footnote_markers("Suositus[Q1].", {})
     assert 'class="ia-fn ia-fn-q"' in out
-    assert 'title=' not in out
-    assert 'data-tooltip=' not in out
-    assert 'tabindex=' not in out
+    # Fallback tooltip present — uses persona name
+    assert 'title="quant' in out
+    assert 'data-tooltip="quant' in out
+    assert 'tabindex="0"' in out
+
+
+def test_style_marker_definition_wins_over_fallback():
+    """When LEAD emits a real definition, it overrides the fallback."""
+    defs = {"Q1": "quant · get-fundamentals → P/E=14.0"}
+    out = _style_footnote_markers("Suositus[Q1].", defs)
+    # Real definition is used, not the persona fallback
+    assert 'title="quant · get-fundamentals → P/E=14.0"' in out
+    # Fallback string should NOT appear
+    assert 'numero / suositus' not in out
 
 
 # ---------------------------------------------------------------------------

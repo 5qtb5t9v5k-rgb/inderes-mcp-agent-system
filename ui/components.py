@@ -1673,6 +1673,16 @@ _PERSONA_LETTER_TO_CSS = {
     "Q": "q", "R": "r", "S": "s", "V": "v", "P": "p",
 }
 
+# Fallback tooltip when LEAD didn't emit a Lähdeviittaukset definition
+# for a marker. Better than an empty hover.
+_PERSONA_LETTER_TO_FALLBACK_TOOLTIP = {
+    "Q": "quant — numero / suositus / tavoitehinta",
+    "R": "research — analyytikkonote / raportti",
+    "S": "sentiment — foorumi / sisäpiirikaupat",
+    "V": "valuation — oman mallin tulos",
+    "P": "portfolio — Inderesin mallisalkku",
+}
+
 
 def _extract_footnote_definitions(text: str) -> tuple[str, dict[str, str]]:
     """Pull the **📚 Lähdeviittaukset:** block off the synthesis text.
@@ -1725,9 +1735,14 @@ def _style_footnote_markers(html: str, definitions: dict[str, str] | None = None
         css_suffix = _PERSONA_LETTER_TO_CSS.get(letter, "")
         klass = f"ia-fn ia-fn-{css_suffix}" if css_suffix else "ia-fn"
         key = f"{letter}{number}"
+        # Definition wins; fall back to a persona-name tooltip when LEAD
+        # forgot to emit the Lähdeviittaukset block (Flash Lite drops
+        # it ~30 % of the time on long syntheses). Better than no
+        # tooltip at all.
+        tooltip_body = definitions.get(key) or _PERSONA_LETTER_TO_FALLBACK_TOOLTIP.get(letter)
         attrs = ""
-        if key in definitions:
-            esc = _esc(definitions[key], quote=True)
+        if tooltip_body:
+            esc = _esc(tooltip_body, quote=True)
             attrs = f' title="{esc}" data-tooltip="{esc}" tabindex="0"'
         return f'<sup class="{klass}"{attrs}>[{letter}{number}]</sup>'
 
