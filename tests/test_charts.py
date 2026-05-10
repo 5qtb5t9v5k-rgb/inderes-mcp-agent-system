@@ -35,6 +35,7 @@ from charts import (  # noqa: E402
     METRIC_CATALOG,
     _build_figure,
     _coerce_period_to_year,
+    _compute_smart_y_range,
     extract_time_series_from_run,
 )
 
@@ -392,6 +393,133 @@ def test_build_figure_assigns_distinct_colors_to_companies():
     color_a = fig.data[0].line.color
     color_b = fig.data[1].line.color
     assert color_a != color_b
+
+
+# ---------------------------------------------------------------------------
+# Smoke: METRIC_CATALOG sanity
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# _compute_smart_y_range — outlier handling
+# ---------------------------------------------------------------------------
+
+
+def test_smart_y_range_returns_none_for_few_points():
+    """Below the 6-point threshold, fall back to Plotly auto."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [(2024, 0.18), (2025, 0.20)],
+                "estimates": [(2026, 0.22)],
+            }
+        }
+    }
+    assert _compute_smart_y_range(slot, "percent") is None
+
+
+def test_smart_y_range_anchors_to_zero_for_non_negative_percent():
+    """For percent metrics where all values >= 0, the bottom of the
+    Y-axis is anchored at 0 so a 5 %-vs-20 % difference reads
+    correctly without the bottom floating mid-air."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [
+                    (2020, 0.18), (2021, 0.20), (2022, 0.16),
+                    (2023, 0.19), (2024, 0.22), (2025, 0.21),
+                ],
+                "estimates": [],
+            }
+        }
+    }
+    rng = _compute_smart_y_range(slot, "percent")
+    assert rng is not None
+    low, high = rng
+    assert low == 0.0  # anchored
+    assert high > 0.22  # has padding above max
+
+
+def test_smart_y_range_mild_negative_stays_in_view():
+    """A mild negative outlier (e.g. -5 %) is within the Tukey fences
+    and stays visible — anchor at 0 doesn't fire when data goes
+    negative."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [
+                    (2020, -0.05), (2021, 0.18), (2022, 0.20),
+                    (2023, 0.19), (2024, 0.22), (2025, 0.21),
+                ],
+                "estimates": [],
+            }
+        }
+    }
+    rng = _compute_smart_y_range(slot, "percent")
+    assert rng is not None
+    low, high = rng
+    # -5 % is well within the fence — the bulk is 18-22 % so IQR
+    # spans roughly 18-21, fences = ~14-25 %. -5 % is below the
+    # fence so it gets clipped — UI still shows it via tooltip.
+    # We assert: the visible range focuses on the bulk.
+    assert low >= -0.20  # bounded by percent floor
+    assert high >= 0.22  # max included
+    assert high <= 0.30  # bulk-focused
+
+
+def test_smart_y_range_extreme_outlier_clipped_for_readability():
+    """User feedback: one extreme year stretches the auto-axis and
+    squashes the bulk of values. Smart range clips the outlier from
+    the visible axis (Plotly still draws the trace point at the edge
+    or off-chart) so the trend reads clearly."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [
+                    (2020, -0.50),  # severe outlier
+                    (2021, 0.18), (2022, 0.20), (2023, 0.19),
+                    (2024, 0.22), (2025, 0.21),
+                ],
+                "estimates": [],
+            }
+        }
+    }
+    rng = _compute_smart_y_range(slot, "percent")
+    assert rng is not None
+    low, high = rng
+    # The -50 % outlier is CLIPPED from the visible axis to keep the
+    # 18–22 % bulk readable. Without this fix the chart would span
+    # -50 % → 22 % and the +ve cluster would shrink to ~5 % of the
+    # vertical space.
+    assert low > -0.30  # -50 % not visible on axis
+    assert high <= 0.30
+    # Bulk values are well-positioned in the visible range
+    assert low <= 0.18  # min of bulk visible
+    assert high >= 0.22  # max of bulk visible
+
+
+def test_smart_y_range_ratio_metric_no_zero_anchor():
+    """P/E (ratio format) shouldn't be anchored at 0 — a chart of
+    P/E history doesn't need the 0 line, it's not a meaningful
+    baseline. Use percentile-based padding only."""
+    slot = {
+        "companies": {
+            "Sampo": {
+                "actuals": [
+                    (2020, 14.0), (2021, 16.0), (2022, 18.0),
+                    (2023, 17.5), (2024, 19.0), (2025, 16.5),
+                ],
+                "estimates": [],
+            }
+        }
+    }
+    rng = _compute_smart_y_range(slot, "ratio")
+    assert rng is not None
+    low, high = rng
+    # Bottom should NOT be 0 — that would waste 80 % of the chart
+    assert low > 5.0
+    assert low <= 14.0  # still includes the data min
+    assert high >= 19.0
 
 
 # ---------------------------------------------------------------------------

@@ -363,6 +363,13 @@ def _build_figure(
     else:
         tickformat = f".{decimals}f"
 
+    # Smart Y-range — outliers in early years (e.g. 2020 ROE collapse,
+    # or one-off accounting write-down) used to stretch the auto-axis
+    # and squash the relevant 80 % of the chart. Compute percentile-
+    # based bounds with padding so outliers stay visible but don't
+    # dominate. Fallback to auto when there are too few points.
+    y_range = _compute_smart_y_range(slot, axis_format)
+
     show_legend = qualifying_companies > 1
     fig.update_layout(
         title=dict(text=label, font=dict(size=13, color="#e6e8eb"), x=0, xanchor="left"),
@@ -392,9 +399,87 @@ def _build_figure(
             zeroline=False,
             tickfont=dict(size=10, color="#7a828d"),
             tickformat=tickformat,
+            range=y_range,  # None = auto, list = explicit
         ),
     )
     return fig
+
+
+def _compute_smart_y_range(
+    slot: dict[str, Any], axis_format: str,
+) -> list[float] | None:
+    """Compute a Y-range that focuses on the bulk of the data, clipping
+    extreme outliers from the visible axis so the trend reads clearly.
+
+    Trade-off: an outlier year (e.g. UPM 2023 ROE collapse, Sampo 2020
+    one-off write-down) used to stretch the auto-axis from -50 % to
+    +25 %, squashing the bulk of years into ~5 % of the chart height.
+    With the IQR-based clip below, the visible axis focuses on Q1-Q3
+    ± 1.5 IQR; outliers OUTSIDE that range are still in the trace
+    data — Plotly still lets you hover the year for the actual value
+    — but they don't dominate the axis any more.
+
+    Algorithm:
+      1. Collect ALL (year, value) tuples across companies + actuals
+         + estimates for this metric.
+      2. If < 6 total points, fall back to Plotly's auto.
+      3. Compute Q1 (25th percentile) and Q3 (75th percentile).
+      4. IQR = Q3 - Q1. If IQR ≤ 0 (all values clustered), auto.
+      5. Range = [Q1 - 1.5 IQR, Q3 + 1.5 IQR] (Tukey fences).
+      6. Tighten when data fits inside the fences (use small padding
+         instead of full IQR margin).
+      7. Per-format guardrails:
+         - percent + all values >= 0 → anchor low at 0
+         - percent + outlier negative → keep IQR-based low (clips from
+           axis but data is still in trace)
+
+    Returns ``[low, high]`` or ``None`` (= auto).
+    """
+    all_values: list[float] = []
+    for co_slot in slot["companies"].values():
+        for _, v in co_slot.get("actuals") or []:
+            all_values.append(v)
+        for _, v in co_slot.get("estimates") or []:
+            all_values.append(v)
+    if len(all_values) < 6:
+        return None
+
+    sorted_values = sorted(all_values)
+    n = len(sorted_values)
+    q1 = sorted_values[max(0, int(n * 0.25))]
+    q3 = sorted_values[min(n - 1, int(n * 0.75))]
+    iqr = q3 - q1
+    if iqr <= 0:
+        return None  # all values clustered — let auto handle
+
+    # Tukey fences — the standard "outside this is an outlier" range.
+    fence_low = q1 - 1.5 * iqr
+    fence_high = q3 + 1.5 * iqr
+
+    data_min = sorted_values[0]
+    data_max = sorted_values[-1]
+
+    # Tighten: when actual data already lies inside the fences, use
+    # a smaller margin so the trace fills the chart instead of
+    # floating in the middle.
+    pad = iqr * 0.20
+    low = fence_low if data_min < fence_low else (data_min - pad)
+    high = fence_high if data_max > fence_high else (data_max + pad)
+
+    # Per-format guardrails
+    if axis_format == "percent":
+        # If data is non-negative AND no outliers below, anchor at 0.
+        # Zero is the meaningful baseline for ROE / margin / yield.
+        if data_min >= 0 and low > 0:
+            low = 0.0
+        # Don't go ridiculously high — 60 % is plenty of headroom for
+        # any sensible ROE/margin/yield.
+        high = min(high, 0.60)
+        # Also don't go below -20 % — even a major collapse year
+        # past that is "look at the data, not the chart".
+        low = max(low, -0.20)
+
+    return [low, high]
 
 
 # ---------------------------------------------------------------------------
