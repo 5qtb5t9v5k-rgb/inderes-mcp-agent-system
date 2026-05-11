@@ -18,46 +18,13 @@ token rather than racing to authenticate.
 from __future__ import annotations
 
 from collections.abc import Generator, Iterable
-from typing import Any
 
 import httpx
 from agent_framework import MCPStreamableHTTPTool
 
 from ..settings import Settings, get_settings
+from ._compat import SanitizingMCPTool
 from .oauth import get_inderes_access_token
-
-# JSON-Schema metadata fields that Inderes MCP tool schemas include but Gemini's
-# `FunctionDeclaration` Pydantic model rejects (extra='forbid'). Stripping them
-# recursively before any tool call solves the validation crash.
-_INCOMPATIBLE_SCHEMA_KEYS: tuple[str, ...] = ("$schema", "$id", "$ref", "$defs", "$comment")
-
-
-def _scrub_schema_in_place(schema: Any) -> None:
-    if isinstance(schema, dict):
-        for key in _INCOMPATIBLE_SCHEMA_KEYS:
-            schema.pop(key, None)
-        for v in schema.values():
-            _scrub_schema_in_place(v)
-    elif isinstance(schema, list):
-        for item in schema:
-            _scrub_schema_in_place(item)
-
-
-class _SanitizingMCPTool(MCPStreamableHTTPTool):
-    """MCPStreamableHTTPTool that strips JSON-Schema fields incompatible with Gemini.
-
-    Subclassed because there is no schema-sanitization hook in MAF 1.x. After the
-    parent's `connect()` populates `self._functions`, each FunctionTool's cached
-    input schema is mutated in place to remove `$schema` and friends.
-    """
-
-    async def connect(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        result = await super().connect(*args, **kwargs)
-        for func in getattr(self, "_functions", []):
-            cached = getattr(func, "_input_schema_cached", None)
-            if cached is not None:
-                _scrub_schema_in_place(cached)
-        return result
 
 # Tool inventory per BUILD_SPEC §3, partitioned per subagent (BUILD_SPEC §4.1).
 QUANT_TOOLS: tuple[str, ...] = (
@@ -156,7 +123,7 @@ def build_mcp_tool(
         client_id=s.INDERES_MCP_CLIENT_ID,
     )
     http_client = httpx.AsyncClient(auth=auth, timeout=30.0)
-    return _SanitizingMCPTool(
+    return SanitizingMCPTool(
         name=name,
         url=s.INDERES_MCP_URL,
         allowed_tools=list(allowed),

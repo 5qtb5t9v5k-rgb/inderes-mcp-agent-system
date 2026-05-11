@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     INDERES_MCP_URL: str = "https://mcp.inderes.com"
     INDERES_MCP_CLIENT_ID: str = "inderes-mcp"
 
+    # Yahoo Finance MCP — optional sidecar (international coverage,
+    # live price history). Empty string = disabled, agents run
+    # Inderes-only. Set to e.g. ``http://localhost:8000/mcp`` for
+    # local dev or the Modal-deployed URL for production.
+    YAHOO_MCP_URL: str = ""
+
     PRIMARY_MODEL: str = "gemini-3.1-flash-lite-preview"
     FALLBACK_MODEL: str = "gemini-2.5-flash"
     # Optional "deep mode" model used only by LEAD when the user toggles

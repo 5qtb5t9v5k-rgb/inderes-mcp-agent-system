@@ -195,6 +195,37 @@ The biggest learning value: *"how agents actually collaborate"*.
 - 💭 **Default-region inference** — Finnish-language query → default
   `regions=[FINLAND]` unless said otherwise
 
+- 💭 **Cross-source retry — "did you check the other MCP?"** *(2026-05-11,
+  proposed by user)* — when one data source returns *not found* /
+  *empty* / *low-confidence*, the agent considers retrying with the
+  alternative MCP before giving up. Concretely: if Inderes returns no
+  match for *"Tesla"*, the agent should try Yahoo MCP rather than
+  answering *"yhtiötä ei löydy"*. The reverse holds too: if Yahoo
+  returns thin metadata for a Finnish small-cap, fall back to Inderes
+  for analyst estimates and forum sentiment. Generalises: any new
+  source we wire in (SEC EDGAR, ECB SDW, FRED) joins the same retry
+  chain.
+
+  Two implementation paths, pick one:
+    1. **Prompt-level** *(~2 h)* — system prompt rule:
+       *"If a domain-specific MCP returns empty/not-found, retry once
+       with the cross-domain MCP before answering. Mention in
+       reasoning that you did so."* Cheap, debuggable, but depends on
+       LLM compliance.
+    2. **Code-level** *(~0.5 d)* — orchestration step
+       `try_alternate_source(query, primary_result)` that fires
+       deterministically when primary returns the *not-found* shape.
+       More robust but more invasive.
+
+  v1 = prompt-level; promote to code if eval cases show the LLM
+  silently skipping the retry. Add a golden eval case
+  *"Apple Inc."* with `expected_sources=[inderes, yahoo]` to lock in
+  the behaviour.
+
+  Risk: cost doubles for ambiguous queries. Mitigate with a
+  *"primary returned absolutely zero rows"* gate — not *"low
+  confidence"*, which would trigger too often.
+
 ### Open — medium
 
 - 💭 **#2 Reflection + retry on weird output** — detect anomalous outputs
@@ -359,19 +390,35 @@ main; cloud deployment live. 146 tests green.
   the primary lookup for Helsinki names; Yahoo is the primary lookup for
   everything else. Router picks based on company-name heuristics.
 
-  **2026-05-11 — packaged as separate MCP server (skeleton shipped).**
-  Public repo: <https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp>.
-  Initial commit (`0f557e6`) ships `get-snapshot` tool + health probe +
-  15-min TTL cache + diskcache stale-fallback. FastMCP streamable-http
-  transport (gap-filler — every existing Yahoo MCP is stdio-only).
-  Architectural payoff:
-  Architectural payoff:
+  **2026-05-11 — packaged as separate MCP server (5 tools + tests
+  + CI shipped).** Public repo:
+  <https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp>. Latest commit
+  (`b9f4822`) brings the toolset to:
+  `search_ticker / get_snapshot / get_history / get_news / get_holders
+  / health`. Test scaffold (13 offline mocked tests + 2 opt-in live
+  tests via `YAHOO_MCP_LIVE=1`) and a daily-scheduled CI live probe to
+  catch yfinance upstream drift. 15-min TTL hot cache + diskcache
+  stale-fallback. FastMCP streamable-http transport (gap-filler —
+  every existing public Yahoo MCP is stdio-only). Architectural payoff:
 
     - Same connection pattern as Inderes MCP — agents need no new
       integration layer; `_SanitizingMCPTool` + fabrication-guard
       + hard-limits all apply unchanged.
-    - Per-agent tool-partitioning preserved — QUANT picks up Yahoo
-      tools as part of its tool-set, RESEARCH/SENTIMENT don't see them.
+    - **Per-agent tool-partitioning preserved AND extended** — same
+      shape as `inderes_client.py:63–111` constants. Concretely
+      (`yahoo_client.py`, planned):
+      ```
+      YAHOO_QUANT_TOOLS      = (search_ticker, get_snapshot, get_history)
+      YAHOO_VALUATION_TOOLS  = (search_ticker, get_snapshot)
+      YAHOO_RESEARCH_TOOLS   = (search_ticker, get_news)
+      YAHOO_SENTIMENT_TOOLS  = (search_ticker, get_news, get_holders)
+      YAHOO_PORTFOLIO_TOOLS  = (search_ticker, get_snapshot, get_history)
+      ```
+      Rationale: `get_holders` ≈ Inderes `list-insider-transactions`
+      (SENTIMENT-only), `get_snapshot` ≈ `get-fundamentals` (QUANT +
+      VALUATION shared), `get_news` ≈ `list-content` (RESEARCH +
+      SENTIMENT for tone), `get_history` has *no Inderes parallel* —
+      pure new capability for QUANT/PORTFOLIO Plotly charts.
     - yfinance brittleness isolated to the MCP server — when it
       breaks, the MCP returns an error and the agent gracefully
       falls back to Inderes-only data. No agent-side crash.
@@ -380,13 +427,19 @@ main; cloud deployment live. 146 tests green.
     - One-line on/off toggle: set or unset `YAHOO_MCP_URL` env var.
     - Reusable open-source artefact for the broader MCP community.
 
-  *Stack*: FastAPI + `mcp` (python-sdk) + `yfinance`. Hosting: Modal
-  free tier or Render. Tools:
-    - `get-snapshot(ticker)` → `{price, marketCap, bookValue,
-      lastQuarterEnd, splitFactor}`
-    - `get-history(ticker, period)` → split-adjusted OHLC series
-    - `search-ticker(query)` → ticker resolution including `.HE`
-      suffix heuristics for Helsinki names
+  *Stack*: FastMCP + `mcp` (python-sdk) + `yfinance` 1.3.0 +
+  `curl_cffi` TLS-shim + `diskcache`. Hosting: Modal free tier
+  (config = next milestone) or Render. Tools shipped:
+    - `search_ticker(query)` → ticker resolution with `.HE` heuristic
+    - `get_snapshot(ticker)` → price, mcap, P/E, P/B, BVPS, analyst
+      consensus, freshness flag
+    - `get_history(ticker, period, interval)` → split- and
+      dividend-adjusted OHLCV bars
+    - `get_news(ticker, limit)` → recent news (handles both old flat
+      and new nested yfinance shape)
+    - `get_holders(ticker)` → major %, top institutions, top mutual
+      funds, recent insider transactions (Bloomberg HDS equivalent)
+    - `health()` → live AAPL probe + yfinance version
 
   *Cache strategy*: 15 min in-memory TTL, plus a stale-cache fallback
   that serves last known value if yfinance fails this call (so a
@@ -396,6 +449,36 @@ main; cloud deployment live. 146 tests green.
   than the embedded approach but the operational properties are
   worth it. Status remains 💭 — activation triggers (watchlist, real
   user feedback) unchanged.
+
+### Bloomberg Terminal — inspirational targets (research 2026-05-11)
+
+Not aspirational replication — Bloomberg's $32k/seat/yr buys breadth + real-time +
+network effect. But specific Terminal features map cleanly to MCP tools + LLM
+synthesis prompts, and the LLM angle is *exactly* where Bloomberg is
+investing (their new agentic-AI layer ASKB is literally the same shape as
+this project). Top 5 chase-targets, all achievable with free/cheap data:
+
+1. 💭 **DES-equivalent `company_overview(ticker)`** — fans out to Inderes
+   + Yahoo + recent news, returns one-screen brief. LLM synthesis adds
+   real value over a static dashboard. 0.5 d.
+2. 💭 **FA-equivalent normalized financial history** — 10y financials +
+   Inderes forecasts + sell-side consensus, source-tagged. LLM prompt:
+   "identify the 3 line items most divergent from Inderes' estimates".
+   1 d (Inderes parts in place; needs cross-source normaliser).
+3. 💭 **ANR-equivalent multi-source analyst consensus** — Inderes target
+   + Yahoo consensus (#analysts ~14 Sampo / ~50 Apple) + forum sentiment
+   + insider activity, into a single confidence score. 1 d.
+4. 💭 **ECO-equivalent personalized event calendar** — FRED + ECB SDW +
+   Statistics Finland + earnings calendar, filtered to user's watchlist.
+   LLM prompt: "single most asymmetric event per holding this week".
+   1 d (after watchlist ships).
+5. 💭 **PORT-equivalent personal portfolio analytics** — factor
+   decomposition (Fama-French), scenario VaR. Pure compute. 1–2 d.
+
+Skip entirely: MSG (network effect, impossible), BVAL (regulator-only),
+BI proprietary research, tick-level intraday data, real-time L2 quotes.
+
+Reference research in conversation log 2026-05-11.
 
 ### Open — readily usable extensions
 

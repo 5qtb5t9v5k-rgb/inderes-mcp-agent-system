@@ -79,6 +79,22 @@ def resolve_deep_model_override(deep: bool) -> str | None:
     return get_settings().LEAD_MODEL_DEEP
 
 
+def with_yahoo(inderes_tool: Any, yahoo_tool: Any | None) -> list[Any]:
+    """Combine an agent's Inderes MCP tool with its optional Yahoo MCP
+    tool into a single ``tools=`` list.
+
+    Yahoo is strictly additive: when ``yahoo_tool is None`` (i.e.
+    ``YAHOO_MCP_URL`` is unset), the Inderes-only behaviour is
+    preserved bit-for-bit. When it's present, the agent gets both as
+    independent MCP toolsets and the LLM chooses which to call.
+
+    Centralising this here lets the per-agent builders stay one-liners
+    while making the Yahoo opt-in pattern unambiguous in the code
+    surface.
+    """
+    return [inderes_tool, yahoo_tool] if yahoo_tool is not None else [inderes_tool]
+
+
 def with_code_execution(*tools: Any, deep: bool = False) -> list[Any]:
     """Append Gemini's sandboxed code-execution tool to a list of tools.
 
