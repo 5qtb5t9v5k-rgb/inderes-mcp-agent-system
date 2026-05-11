@@ -1,9 +1,11 @@
 # Backlog
 
 A single-file overview of what's done, in flight, paused, and worth thinking
-about. Last updated 2026-05-10 (evening — Wk 2 foundation + quick wins
-shipped; eval baseline status audit + branch cleanup; see CHANGELOG and
-`docs/agentic_dev_session_2026-05-10.md` for the full session arc).
+about. Last updated 2026-05-11 (evening — yahoo-finance-mcp integration
+shipped (5 tools + tests + CI), 15 live test queries against integrated
+agent fleet, multiple new BACKLOG items captured from empirical
+observations + user product ideas; see CHANGELOG and the Decision log
+below for the full session arc).
 
 ## Status markers
 
@@ -81,6 +83,76 @@ phase lives elsewhere in the backlog as its own item; this section is the
 | 6+ | **Autonomous nightly eval + self-repair** | §10 — cron, prompts-only auto-fixes | 💭 |
 
 ### Decision log
+
+- **2026-05-11 (evening — yahoo-finance-mcp integration + 15-query
+  live test)**: Yahoo MCP integration shipped end-to-end (commit
+  `3137a4f`): 5 tools, per-agent partitioning matching Inderes shape,
+  363/363 tests green, MIT-public sidecar repo (`b9f4822` + `f876b5d`)
+  with Apple Silicon arm64 venv fix. User then ran 15 live test queries
+  covering Finnish (Nordea, Sampo, Kone, Smart Eye), pan-European
+  (ASML, Allianz, Stora Enso), and US (Apple, Microsoft, Nvidia,
+  Amazon, Meta, Google, Tesla) names. Key findings:
+
+  **Confirmed working without prompt changes (LLM picked correct tool
+  from descriptions alone — no prompt nudging needed):**
+    - `get_holders(MSFT)` fired on *"Kuka omistaa Microsoftia ja mitä
+      insider tekee?"*
+    - `get_history(NVDA)` fired on *"Miten Nvidia on kehittynyt vuoden
+      aikana?"*
+    - Cross-source consensus on *"vertaile Nordean tavoitehintoja
+      inderesin ja muiden konsensuksen perusteella"* — quant agent
+      explicitly planned and executed Inderes + Yahoo target-price
+      pull side-by-side. Bloomberg ANR-equivalent emerging organically
+      from prompt-level reasoning.
+    - Valuation fab-guard correctly fired `valid:false` on Apple
+      (Inderes lacks coverage, Yahoo snapshot alone insufficient for
+      ROE history) instead of hallucinating numbers.
+
+  **Confirmed gaps (now BACKLOG'd as actionable items):**
+    - **Gap 1 — Cross-source retry**: ASML + Smart Eye queries hit
+      research+sentiment fab-guard with 0 tool calls because the
+      agents tried Inderes only and didn't fall back to Yahoo on
+      empty result. Promoted from speculative to empirically-proven
+      necessary.
+    - **Gap 5 — Sector-level queries (NEW)**: *"Suomen pankkisektori
+      2026"* triggered research+sentiment fab-guard because their
+      prompts are company-anchored; sector queries leave them without
+      a query target. Captured in §1.
+    - **Gap 6 — Valuation uses stale Inderes BVPS+price (NEW)**: User
+      product insight — Yahoo `get_snapshot.bookValue` is Q-fresh
+      (e.g. Sampo Q1 → ~3 weeks fresh), Inderes `get-fundamentals` is
+      LFY-locked (5+ months stale by mid-year). For valuation
+      calculation, Yahoo should be PRIMARY for price + BVPS regardless
+      of whether Inderes covers the name. Captured in §2.
+
+  **Three user-proposed product ideas captured into BACKLOG:**
+    - **Target-price comparison table** (§3) — Bloomberg ANR-style
+      side-by-side Inderes vs Yahoo consensus, including target_high /
+      target_low / target_median / recommendationMean fields not yet
+      exposed in `get_snapshot`.
+    - **Always-on price-history chart** (§3) — Plotly OHLCV chart
+      rendered in UI whenever `get_history` data is available, with
+      ~80-token summary fed to LLM context (52w high/low, YTD %, 1y %)
+      to avoid token-bloating with raw 252-bar series.
+    - **yfinance fields audit + selective MCP tool additions** (§1 /
+      §2) — probe-script-driven catalog of useful unexposed fields:
+      `tk.balance_sheet`+`tk.income_stmt` → ROE history (unblocks
+      valuation for non-Inderes names = closes Gap 4), `tk.
+      upgrades_downgrades` + `tk.recommendations` history,
+      `tk.calendar` / `tk.earnings_dates`.
+
+  **Tech-debt finding (§4)**: Five quota-exhausted-style errors hit
+  between 21:04 and 21:19, each with primary failing in <400ms (= 4xx
+  immediate-reject pattern, NOT 503 server overload). User is paid
+  Tier 1 with dashboard showing 0.1% RPM and 0.1% RPD usage — so
+  daily quota is **not** actually exhausted. Root cause unknowable
+  because `gemini_client._fallback_call` does NOT log the triggering
+  exception. Diagnostic logging is the first fix; heuristic
+  refinement (currently any "429"/"quota"/"resource_exhausted"
+  substring → fatal QuotaExhaustedError) is the second.
+
+  **No code shipped beyond Yahoo integration.** All findings captured
+  here as BACKLOG items, local + cloud deploys untouched.
 
 - **2026-05-10 (evening — Wk 2 retrospective)**: Senior-PM-style
   user push-back caught two spec errors before they ate engineering
@@ -226,6 +298,46 @@ The biggest learning value: *"how agents actually collaborate"*.
   *"primary returned absolutely zero rows"* gate — not *"low
   confidence"*, which would trigger too often.
 
+  **2026-05-11 evening — empirically confirmed necessary.** Five
+  test queries with international names showed research+sentiment
+  agents going to fab-guard with 0 tool calls because they tried
+  Inderes only:
+    - `"smart eye"` (Swedish small-cap): research 1753 chars
+      fabricated → fab-guard stripped → empty output; sentiment
+      identical pattern.
+    - `"Asml osta vai myy?"` (Dutch tech): research 1470 chars
+      fabricated → blocked; sentiment 1781 chars → blocked.
+  Both agents have access to Yahoo `search_ticker` + `get_news` +
+  `get_holders` (per their tool-set partition) but never tried
+  them. Status: 🟡 next — implement at prompt-level for v1.
+
+- 💭 **Sector-level queries — research+sentiment hairahtuvat ilman
+  yhtiöankkuria** *(2026-05-11, "Gap 5")* — When the query is at
+  sector level (e.g. *"Suomen pankkisektori 2026"*), research and
+  sentiment agents fab-guard at 0 tool calls because their prompts
+  are company-anchored. Quant did 5 Inderes calls successfully
+  (sector-style scan), but research emitted 2445 chars of
+  fabricated sector commentary → blocked.
+
+  Two implementation paths:
+    1. **Router skip** *(~30 min)* — Sector queries (no specific
+       company resolved) route to quant + portfolio only, skipping
+       research + sentiment entirely. Conservative but loses
+       potential value of `list-content(type=ANALYST_COMMENT)`
+       sector-scan via research.
+    2. **Prompt branch** *(~1 h)* — research.md + sentiment.md
+       get a sector-mode section: "If the query has no specific
+       company, search for sector-level content via
+       `list-content(type='ANALYST_COMMENT')` with the sector name,
+       and aggregate Yahoo `get_news` across the sector's
+       prominent tickers (e.g. for banking sector: NDA-FI.HE,
+       SAMPO.HE, POH1S.HE, AKTIA.HE)."
+
+  Path 2 preferred — keeps the multi-perspective synthesis valuable
+  for sector queries. Eval case: `"Suomen pankkisektori 2026"`
+  expects ≥1 successful research call + ≥1 successful sentiment
+  call.
+
 ### Open — medium
 
 - 💭 **#2 Reflection + retry on weird output** — detect anomalous outputs
@@ -342,6 +454,61 @@ main; cloud deployment live. 146 tests green.
   ~15 % which mixes two regimes. Flag when |LFY − LFY-3| > 30 % →
   suggest manual_override. **~1 h.**
 
+- 💭 **Yahoo PRIMARY for valuation price + BVPS — also on Inderes-covered
+  names** *(2026-05-11, "Gap 6", user product insight)* — Currently
+  valuation.md tells the agent to fetch price + BVPS from Inderes
+  (`get-inderes-estimates.sharePrice` + `get-fundamentals` annual BVPS).
+  Both are stale by design:
+    - Inderes `sharePrice` = analyst's last update, typically 1-3 weeks
+      old.
+    - Inderes BVPS = LFY year-end value, ~5 months stale by mid-year.
+      For banks (Sampo, Nordea, Aktia) Q1 BVPS growth is mechanically
+      relevant — the year-end value is materially wrong by April.
+
+  Yahoo `get_snapshot` provides:
+    - `currentPrice` — 15-min-delayed live (vs Inderes 1-3 weeks)
+    - `bookValue` — Q-fresh (e.g. Sampo Q1 2026 → reflected within
+      ~3 weeks of report)
+
+  **Proposal**: valuation.md prompt update:
+    > *"Käytä `get_snapshot(ticker)` Yahoosta nykyhintaan ja BVPS:ään
+    > AINA kun ticker on saatavilla, riippumatta siitä kattaako
+    > Inderes yhtiön. Inderesin `get-fundamentals` ja
+    > `get-inderes-estimates.sharePrice` ovat fallback-lähteitä vain
+    > silloin kun Yahoo ei tunnista tickeriä. ROE-historia, k:n ja
+    > g:n perustelut, sekä Inderes-suositus haetaan edelleen
+    > Inderesistä."*
+
+  **Impact**: Sampo, Nordea, Kone, Nokia and other Finnish names get
+  Q-fresh valuation inputs. Apple/Meta/Amazon stay at `valid:false`
+  because they still lack ROE history (see ROE-history-from-Yahoo
+  item below).
+
+  **Effort**: ~15 min prompt edit + 1 golden eval case. No code or
+  schema changes — the downstream parser doesn't care which source
+  produced the numbers.
+
+- 💭 **ROE-history-from-Yahoo unblocks valuation for non-Inderes
+  names** *(2026-05-11, closes "Gap 4")* — Empirical observation: when
+  asked *"arvonmääritys Apple"* (or Meta, Amazon), valuation agent
+  correctly emits `valid: false` because Inderes lacks ROE history.
+  Yahoo `get_snapshot` alone is insufficient (gives LTM ROE point, no
+  history). But `Ticker.balance_sheet` + `Ticker.income_stmt` (or the
+  quarterly variants) DO expose multi-year NetIncome and Stockholders
+  Equity → derivable 5-year ROE series.
+
+  **Proposal**: add `get_financial_history(ticker, years=5)` tool to
+  yahoo-finance-mcp returning per-year `{netIncome, equity, roe,
+  totalAssets, totalDebt}`. Wire into VALUATION partition.
+  Valuation.md learns: "if Inderes has no ROE history, try
+  `get_financial_history` for the same data from Yahoo."
+
+  **Impact**: Apple/Meta/Amazon-tyyppiset arvonmääritykset toimivat
+  yhdellä prompt-rivin tarkkuudella, ei kovakoodattu Yahoo-vain-fallback.
+
+  **Effort**: ~2 h (Yahoo MCP tool implementation + tests + main-repo
+  partitioning + prompt update + 2 golden cases).
+
 - 💭 **Yahoo Finance integration as fresh-data side-channel** — Inderes
   MCP exposes neither real-time per-stock prices nor quarterly book
   values (verified by exhaustive probe of all 16 tools, 2026-05-09).
@@ -450,6 +617,41 @@ main; cloud deployment live. 146 tests green.
   worth it. Status remains 💭 — activation triggers (watchlist, real
   user feedback) unchanged.
 
+  **2026-05-11 — hosting plan (Fly.io, mirroring `mcp-inventory`).**
+  User's existing personal MCP collection at
+  <https://github.com/5qtb5t9v5k-rgb/mcp-inventory> uses Fly.io
+  Stockholm region (`arn`) with `auto_stop_machines = 'stop'` +
+  `min_machines_running = 0` → 0 €/kk kun idle, 1–3 s cold-start.
+  Bearer-auth via `Authorization: Bearer <MCP_API_KEY>` header OR
+  URL path-prefix `/<key>/...` fallback for claude.ai custom
+  connectors (timingSafeEqual constant-time comparison).
+
+  **Path A (recommended) — Fly config in `yahoo-finance-mcp` repo:**
+    1. `Dockerfile` — `python:3.11-slim` + uv install +
+       `CMD ["python", "-m", "yahoo_mcp.server"]`
+    2. `fly.toml` — same shape as `mcp-inventory/servers/todoist/`:
+       region `arn`, `auto_stop_machines='stop'`,
+       `min_machines_running=0`, `internal_port=8000`
+    3. `yahoo_mcp/auth.py` — ASGI middleware checking
+       `Authorization: Bearer ...` + path-prefix fallback, read
+       shared secret from `MCP_API_KEY` env
+    4. `yahoo_client.py` in main repo: add `_YahooBearerAuth`
+       (httpx.Auth) reading `YAHOO_MCP_API_KEY` env. Same pattern
+       as `_InderesBearerAuth`.
+    5. `fly secrets set MCP_API_KEY=$(openssl rand -hex 32)` +
+       `fly deploy` → app at `https://yahoo-mcp-jr.fly.dev/mcp`
+
+  **Path B (alternative) — Move yahoo into mcp-inventory:** would
+  fragment public MIT repo intent. Rejected.
+
+  **Path C (alternative) — Hybrid (mcp-inventory holds fly config,
+  yahoo-finance-mcp holds source):** marginally more complex,
+  negligible operational gain. Deferred.
+
+  **Effort total**: ~45 min Dockerfile+fly.toml+auth middleware +
+  ~20 min main-repo Bearer wiring + ~10 min smoke-test via
+  Streamlit + ~10 min mcp-inventory README diagram update.
+
 ### Bloomberg Terminal — inspirational targets (research 2026-05-11)
 
 Not aspirational replication — Bloomberg's $32k/seat/yr buys breadth + real-time +
@@ -474,6 +676,36 @@ this project). Top 5 chase-targets, all achievable with free/cheap data:
    1 d (after watchlist ships).
 5. 💭 **PORT-equivalent personal portfolio analytics** — factor
    decomposition (Fama-French), scenario VaR. Pure compute. 1–2 d.
+
+**Prerequisite for several of the above (`FA`, `ANR`, `ECO`):
+yfinance fields audit + selective new MCP tools** *(2026-05-11)*.
+Approach:
+
+  1. Build `tools/audit_yfinance_fields.py` in
+     `yahoo-finance-mcp` — probes AAPL + SAMPO.HE + NOKIA.HE and
+     emits a `field_inventory.md` table bucketing all `Ticker.info`
+     fields + DataFrame surfaces (`tk.balance_sheet`,
+     `tk.income_stmt`, `tk.cashflow`, `tk.recommendations`,
+     `tk.upgrades_downgrades`, `tk.calendar`, `tk.earnings_dates`,
+     `tk.analyst_price_targets`, `tk.dividends`) by relevance:
+     toolify / already exposed / skip. ~30 min, no-LLM-quota.
+
+  2. Review + prioritise from inventory. Likely first-wave new
+     tools (~2 h each):
+       - `get_financial_history(ticker, years=5)` → closes
+         valuation Gap 4 for non-Inderes names (§2)
+       - `get_target_details(ticker)` → enables ANR table (§3
+         "Target-price comparison table") — could fold into
+         `get_snapshot` instead
+       - `get_upcoming_events(ticker)` → next earnings date,
+         dividend date → SENTIMENT timing context
+       - `get_rating_changes(ticker, days=30)` → recent
+         upgrades/downgrades → SENTIMENT signal
+
+  3. Generate per-tool partition assignment (which agents see it)
+     before implementation, following the same logic as the
+     original 5-tool partition (e.g. `get_financial_history` →
+     VALUATION + QUANT; `get_upcoming_events` → SENTIMENT only).
 
 Skip entirely: MSG (network effect, impossible), BVAL (regulator-only),
 BI proprietary research, tick-level intraday data, real-time L2 quotes.
@@ -589,6 +821,61 @@ Reference research in conversation log 2026-05-11.
   comparisons. `st.plotly_chart` natively. Recommended in priority
   comparison
 
+- 💭 **Target-price comparison table — Bloomberg ANR equivalent**
+  *(2026-05-11, user product idea)* — Side-by-side rendering of
+  Inderes target price + Yahoo analyst consensus whenever both are
+  available. Architectural elegance: we already pull both, just need
+  a UI component + 2 extra fields from `get_snapshot`.
+
+  ```
+                  Inderes           Yahoo consensus
+  Suositus        INCREASE          Buy (rec_mean 1.8 / 5)
+  Target Mean     16.50 €           18.20 €
+  Target Range    —                 15.50 € – 22.00 €
+  N analyytikkoä  1                 14
+  Päivätty        22.4.2026         10.5.2026
+  ```
+
+  **Implementation**:
+    1. Extend `yahoo-finance-mcp` `get_snapshot` to return
+       `targetHighPrice`, `targetLowPrice`, `targetMedianPrice`,
+       `recommendationMean` (numeric 1-5 scale, finer than the
+       keyword). ~30 min in yahoo_mcp/server.py.
+    2. New UI component `render_analyst_compare_table()` in
+       `ui/components.py` that renders the table when both
+       Inderes-target + Yahoo-target are present in the run's tool
+       results. ~1 h.
+    3. LEAD prompt addition: "If both sources have target prices,
+       reference the comparison table in the answer instead of
+       narrating numbers." ~10 min.
+    4. Eval case: `case_012_target_consensus_comparison` —
+       *"Vertaile Nokian Inderes- ja markkinakonsensus-tavoitehintoja"*
+       → expect both `get-inderes-estimates` and `get_snapshot` in
+       tool trace + comparison table in synthesis.
+
+  **Effort total**: ~2 h. High visible-value-per-hour ratio.
+
+- 💭 **Always-on price-history chart for QUANT** *(2026-05-11, user
+  product idea)* — When `get_history(ticker)` data is available in
+  the tool trace, render a Plotly OHLCV chart inline in the quant
+  agent card, even if the query didn't explicitly ask for a chart.
+
+  **Token-cost concern (user-flagged)**: 252 daily bars × ~50 chars
+  ≈ 12K tokens if dumped to LLM context. **Mitigation**: split
+  context-vs-render data:
+    - LLM context: ~80-token statistical summary
+      (`"1y return +24%, 52w high $295, current $271 = 8% below
+      high, max drawdown -18%"`)
+    - UI: raw Plotly JSON rendered directly (`st.plotly_chart`),
+      never enters LLM context
+
+  This is the same machinery as the shipped *"Plotly charts for
+  QUANT"* (Wk 1) ROE/PE timeline — just extended to OHLCV from
+  Yahoo. ~1 h for the renderer + summary-generator. Eval case:
+  `case_013_history_chart_renders` — *"Nvidian hintakehitys"* →
+  expect `get_history(NVDA)` call + chart image attached to
+  quant card.
+
 ### Open — broader
 
 - 💭 **Streaming output** — token-by-token answer rendering in the
@@ -628,6 +915,109 @@ Reference research in conversation log 2026-05-11.
   `INDERES_USERNAME` + `INDERES_PASSWORD` as repo secrets.
 
 ### Open — small (next session pickups)
+
+- 🔴 **Gemini quota error — diagnostic logging + heuristic refinement**
+  *(2026-05-11 evening)* — Five consecutive ajot kuolivat klo 21:04 →
+  21:19 *"Daily Gemini quota exhausted on both primary and fallback"*
+  -viestillä, vaikka user on paid Tier 1 ja dashboard näytti 0.1 %
+  käyttöä (152 / 200K RPD Flash Lite, 1 / 10K RPD Pro). Root cause
+  unknowable koska `gemini_client._fallback_call` ei lokita
+  triggering-exceptionia mihinkään.
+
+  Pattern (per-run console.log):
+  ```
+  21:04:13.583  AFC enabled (primary)
+  21:04:14.028  WARN falling_back_to_secondary
+                ← 445 ms ⇒ NOT 503 overload, IS immediate 4xx reject
+  21:04:14.037  AFC enabled (fallback)
+                (no further log — fallback dies silently)
+  ```
+
+  Tarvitaan kaksi muutosta `src/inderes_agent/llm/gemini_client.py`:hen:
+
+  **1. Diagnostic logging** (priority, can land standalone):
+
+  ```python
+  def _log_genai_error(event: str, model: str, exc: BaseException) -> None:
+      fields = {"event": event, "model": model,
+                "exc_type": type(exc).__name__,
+                "raw": str(exc)[:500]}
+      try:
+          from google.genai.errors import APIError
+          if isinstance(exc, APIError):
+              fields["code"] = exc.code
+              fields["status"] = exc.status
+              fields["message"] = (exc.message or "")[:300]
+              details = (exc.details or {}).get("error", {}).get("details", [])
+              violations = [
+                  {"quotaId": v.get("quotaId"),
+                   "quotaMetric": v.get("quotaMetric")}
+                  for d in (details if isinstance(details, list) else [])
+                  if isinstance(d, dict)
+                  for v in (d.get("violations") or [])
+              ]
+              if violations:
+                  fields["quota_violations"] = violations
+      except Exception:
+          pass
+      log.warning("%s %s", event, fields)
+  ```
+
+  Kutsutaan kahdessa paikassa: kun primary throwaa (ennen
+  `_fallback_call`), ja kun fallback throwaa (ennen
+  `QuotaExhaustedError`-raisea). Käyttäytyminen pysyy täysin samana,
+  vain lokirivi lisätty.
+
+  **2. Heuristic refinement** (vasta kun diagnostiikka paljastaa
+  oikean syyn):
+
+  Nykyinen `_is_quota_exhausted` matchaa minkä tahansa "429" /
+  "quota" / "resource_exhausted" -substring:in:
+  ```python
+  return "429" in msg or "resource_exhausted" in msg or "quota" in msg
+  ```
+
+  Tämä on liian löysä — voi laueta MCP-virheiden session-id:istä
+  tai upstream-virheiden metadatasta. Korvataan:
+
+  ```python
+  def _classify_gemini_error(exc) -> str:
+      """transient / rate_limit_minute / rate_limit_day / other"""
+      from google.genai.errors import APIError
+      if not isinstance(exc, APIError):
+          return "other"
+      if exc.code in (500, 502, 503, 504):
+          return "transient"
+      if exc.code != 429:
+          return "other"
+      details = (exc.details or {}).get("error", {}).get("details", [])
+      quota_ids = " ".join(
+          v.get("quotaId", "")
+          for d in (details if isinstance(details, list) else [])
+          if isinstance(d, dict)
+          for v in (d.get("violations") or [])
+      ).lower()
+      if "perday" in quota_ids or "daily" in quota_ids:
+          return "rate_limit_day"
+      return "rate_limit_minute"
+  ```
+
+  Ja `_fallback_call`-tasolla:
+    - `rate_limit_day` → `QuotaExhaustedError` (oikeasti loppu)
+    - `rate_limit_minute` / `transient` → exp-backoff retry (30s, 60s, 90s)
+    - `other` → raise immediately, ei trigger QuotaExhaustedErroria
+
+  **Hypoteesit oikealle root-causelle** (paid tier, <400ms reject,
+  dashboard puhdas):
+    1. Yhtäaikaisten kutsujen raja — fan-out 5+ subagenttia
+       samanaikaisesti
+    2. Project-level quota joka ei näy malli-dashboardilla
+    3. `gemini-3.1-flash-lite-preview` region-locked / preview-tier
+       hidden RPM
+
+  Mikä todellinen syy onkin, **fix #1 ratkaisee diagnostiikan**;
+  fix #2 ratkaisee käyttökokemuksen kun syy tunnetaan. Yhteensä
+  ~45 min, no LLM-quota required.
 
 - 💭 **Cron health-check** — the pre-existing
   `refresh-inderes-tokens.yml` cron returns "success" exit status even
