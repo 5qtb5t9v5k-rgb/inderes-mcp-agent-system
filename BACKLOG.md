@@ -485,6 +485,37 @@ main; cloud deployment live. 146 tests green.
   read-only filesystem
 - ✅ **Tool-call guard for valuation** (commit `045872e`) — structural
   defense at orchestration boundary against zero-MCP-call hallucinations
+- ✅ **Auto-relogin (Playwright headless)** *(2026-05-11)* — separate
+  private repo
+  [`inderes-mcp-auto-relogin`](https://github.com/5qtb5t9v5k-rgb/inderes-mcp-auto-relogin).
+  GitHub Actions cron runs Playwright + Chromium twice per day (02:00 +
+  17:00 UTC, deliberately outside Helsinki 08-16 working window),
+  performs full Keycloak OAuth re-auth, pushes fresh tokens to the
+  shared gist. Removes the previously-required daily manual
+  `bash scripts/relogin.sh` step before each work morning. 7-iteration
+  debug arc to get past CI-Chromium quirks (custom Keycloak theme,
+  JS-driven submit button, chrome-error:// URL masking the real
+  callback) — kept private because the workflow file contains
+  `INDERES_USERNAME` + `INDERES_PASSWORD` as repo secrets.
+
+### Open — small (next session pickups)
+
+- 💭 **Cron health-check** — the pre-existing
+  `refresh-inderes-tokens.yml` cron returns "success" exit status even
+  when its refresh-token POST gets 400 invalid_grant (SSO Session Max
+  iski). Discovered 2026-05-11 morning. Should fail-red so the
+  email-on-failure alert fires; right now we only notice when the
+  Streamlit app starts returning empty results.
+- 💭 **Auto-relogin smart-timing** — currently re-logs in unconditionally
+  twice per day. Could decode the JWT in the gist tokens, read
+  `auth_time`, and skip when SSO Session Max is still >2 h away.
+  Useful when the user does a manual relogin during the day. Spec
+  + skip-logic outline in `inderes-mcp-auto-relogin/README.md`.
+- 💭 **sentiment.md prompt length** — same issue as research.md two
+  sessions ago. The smart-insider-taxonomy block expanded the prompt
+  significantly; Flash-Lite started occasionally skipping MCP calls
+  (fabrication-guard catches them but the UX is "agent errored").
+  Tighten in the same style as research.md (Wk 2 commit `5efb5f1`).
 
 ### Open — high priority (gateway for AI features, see §6)
 
