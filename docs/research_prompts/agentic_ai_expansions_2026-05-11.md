@@ -109,6 +109,44 @@ Keep it analytical, not promotional. Where industry hype outpaces evidence, say 
 
 ## Reading recommendations to seed the research
 
+**Pattern catalogues (start here — they are the canonical maps of the space):**
+
+- **[nibzard/awesome-agentic-patterns](https://github.com/nibzard/awesome-agentic-patterns)** —
+  curated catalogue of ~178 patterns across 8 categories (Context &
+  Memory, Feedback Loops, Learning & Adaptation, Orchestration &
+  Control, Reliability & Eval, Security & Safety, Tool Use &
+  Environment, UX & Collaboration). Each entry must be traceable to
+  a public source (blog, talk, repo, paper) — no marketing material.
+  Companion website at <https://agentic-patterns.com> has a Pattern
+  Explorer, Compare Tool, and Decision Explorer. **Direct hits with
+  this project (~20 patterns already implemented under different
+  names):** Tool Capability Compartmentalization (= our per-agent
+  tool partition), Sub-Agent Spawning, Plan-Then-Execute, Opponent
+  Processor (= conflict detector), Output Verification Loop (=
+  fabrication guard), Schema Validation Retry (= valuation parser),
+  Verbose Reasoning Transparency (= `**Ajatus:**` opener), Failover-
+  Aware Model Fallback, Filesystem-Based Agent State, Workflow
+  Evals with Mocked Tools. **Novel patterns we don't yet have but
+  should consider:** Lethal Trifecta Threat Model (Simon Willison),
+  Action Caching & Replay Pattern, Tool Search Lazy Loading,
+  Subject Hygiene for Task Delegation, Burn the Boats.
+
+- **[Google Cloud — Choose a design pattern for your agentic AI
+  system](https://docs.cloud.google.com/architecture/choose-design-pattern-agentic-ai-system)**
+  — cloud-vendor architectural decision framework (~10 macro
+  patterns). Strong on decision criteria (task complexity / latency /
+  cost budget / human involvement). Identifies Single-Agent,
+  Sequential, Parallel, Loop, Iterative Refinement, Review and
+  Critique, Coordinator, Hierarchical Task Decomposition, Swarm,
+  ReAct, Human-in-the-Loop, Custom Logic. **This project maps to a
+  Parallel + Coordinator + Hierarchical + Review/Critique hybrid.**
+  Google's guidance "avoid complex multi-agent when simpler
+  suffices" worth reflecting on: do we over-architect for our actual
+  problem complexity? Probably yes for trivial queries (single-name
+  price lookup) — see auto-orchestrator / meta-router idea in §1.
+
+**Foundational papers + writeups:**
+
 - *State of the possible* (presumably the source for our §9 patterns — see existing BACKLOG.md)
 - Microsoft Agent Framework docs + Magentic-One paper
 - OWASP Agentic AI Top 10 (2026)
@@ -116,6 +154,17 @@ Keep it analytical, not promotional. Where industry hype outpaces evidence, say 
 - LangGraph + CrewAI + AutoGen production case studies (where they exist)
 - Bloomberg's ASKB announcement (their LLM-agent layer over Terminal data)
 - Perplexity, Hex Magic, Julius AI — vertical-AI productivity agents in adjacent domains
+
+**Production case studies / blog posts to surface:**
+
+- Cursor / Replit / Continue.dev — agentic coding patterns (relevant
+  even for non-code domains: heavy fan-out + iterative refinement +
+  HITL approval)
+- Hex Magic / Julius AI — agentic data analysis (closest UX-analogue
+  to investment research: structured queries + chart-rendering +
+  step-by-step transparency)
+- Perplexity Pro / DeepResearch — multi-source synthesis with
+  citation discipline (the source-badge model we want to evolve)
 
 ---
 
