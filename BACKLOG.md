@@ -1035,12 +1035,12 @@ Reference research in conversation log 2026-05-11.
   significantly; Flash-Lite started occasionally skipping MCP calls
   (fabrication-guard catches them but the UX is "agent errored").
   Tighten in the same style as research.md (Wk 2 commit `5efb5f1`).
-- 🐛 **UI: "Avaa suunnitelma" not rendered until "Avaa loki" clicked**
-  — reported 2026-05-11 evening. Plan expander only appears after the
-  user opens the log expander first. Likely a render-order or session-
-  state-dep issue in `render_plan_expander()` / its parent layout. Both
-  buttons should be visible from the first render when their content
-  exists. Repro: any successful run with a planner result.
+- ✅ **UI: "Avaa suunnitelma" not rendered until "Avaa loki" clicked**
+  *(shipped 2026-05-11 commit `6a9f592` — fix(ui): native `<details>`
+  for plan expander)*. Root cause: `st.button` + `session_state` +
+  `st.rerun` pattern didn't paint on first render. Replaced with native
+  HTML `<details>/<summary>` element which renders deterministically
+  on the initial pass.
 - 🐛 **UI: FI / EN language toggle non-functional on landing page**
   — reported 2026-05-11 evening. Toggle in the title bar doesn't switch
   the UI language on the landing/empty-state view. Likely a missing
