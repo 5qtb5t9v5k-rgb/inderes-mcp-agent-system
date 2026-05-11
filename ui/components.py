@@ -2194,32 +2194,21 @@ def render_plan_expander(run_dir: Path, lang: str = "fi") -> None:
             f'<div class="ia-plan-meta">{model_lab} <code>{escape_html(model_used)}</code></div>'
         )
 
-    # Click-toggle pattern (st.button + session_state) instead of either
-    # raw <details> or st.expander. Reason: in the chat_message context,
-    # neither alternative was reliable on first render — user repeatedly
-    # had to click "AVAA LOKI" first before "AVAA SUUNNITELMA" became
-    # interactive. st.button always reruns immediately and the body is
-    # rendered conditionally; visually it now matches AVAA LOKI / AVAA
-    # PÄÄTTELY exactly (slim secondary button, caps label, ›).
-    state_key = f"plan_open_{run_dir.name}"
-    if st.button(
-        btn_label,
-        key=f"plan_btn_{run_dir.name}",
-        use_container_width=True,
-        type="secondary",
-    ):
-        st.session_state[state_key] = not st.session_state.get(state_key, False)
-        st.rerun()
-
-    if st.session_state.get(state_key, False):
-        # When open, render the slot grid wrapped in the same `.ia-paattely-b`
-        # container as Päättely so it sits visually flush below the button.
-        body_html = (
-            '<div class="ia-paattely-b ia-plan-expander" style="border-top:0">'
-            f'<div class="ia-plan-grid">{"".join(parts)}</div>'
-            "</div>"
-        )
-        st.markdown(body_html, unsafe_allow_html=True)
+    # Native <details>/<summary> rather than st.button + session_state.
+    # Previous st.button approach (with rerun on click) had a first-render
+    # race: the button was rendered into the DOM but didn't appear until
+    # the user clicked "AVAA LOKI" — apparently because that click's rerun
+    # was the first one that fully completed the render pass. The native
+    # <details> element sidesteps Streamlit's render-cycle entirely: it's
+    # standard HTML, browser-native, and shows up immediately on the first
+    # paint with no state plumbing.
+    body_html = (
+        f'<details class="ia-paattely-b ia-plan-expander" style="border-top:0">'
+        f'<summary class="ia-plan-summary">{btn_label}</summary>'
+        f'<div class="ia-plan-grid">{"".join(parts)}</div>'
+        f'</details>'
+    )
+    st.markdown(body_html, unsafe_allow_html=True)
 
 
 def render_perustelut_box(body: str | None, lang: str = "fi") -> None:

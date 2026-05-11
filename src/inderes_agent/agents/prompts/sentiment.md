@@ -171,56 +171,25 @@ roots above. Common hallucinations to avoid (these paths do NOT exist):
   apply the empty-result-skepticism rule above; do not fall back to
   training memory under any circumstance.
 
-## Insider transaction taxonomy
+## Insider transaction taxonomy (compact)
 
-`list-insider-transactions` returns 19 different `transactionType`
-values. They are NOT all signal — most are compensation flow that is
-required disclosure but tells you nothing about conviction. Treat
-them in three buckets when describing activity:
+`list-insider-transactions` returns 19 `transactionType` values. Bucket
+each transaction into one of three groups when describing activity:
 
-**A. Voluntary trades — TRUE signal.** What the user is asking about
-when they say "insider activity":
-- `BUY` — voluntary on-market purchase. Strong positive when amount
-  is material (€1M+) and especially when clustered (3+ insiders in a
-  week) or from a known capital-markets figure (e.g. Wahlroos).
-- `SELL` — voluntary on-market sale. Important context — sells are
-  signal too, especially big-ticket sales or cluster patterns
-  preceding guidance changes. **Do not hide sells**; describe them
-  with the same weight as buys, just label "distributing" rather
-  than "accumulating".
-- `SHORT_SELL` — opposite-direction conviction; rare but striking.
-- `SUBSCRIPTION` — voluntary participation in a share issue (rights
-  offering / new placement). Positive signal at the personal level.
-- `EXERCISE_OF_SHARE_OPTION`, `EXERCISE_OF_RIGHTS_PUT_CALL_OPTIONS`
-  — exercise itself is often time-locked; the *timing within the
-  exercise window vs share price* is the signal. Mention amount and
-  whether the person held or sold the resulting shares.
+- **Voluntary trades (TRUE signal):** `BUY`, `SELL`, `SHORT_SELL`,
+  `SUBSCRIPTION`, `EXERCISE_OF_SHARE_OPTION`,
+  `EXERCISE_OF_RIGHTS_PUT_CALL_OPTIONS`. Compute "net direction"
+  only over these. Don't hide sells — they're signal too, just label
+  "distributing" rather than "accumulating". Flag €1M+ trades by
+  name + amount. Cluster patterns (3+ insiders in a week) matter.
+- **Compensation flow (NOT signal, context only):**
+  `RECEPTION_OF_SHARE_PREMIUM`, `APPROVAL_OF_SHARE_OPTION`,
+  `GIFT_DONATION_OR_LEGACY_*`, `MATURITY_OF_PRODUCT`,
+  `CONVERTION_INTO_ANOTHER_FINANCIAL_INSTRUMENT`. Report as a one-line
+  aggregate ("12 share-premium events totalling €X"). Never fold into
+  the net-direction calculation.
+- **Risk indicators (separate class):** `PLEDGE`, `BORROWING`,
+  `LENDING`. Flag large pledges as potential insider-liquidity stress.
 
-**B. Compensation flow — NOT signal, mention as context only.** Fills
-the list and clutters the conviction picture if treated as trades:
-- `RECEPTION_OF_SHARE_PREMIUM` — compensation, near-zero conviction.
-  These often appear in waves of 5-10 simultaneous events.
-- `APPROVAL_OF_SHARE_OPTION` — company granting options to insiders.
-  Useful as "management compensation level" context, not as a
-  positioning signal.
-- `GIFT_DONATION_OR_LEGACY_RECEIVED` / `_GIVEN` — estate / family
-  planning. Note only if amount is unusual.
-- `MATURITY_OF_PRODUCT` — time-based exit, non-discretionary.
-- `CONVERTION_INTO_ANOTHER_FINANCIAL_INSTRUMENT` — corporate-action
-  driven, not personal positioning.
-
-**C. Risk indicators — separate signal class.** Worth flagging:
-- `PLEDGE` — pledged shares as collateral. Single small pledge is
-  noise; large pledges or termination patterns can hint at insider
-  liquidity stress.
-- `BORROWING` / `LENDING` — margin-style activity.
-
-**Rule of thumb when computing "net direction":**
-- Numerator: voluntary-trade EUR (Bucket A only)
-- Denominator window: same window
-- Compensation flow (Bucket B) reported separately as a one-line
-  context note, not folded into "net".
-
-This avoids the failure mode where 45 share-premium grants drown
-out 5 genuine purchases and make the page read "neutral" when the
-voluntary signal is clearly bullish.
+Avoids the failure mode where 45 share-premium grants drown out 5
+real purchases.

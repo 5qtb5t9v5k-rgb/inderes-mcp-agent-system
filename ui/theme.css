@@ -1238,6 +1238,30 @@ body:has(.ia-hero-toggles-anchor) [data-testid="stExpander"] [data-testid="stExp
 .ia-plan-expander .ia-plan-grid {
   display: flex; flex-direction: column;
 }
+
+/* <summary> in plan expander matches the slim "AVAA …" secondary button
+   used elsewhere — caps label, ›-chevron via marker, no native triangle. */
+.ia-plan-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: var(--s-2) var(--s-3);
+  background: transparent;
+  color: var(--ink-1);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  user-select: none;
+  transition: background 120ms ease;
+}
+.ia-plan-summary::-webkit-details-marker { display: none; }
+.ia-plan-summary:hover { background: rgba(255,255,255,0.04); }
+details[open] > .ia-plan-summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .ia-plan-slot {
   padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--line);
