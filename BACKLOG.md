@@ -516,6 +516,17 @@ main; cloud deployment live. 146 tests green.
   significantly; Flash-Lite started occasionally skipping MCP calls
   (fabrication-guard catches them but the UX is "agent errored").
   Tighten in the same style as research.md (Wk 2 commit `5efb5f1`).
+- 🐛 **UI: "Avaa suunnitelma" not rendered until "Avaa loki" clicked**
+  — reported 2026-05-11 evening. Plan expander only appears after the
+  user opens the log expander first. Likely a render-order or session-
+  state-dep issue in `render_plan_expander()` / its parent layout. Both
+  buttons should be visible from the first render when their content
+  exists. Repro: any successful run with a planner result.
+- 🐛 **UI: FI / EN language toggle non-functional on landing page**
+  — reported 2026-05-11 evening. Toggle in the title bar doesn't switch
+  the UI language on the landing/empty-state view. Likely a missing
+  st.rerun() or session_state propagation. Verify behaviour after a
+  query is submitted (may only break before any run exists).
 
 ### Open — high priority (gateway for AI features, see §6)
 
