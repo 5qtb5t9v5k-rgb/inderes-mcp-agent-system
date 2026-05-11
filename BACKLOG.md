@@ -351,6 +351,41 @@ main; cloud deployment live. 146 tests green.
   occasional rate limits, ticker mismatches for some Nordic small-caps,
   TOS for free-tier personal research is permissive but not guaranteed.
 
+  **2026-05-11 revision — package as a separate MCP server.** Instead of
+  embedding `yfinance` as a Python client inside the main repo, wrap it
+  in a small MCP server (separate public repo `yahoo-finance-mcp`).
+  Architectural payoff:
+
+    - Same connection pattern as Inderes MCP — agents need no new
+      integration layer; `_SanitizingMCPTool` + fabrication-guard
+      + hard-limits all apply unchanged.
+    - Per-agent tool-partitioning preserved — QUANT picks up Yahoo
+      tools as part of its tool-set, RESEARCH/SENTIMENT don't see them.
+    - yfinance brittleness isolated to the MCP server — when it
+      breaks, the MCP returns an error and the agent gracefully
+      falls back to Inderes-only data. No agent-side crash.
+    - Rate-limit / retry / cache logic lives in one place, not
+      smeared across agents.
+    - One-line on/off toggle: set or unset `YAHOO_MCP_URL` env var.
+    - Reusable open-source artefact for the broader MCP community.
+
+  *Stack*: FastAPI + `mcp` (python-sdk) + `yfinance`. Hosting: Modal
+  free tier or Render. Tools:
+    - `get-snapshot(ticker)` → `{price, marketCap, bookValue,
+      lastQuarterEnd, splitFactor}`
+    - `get-history(ticker, period)` → split-adjusted OHLC series
+    - `search-ticker(query)` → ticker resolution including `.HE`
+      suffix heuristics for Helsinki names
+
+  *Cache strategy*: 15 min in-memory TTL, plus a stale-cache fallback
+  that serves last known value if yfinance fails this call (so a
+  Yahoo outage doesn't cascade into agent failures).
+
+  *Effort*: ~1.5 d to build + host + integration test. Slightly more
+  than the embedded approach but the operational properties are
+  worth it. Status remains 💭 — activation triggers (watchlist, real
+  user feedback) unchanged.
+
 ### Open — readily usable extensions
 
 - 💭 **Portfolio mode** — same valuation engine applied across the
