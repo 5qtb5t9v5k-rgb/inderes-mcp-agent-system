@@ -361,6 +361,56 @@ The biggest learning value: *"how agents actually collaborate"*.
   raw data, Sonnet can't diff claims any better. Cost ~40–200× per
   query.
 
+- 💭 **Grounding with Google Search — Gemini-native web fallback**
+  *(2026-05-11, user-spotted in Google AI Studio)* — Gemini exposes
+  `GoogleSearch` tool that lets the model run live Google searches
+  mid-reasoning and ground answers in fetched web content, with
+  `groundingMetadata` carrying citations. Activated per-call via
+  `tools=[GoogleSearch(...)]`, same shape as our MCP tools.
+
+  **Potential fits in this project**:
+    - Ultimate fallback for cross-source retry: when Inderes AND
+      Yahoo both return empty for a name (rare but possible — e.g.
+      private placement, very new IPO, foreign exotic), Google
+      search could surface SOMETHING rather than nothing.
+    - SENTIMENT extension: *"mitä mediassa puhutaan X:stä"* widens
+      from Yahoo's news feed to general web (Twitter, Reddit, blog
+      posts) — but see attribution risk below.
+
+  **Risks**:
+    1. **Provenance dilution**: Our entire trust model is built on
+       *"every claim attributable to either Inderes or Yahoo,
+       both vetted"*. Google web is unvetted — fabrication-guard
+       won't catch *"random blog said X"*-claims.
+    2. **Fabrication-guard interference**: The agent currently
+       refuses to answer if 0 MCP calls happened. With Google
+       grounding active, the model might satisfy itself with a
+       single search and skip Inderes/Yahoo entirely → quality
+       regression for queries we actually have first-party data on.
+    3. **Cost + latency**: Google grounding has its own pricing
+       tier (≥$X/1000 calls per Google docs) and adds ~1-3 s
+       per use.
+
+  **Recommended pattern (if pursued)**:
+    - **Opt-in only**: new toggle *"🔎 Hae myös Googlella"* in
+      sidebar settings, default off. User explicitly accepts that
+      web-sourced claims have weaker provenance.
+    - **Last-resort gate**: only activate when both Inderes AND
+      Yahoo returned empty (= same gate as Cross-source retry,
+      one tier deeper). Never on first-attempt synthesis.
+    - **Source-badge required**: web citations get a distinct
+      `[W1]` / `[W2]` marker (vs `[Q1]`/`[R1]`/`[S1]`) in the
+      answer so user immediately sees which claims are web-grounded
+      vs first-party.
+
+  **Effort**: ~2 h once Cross-source retry §1 lands (depends on
+  same gate logic + same source-badge plumbing). Lower priority
+  than retry itself — first-party-empty queries are rare in our
+  Finnish-investing target use case.
+
+  See <https://ai.google.dev/gemini-api/docs/grounding> for the
+  Gemini API doc on this feature.
+
 ### Open — large architectural
 
 - 💭 **#7 Subagent-to-subagent calls** — QUANT can directly call
