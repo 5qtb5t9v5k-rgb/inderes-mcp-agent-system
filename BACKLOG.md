@@ -351,9 +351,20 @@ main; cloud deployment live. 146 tests green.
   occasional rate limits, ticker mismatches for some Nordic small-caps,
   TOS for free-tier personal research is permissive but not guaranteed.
 
-  **2026-05-11 revision — package as a separate MCP server.** Instead of
-  embedding `yfinance` as a Python client inside the main repo, wrap it
-  in a small MCP server (separate public repo `yahoo-finance-mcp`).
+  **2026-05-11 revision — scope expansion: international companies as
+  primary use case.** Coverage probe showed 100 % success (22/22) across
+  US, EU, and Asian tickers — Yahoo isn't just a side-channel for
+  Finnish data freshness, it's the only viable source for non-Finnish
+  research. Inderes MCP and Yahoo MCP will live side-by-side: Inderes is
+  the primary lookup for Helsinki names; Yahoo is the primary lookup for
+  everything else. Router picks based on company-name heuristics.
+
+  **2026-05-11 — packaged as separate MCP server (skeleton shipped).**
+  Public repo: <https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp>.
+  Initial commit (`0f557e6`) ships `get-snapshot` tool + health probe +
+  15-min TTL cache + diskcache stale-fallback. FastMCP streamable-http
+  transport (gap-filler — every existing Yahoo MCP is stdio-only).
+  Architectural payoff:
   Architectural payoff:
 
     - Same connection pattern as Inderes MCP — agents need no new
