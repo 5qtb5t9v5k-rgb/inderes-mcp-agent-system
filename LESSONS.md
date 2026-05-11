@@ -312,6 +312,47 @@ the workflow). Each one was 50–200 lines and each one was load-bearing.
 The lesson: agent frameworks are scaffolding, not turn-key. Plan to
 subclass.
 
+#### Concrete vendor-quirks MAF does NOT abstract away
+
+The "plan to subclass" lesson is abstract until you have specific
+examples. Three from this project that each cost an afternoon:
+
+1. **Gemini Pro rejects `function_calling_config` when
+   `function_declarations` is empty.** Flash silently accepts the
+   same request shape. LEAD synthesis has `tools=None`, so it goes
+   through this path. MAF's `_prepare_config` builds the config
+   without checking — we override it in `FallbackGeminiChatClient`
+   to clear `tool_config` whenever the resolved tool list contains
+   no `function_declarations`. Was the parked-Pro-toggle blocker
+   for weeks before being root-caused.
+
+2. **`gemini-2.5-flash` does NOT support multi-turn tool-call loops
+   with the Code Execution tool**, but `gemini-3.1-flash-lite-preview`
+   does. The error is `400 INVALID_ARGUMENT: Tool call context
+   circulation is not enabled for models/gemini-2.5-flash`. So
+   QUANT and PORTFOLIO (which use `with_code_execution(...)`) cannot
+   run on Flash; they need Lite-Preview. RESEARCH and SENTIMENT can
+   run on Flash for better instruction-following. **Different agents
+   need different models — and MAF gives you no warning about this
+   capability matrix until a request fails at runtime.** The fix is
+   per-agent model selection (e.g. `RESEARCH_MODEL` env var) rather
+   than a single `PRIMARY_MODEL` for everything.
+
+3. **MCP-server schemas include JSON-Schema keys (`$schema`, `$ref`,
+   `$defs`) that Gemini's `FunctionDeclaration` validator rejects.**
+   The Inderes MCP returns clean schemas in human eyes, but the
+   keys get added at protocol level. `_SanitizingMCPTool` strips
+   them in the connect step. If you don't have this and your MCP
+   server happens to include those keys, every tool call fails
+   silently with a schema-validation error that doesn't point at
+   the source.
+
+The meta-lesson: **vendor capability matrices are sparse and
+undocumented.** Pro vs Flash vs Lite-Preview have different feature
+support, and the differences only surface when a specific request
+shape hits a specific model. Test each agent on the model you
+intend to ship with — don't assume "Flash is just a faster Flash-Lite".
+
 ---
 
 ## Cross-cutting lessons

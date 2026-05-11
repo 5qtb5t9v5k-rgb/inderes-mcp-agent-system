@@ -6,6 +6,10 @@ uses it, and which capabilities are available for future extension.
 For project-specific design decisions see [ARCHITECTURE.md](ARCHITECTURE.md).
 For official MAF documentation see [learn.microsoft.com/agent-framework](https://learn.microsoft.com/en-us/agent-framework/).
 
+<!-- NOTE: when adding a top-level heading, also update the TOC below
+     and `[`LESSONS.md`](LESSONS.md)` cross-links if the section
+     changes anchor. -->
+
 ## Table of contents
 
 - [What MAF is](#what-maf-is)
@@ -14,6 +18,7 @@ For official MAF documentation see [learn.microsoft.com/agent-framework](https:/
 - [Orchestration patterns](#orchestration-patterns)
 - [Available tool types](#available-tool-types)
 - [What this project uses](#what-this-project-uses)
+- [Lessons & gotchas](#lessons--gotchas)
 - [What this project intentionally does NOT use](#what-this-project-intentionally-does-not-use)
 - [Reference: import map](#reference-import-map)
 
@@ -212,6 +217,46 @@ from agent_framework_gemini import GeminiChatClient
   tracer provider in `observability/tracing.py`)
 - Standard Python `logging` — captured by our `attach_console_log_handler` for
   per-run forensic logs
+
+---
+
+## Lessons & gotchas
+
+The deep treatment is in [`LESSONS.md`](LESSONS.md#maf-is-a-useful-primitive-not-a-finished-framework).
+Short version of what MAF specifically does NOT abstract away:
+
+- **Multi-model fallback isn't built in.** `GeminiChatClient` targets
+  one model. When you want Pro → Flash → Lite-Preview on 503/429,
+  you subclass. We did this in `FallbackGeminiChatClient`.
+- **Per-company fan-out + `asyncio.Semaphore` concurrency cap is
+  application-layer work.** MAF orchestrates ONE agent's tool loop;
+  multi-agent fan-out with quota guards is yours to write.
+- **OAuth-bridged MCP isn't a configurable hook.** The MCP client in
+  MAF doesn't expose an auth-extension point for tokens that rotate.
+  We subclassed via `_InderesBearerAuth` to inject bearer headers on
+  each `initialize` call.
+- **JSON-Schema sanitization for MCP tools.** MCP servers commonly
+  return `$schema`, `$ref`, `$defs` keys that Gemini's
+  `FunctionDeclaration` validator rejects. `_SanitizingMCPTool`
+  strips them at connect time. Without this, every tool call from a
+  schema-rich MCP fails silently.
+- **Gemini model capability matrix is undocumented and sparse.** Pro,
+  Flash, and Flash-Lite-Preview each support different feature sets.
+  Example: `gemini-2.5-flash` does NOT support multi-turn tool-call
+  loops with the Code Execution tool; `gemini-3.1-flash-lite-preview`
+  does. Pick the model per agent based on what tools that agent
+  needs — not a single `PRIMARY_MODEL` for everything.
+- **Forensic per-run logging.** MAF's OpenTelemetry is good for
+  tracing, but doesn't persist runs to a `~/.inderes_agent/runs/<ts>/`
+  directory where you can `grep` after the fact. We wrote
+  `attach_console_log_handler` + `write_run` ourselves.
+
+Five subclasses, each 50–200 LOC, each load-bearing. **Plan to
+subclass before you start.**
+
+For the full version with concrete error messages, root-cause
+analysis, and reproduction steps for each, see
+[`LESSONS.md` → "MAF is a useful primitive"](LESSONS.md#maf-is-a-useful-primitive-not-a-finished-framework).
 
 ---
 
