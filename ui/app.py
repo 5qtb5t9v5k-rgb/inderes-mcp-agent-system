@@ -216,15 +216,28 @@ def _enforce_daily_cap_or_stop() -> None:
 # titlebar's tiny FI // EN links) writes ui_lang into session_state and
 # clears the query param so deep-link sharing stays clean. The default is
 # Finnish — the primary audience is Nordic and the brand is Finnish-first.
+#
+# Why the explicit `st.rerun()` below: deleting `st.query_params["lang"]`
+# DOES trigger a Streamlit rerun internally, but the rerun fires AFTER
+# the current script run completes. That means the rest of THIS run
+# (render_titlebar, the empty-state hero, feature toggles, etc.) might
+# get rendered before session_state propagates. Forcing rerun immediately
+# after the language change ensures every component below this block
+# reads the new `ui_lang` from a clean slate. Without it the toggle
+# behaviour is flaky — sometimes works on first click, sometimes needs
+# a second click. Reported 2026-05-11 as "FI/EN buttons don't work".
 _lang_qp = st.query_params.get("lang")
 if _lang_qp in ("fi", "en"):
-    if st.session_state.get("ui_lang") != _lang_qp:
+    changed = st.session_state.get("ui_lang") != _lang_qp
+    if changed:
         st.session_state.ui_lang = _lang_qp
     # Clean URL after the click so subsequent shares don't pin a language.
     try:
         del st.query_params["lang"]
     except KeyError:
         pass
+    if changed:
+        st.rerun()
 
 _lang = st.session_state.get("ui_lang", "fi")
 render_titlebar(_lang)

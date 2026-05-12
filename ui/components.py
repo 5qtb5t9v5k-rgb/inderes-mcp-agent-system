@@ -182,9 +182,15 @@ def render_titlebar(lang: str = "fi") -> None:
     ``<a href="?lang=...">`` links so a click round-trips through
     Streamlit's query-param handler — ``ui/app.py`` reads
     ``st.query_params['lang']`` at the top of the file and writes it
-    into ``st.session_state.ui_lang``. ``target="_top"`` makes the
-    href navigate the parent window even if the markup ends up
-    inside an iframe (Streamlit's ``st.html`` does sandbox).
+    into ``st.session_state.ui_lang``.
+
+    No ``target="_top"`` — historically present from an earlier
+    ``st.html``-based render (which sandboxes inside an iframe and
+    needs to escape it). Now we use ``st.markdown(unsafe_allow_html=
+    True)`` which inlines into the parent DOM directly, so plain
+    same-frame navigation is correct. ``target="_top"`` was actively
+    breaking the toggle in Streamlit Cloud where the parent context
+    can be share.streamlit.io rather than the app itself.
 
     The active language is amber (``--p-lead``), the inactive one
     is muted ``--ink-3``, and the ``//`` separator stays ``--ink-3``
@@ -196,9 +202,9 @@ def render_titlebar(lang: str = "fi") -> None:
     en_cls = "ia-lang-on" if lang == "en" else "ia-lang-off"
     lang_html = (
         '<span class="ia-lang">'
-        f'<a href="?lang=fi" target="_top" class="{fi_cls}">FI</a>'
+        f'<a href="?lang=fi" class="{fi_cls}">FI</a>'
         '<span class="ia-lang-sep">//</span>'
-        f'<a href="?lang=en" target="_top" class="{en_cls}">EN</a>'
+        f'<a href="?lang=en" class="{en_cls}">EN</a>'
         '</span>'
     )
     html = (
