@@ -69,13 +69,17 @@ JetBrains Mono throughout, color-coded agent personas with glyphs (◆ LEAD,
 - Status bar with MCP host, model, error/fallback counters
 - Chat input "Kysy jotain Pohjoismaisista osakkeista…"
 
-## Yahoo Finance MCP toggle
+## Yahoo Finance MCP toggle *(local dev only at present)*
+
+> **Status:** integration code is shipped + 11 tests green +
+> end-to-end verified locally. The sidecar hosting (Modal/Fly.io) is
+> in progress — Streamlit Cloud has `YAHOO_MCP_URL` unset and runs
+> Inderes-only.
 
 When `YAHOO_MCP_URL` env var is set (e.g. `http://localhost:8000/mcp`
-for local dev, or a hosted Fly.io URL for Streamlit Cloud), each
-subagent picks up its assigned Yahoo tools alongside its Inderes
-tools — see the dual-MCP architecture diagram in the root
-[`README.md`](../README.md#architecture-at-a-glance) and the
+for local dev), each subagent picks up its assigned Yahoo tools
+alongside its Inderes tools — see the architecture diagram in the
+root [`README.md`](../README.md#architecture-at-a-glance) and the
 per-domain partition table.
 
 For local dev:

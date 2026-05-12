@@ -214,35 +214,48 @@ container — you'll need to **manually reboot the app** from
 tokens. Self-healing gist re-pull on `invalid_grant` is BACKLOG'd in
 the main repo's §4 tech-debt section.
 
-## 6.7. Optional: Yahoo Finance MCP for international coverage
+## 6.7. Optional: Yahoo Finance MCP for international coverage *(in progress)*
 
-This app uses two MCPs side-by-side when configured:
+> **Status as of 2026-05-12:** integration code is in `main`
+> ([`yahoo_client.py`](../src/inderes_agent/mcp/yahoo_client.py),
+> 11 wiring tests, end-to-end verified locally). The sidecar repo
+> [`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp)
+> is public + MIT. **The Fly.io / Modal deployment is the
+> outstanding step** before this becomes available in Streamlit
+> Cloud. Step 3 below describes the path; setting `YAHOO_MCP_URL`
+> in Cloud secrets without hosting first will yield connection
+> errors.
+
+When enabled, the app uses two MCPs side-by-side:
 
 - **Inderes MCP** — Finnish-equity primary source (covered in §6
-  above).
-- **Yahoo Finance MCP** ([`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp),
-  MIT-public sidecar) — international ticker coverage + Q-fresh
+  above). Live in production.
+- **Yahoo Finance MCP** — international ticker coverage + Q-fresh
   BVPS + live price + OHLCV history + news + institutional holders.
+  Locally-running today, hosted deployment pending.
 
-To enable Yahoo for Cloud:
+To enable Yahoo for Cloud (when ready):
 
 1. Deploy the sidecar somewhere reachable from Streamlit Cloud's
-   network (typically Fly.io or Modal — see the sidecar repo's
-   README for the Fly.io recipe; ~15 min, $0 idle on Fly's
-   auto-stop machines).
-2. Add to Streamlit Cloud secrets:
+   network (typically Fly.io or Modal — the sidecar repo has a Fly.io
+   recipe + Dockerfile + auth-middleware plan in BACKLOG; ~45 min
+   first-time, $0 idle on Fly's auto-stop machines).
+2. Add a Bearer secret (the sidecar enforces `Authorization: Bearer
+   <MCP_API_KEY>`):
 
    ```toml
    YAHOO_MCP_URL = "https://yahoo-mcp-jr.fly.dev/mcp"
+   YAHOO_MCP_API_KEY = "..."
    ```
 
 3. Reboot the app. Agents pick up Yahoo tools automatically per the
    partitioning in `src/inderes_agent/mcp/yahoo_client.py`.
 
-If `YAHOO_MCP_URL` is unset, the agents silently skip Yahoo and
-operate Inderes-only — no errors, no degradation. The toggle is
-strictly additive. **For local dev** point at `http://localhost:8000/mcp`
-after running `make serve` in the yahoo-finance-mcp repo.
+If `YAHOO_MCP_URL` is unset (the current production state), the
+agents silently skip Yahoo and operate Inderes-only — no errors, no
+degradation. The toggle is strictly additive. **For local dev right
+now**, point at `http://localhost:8000/mcp` after running `make
+serve` in the yahoo-finance-mcp repo.
 
 ## 7. Day-to-day operations
 

@@ -126,7 +126,7 @@ Top categories by test count:
 | `tests/test_fabrication_guard.py` | 14 | Orchestration-tier zero-tool-call rejection |
 | `tests/test_oauth_bootstrap.py` | 12 | Cold-start ordering, refresh-token rotation, env-bridge |
 | `tests/test_feedback.py` | 12 | 👍/👎 round-trip |
-| `tests/test_yahoo_mcp_wiring.py` | 11 | **Yahoo + Inderes per-agent partitioning**, `YAHOO_MCP_URL` toggle, regression-when-disabled |
+| `tests/test_yahoo_mcp_wiring.py` | 11 | **Yahoo + Inderes per-agent partitioning** (integration code shipped, sidecar hosting in progress), `YAHOO_MCP_URL` toggle, regression-when-disabled |
 | `tests/test_limits.py` | 11 | OWASP T1 hard limits |
 | `tests/test_evals_yaml.py` | 9 | `golden.yaml` structural validation as CI gate |
 | (smaller suites) | ~16 | `test_paattely_parser`, `test_tila_c_banner`, `test_app_imports`, `test_workflows` |

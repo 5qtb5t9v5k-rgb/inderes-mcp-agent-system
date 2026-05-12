@@ -144,7 +144,16 @@ distinctly (violet for subagents, amber for LEAD), surfacing the
 multi-agent reasoning to the user without burying it behind tool-call
 logs.
 
-### MCP integration — dual-source (Inderes + Yahoo)
+### MCP integration — Inderes live, Yahoo in progress
+
+> **Production status today:** Inderes MCP is live and load-bearing.
+> Yahoo MCP integration code is shipped (`yahoo_client.py`, 11 wiring
+> tests, end-to-end verified locally) but the **sidecar is not yet
+> hosted** for Streamlit Cloud — production runs Inderes-only. The
+> Modal/Fly.io deployment plan is in BACKLOG §2 (Path A: Fly.io with
+> Bearer auth, auto-stop machines, ~$0 idle). Once deployed, setting
+> `YAHOO_MCP_URL` in Cloud secrets will switch on the dual-MCP
+> behaviour without code changes.
 
 Files: [`src/inderes_agent/mcp/`](src/inderes_agent/mcp/)
 

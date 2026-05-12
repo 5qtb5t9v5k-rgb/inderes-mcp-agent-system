@@ -71,9 +71,19 @@ render with stale `_lang`. Removed the target + added explicit
 
 ---
 
-## [unreleased] — 2026-05-11 (Yahoo MCP integration + agentic patterns docs)
+## [unreleased] — 2026-05-11 (Yahoo MCP integration code + agentic patterns docs)
 
-### Added — yahoo-finance-mcp integration into agent fleet (`3137a4f`)
+### Added — yahoo-finance-mcp integration code into agent fleet (`3137a4f`)
+
+> **Status: integration code shipped, hosting deployment in progress.**
+> The `yahoo_client.py` module, per-agent partitions, and 11 wiring
+> tests are merged to main and tested locally end-to-end. The Yahoo
+> MCP sidecar runs locally (`make serve` in
+> [`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp))
+> and the main repo's agents connect via `YAHOO_MCP_URL=http://localhost:8000/mcp`.
+> **Production Streamlit Cloud has `YAHOO_MCP_URL` unset and runs
+> Inderes-only** — Modal/Fly.io deployment of the sidecar is the next
+> milestone (BACKLOG §2 has the Fly.io plan; Path A chosen).
 
 Wires a self-hosted Yahoo Finance MCP sidecar
 ([`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp),

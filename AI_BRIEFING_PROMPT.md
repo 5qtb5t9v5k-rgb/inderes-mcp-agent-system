@@ -152,11 +152,17 @@ CODE TO SKIM (shape, not line-by-line)
 - `src/inderes_agent/mcp/_compat.py` — shared `SanitizingMCPTool`
   used by both MCP clients.
 - `src/inderes_agent/mcp/{oauth.py, inderes_client.py,
-  yahoo_client.py}` — **dual-MCP** data layer. Inderes uses OAuth
-  PKCE + gist mirror; Yahoo is self-hosted MIT-public sidecar
-  ([yahoo-finance-mcp](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp)).
-  Same `allowed_tools` partition shape in both clients so adding
-  a third MCP later is mechanical.
+  yahoo_client.py}` — dual-MCP-capable data layer. Inderes uses
+  OAuth PKCE + gist mirror and is **live in production**. Yahoo is
+  self-hosted MIT-public sidecar
+  ([yahoo-finance-mcp](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp))
+  — integration code is shipped (11 wiring tests, end-to-end
+  verified locally) but **the sidecar is not yet hosted** for
+  Streamlit Cloud. Production currently runs Inderes-only because
+  `YAHOO_MCP_URL` is unset in Cloud secrets. Both clients use the
+  same `allowed_tools` partition shape so adding a third MCP later
+  is mechanical, and the Yahoo deployment will be a Cloud-secret
+  flip once the sidecar is on Fly.io.
 - `scripts/refresh_inderes_tokens.py` +
   `.github/workflows/refresh-inderes-tokens.yml` — token-refresh
   cron, runs every 5 min.

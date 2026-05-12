@@ -340,11 +340,16 @@ and the data layer routes to the right source.
   `build_yahoo_mcp_tool()` returns `None` when unset and the
   agents' construction code silently skips it, preserving Inderes-
   only behaviour on unconfigured deployments.
-- **Two MCP servers running side-by-side** with per-agent
-  partitioning enforced in both. The third MCP we add slots in
+- **Dual-MCP architecture in code, single-MCP in production today.**
+  Both clients have per-agent partition shape; the Yahoo client is
+  load-bearing locally + tested end-to-end + 11 wiring tests green,
+  but the sidecar is not yet hosted for the Streamlit Cloud
+  deployment (Modal/Fly.io plan in BACKLOG §2 Path A). Production
+  currently sees Inderes-only flow because `YAHOO_MCP_URL` is unset
+  in Cloud secrets. **The integration is "wired and waiting"**, not
+  yet shipped to users. The third MCP we add will slot in
   identically — same `_compat.py`, same per-agent partition
-  constants, same `with_yahoo`-style helper to combine into the
-  agent's tools list.
+  constants, same `with_yahoo`-style helper.
 
 There's no DB yet. State that needs to persist across runs lives in
 files (`~/.inderes_agent/runs/`, the gist for tokens, eventually

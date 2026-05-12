@@ -39,11 +39,14 @@ systems that work reliably in production:
 - **v0.3** *(current, 2026-05-12)* — adds VALUATION subagent with a
   deterministic Greenwald-Gordon engine, plan-then-execute toggle,
   conflict-detector pre-synthesis, fabrication guard at the
-  orchestration boundary, **dual-MCP architecture** (Inderes +
-  self-hosted Yahoo Finance MCP sidecar with per-agent partitions),
-  **auto-relogin** via headless Playwright Keycloak flow in a
-  separate private repo, structured Gemini error classification
-  with retry-with-backoff, ~375 tests across 25 suites
+  orchestration boundary, **auto-relogin** via headless Playwright
+  Keycloak flow in a separate private repo, structured Gemini error
+  classification with retry-with-backoff, ~375 tests across 25
+  suites. **Dual-MCP architecture wired** (Inderes + self-hosted
+  Yahoo Finance MCP sidecar with per-agent partitions and 11
+  integration tests) but **not yet shipped to production** — the
+  sidecar needs Modal/Fly.io hosting before Cloud's `YAHOO_MCP_URL`
+  can be set. Local dev: works end-to-end. Production: Inderes-only.
 - **future** — see [`BACKLOG.md`](BACKLOG.md),
   [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md), and
   the agentic-patterns mapping at

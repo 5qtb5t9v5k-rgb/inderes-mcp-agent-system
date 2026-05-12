@@ -239,11 +239,12 @@ Short version of what MAF specifically does NOT abstract away:
   every rate limit as a fatal daily quota — locking the user out
   for a day when 60s of waiting would have worked.
 - **Multi-MCP partitioning isn't built in either.** If you have two
-  MCP servers (we have Inderes + Yahoo) and want each subagent to
-  see only its own subset of tools from each, you do it yourself via
-  `allowed_tools` lists and a small `with_yahoo()` helper. MAF
-  doesn't have a concept of "agent X gets these tools from MCP A
-  and those tools from MCP B".
+  MCP servers (we have Inderes live + Yahoo integration-code-shipped-
+  but-not-yet-hosted) and want each subagent to see only its own
+  subset of tools from each, you do it yourself via `allowed_tools`
+  lists and a small `with_yahoo()` helper. MAF doesn't have a
+  concept of "agent X gets these tools from MCP A and those tools
+  from MCP B".
 - **Per-company fan-out + `asyncio.Semaphore` concurrency cap is
   application-layer work.** MAF orchestrates ONE agent's tool loop;
   multi-agent fan-out with quota guards is yours to write.

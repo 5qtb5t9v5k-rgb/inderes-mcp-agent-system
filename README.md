@@ -2,23 +2,30 @@
 
 > **⚠️ Personal research project.** Independent learning experiment — **not affiliated with, endorsed by, or developed in collaboration with Inderes Oyj.** Uses the publicly available Inderes MCP server through the user's own Inderes Premium subscription. All Inderes analyst content (recommendations, target prices, written research) surfaced by this system is © Inderes Oyj.
 
-A multi-agent stock-research conversation system for Nordic + international
-equities. Built on **Microsoft Agent Framework 1.0+** (Python 3.11+), powered
-by **Google Gemini** with structured error classification and primary→fallback
-model selection. Data plane is a **dual-MCP architecture**:
+A multi-agent stock-research conversation system for Nordic equities
+(international coverage in progress via a second MCP). Built on
+**Microsoft Agent Framework 1.0+** (Python 3.11+), powered by **Google
+Gemini** with structured error classification and primary→fallback
+model selection.
+
+**Data plane — Inderes today, dual-MCP in progress:**
 
 - **Inderes MCP** at `https://mcp.inderes.com` — analyst content, target
-  prices, transcripts, forum sentiment, model portfolio (Finnish-equity
-  primary source).
+  prices, transcripts, forum sentiment, model portfolio. **Live in
+  production.** Finnish-equity primary source.
 - **Yahoo Finance MCP** (own MIT-public sidecar:
   [`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp))
-  — live price, Q-fresh BVPS, OHLCV history, news, institutional holders.
-  Toggle on/off via `YAHOO_MCP_URL` env var; agents are wired with
-  per-domain partitions mirroring the Inderes pattern.
+  — live price, Q-fresh BVPS, OHLCV history, news, institutional
+  holders. **Integration code is shipped** (`yahoo_client.py`, 11 tests
+  passing, end-to-end verified locally). **Hosting deployment to
+  Modal/Fly.io is in progress** — production Streamlit Cloud app
+  currently runs Inderes-only because `YAHOO_MCP_URL` is unset in
+  Cloud secrets. The agents handle the missing toggle gracefully
+  (Yahoo tools silently skipped, Inderes-only flow preserved).
 
-Together: Inderes covers Helsinki names with depth, Yahoo covers
-international + freshness gaps Inderes can't fill (BVPS lag, live price,
-US/EU/Asian tickers).
+Architectural intent: Inderes covers Helsinki names with depth, Yahoo
+will cover international + freshness gaps (BVPS lag, live price,
+US/EU/Asian tickers) once the sidecar is hosted.
 
 ```bash
 $ python -m inderes_agent "Mitä Sammon nykytilanteesta tulisi ajatella?"
@@ -334,10 +341,11 @@ In the REPL: `/explain` does the same for the current session's last run.
 ### Subagent → MCP tool mapping
 
 Each subagent sees only its allowed subset of tools (enforced via
-`MCPStreamableHTTPTool(allowed_tools=...)`). When `YAHOO_MCP_URL` is set,
-agents additionally receive their domain-specific Yahoo tool subset.
+`MCPStreamableHTTPTool(allowed_tools=...)`). When `YAHOO_MCP_URL` is
+set — currently **local dev only**, not production — agents
+additionally receive their domain-specific Yahoo tool subset.
 
-| Agent | Role | Inderes tools | Yahoo tools *(if enabled)* |
+| Agent | Role | Inderes tools (live) | Yahoo tools *(local-only until sidecar is hosted)* |
 |---|---|---|---|
 | `aino-quant` | Numerical analysis: P/E, ROE, target prices, recommendations | `search-companies`, `get-fundamentals`, `get-inderes-estimates` | `search_ticker`, `get_snapshot`, `get_history` |
 | `aino-research` | Analyst content, transcripts, filings, news narrative | `search-companies`, `list-content`, `get-content`, `list-transcripts`, `get-transcript`, `list-company-documents`, `get-document`, `read-document-sections` | `search_ticker`, `get_news` |
