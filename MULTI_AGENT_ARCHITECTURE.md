@@ -325,11 +325,26 @@ and the data layer routes to the right source.
 
 ### Current state in this project
 
-- `mcp/inderes_client.py` — MCP tool factory, schema sanitization,
-  bearer-token injection
+- `mcp/_compat.py` — shared `SanitizingMCPTool` subclass, JSON-Schema
+  metadata stripping for Gemini compatibility. Used by every MCP
+  client we add.
 - `mcp/oauth.py` — OAuth 2.0 + PKCE, token cache, gist mirror,
-  rotation-race recovery
-- One MCP server (Inderes) — single source for all data
+  rotation-race recovery (Inderes-specific).
+- `mcp/inderes_client.py` — Inderes MCP tool factory, bearer-token
+  injection, per-agent partition constants
+  (`QUANT_TOOLS`/`RESEARCH_TOOLS`/etc).
+- `mcp/yahoo_client.py` *(added 2026-05-11)* — Yahoo Finance MCP
+  client mirroring the same shape. Self-hosted sidecar
+  ([yahoo-finance-mcp](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp),
+  MIT-public, 5 tools). Toggle on/off via `YAHOO_MCP_URL` env var;
+  `build_yahoo_mcp_tool()` returns `None` when unset and the
+  agents' construction code silently skips it, preserving Inderes-
+  only behaviour on unconfigured deployments.
+- **Two MCP servers running side-by-side** with per-agent
+  partitioning enforced in both. The third MCP we add slots in
+  identically — same `_compat.py`, same per-agent partition
+  constants, same `with_yahoo`-style helper to combine into the
+  agent's tools list.
 
 There's no DB yet. State that needs to persist across runs lives in
 files (`~/.inderes_agent/runs/`, the gist for tokens, eventually
@@ -337,20 +352,26 @@ files (`~/.inderes_agent/runs/`, the gist for tokens, eventually
 
 ### Future direction
 
-- **Multiple MCP servers** — Inderes, plus hypothetically Twitter,
-  Yahoo Finance, internal company data
+- **More MCP servers** — SEC EDGAR (US 10-K/Q/8-K + insider Form 4),
+  FRED (US macro), ECB SDW + Statistics Finland (EU/FI macro),
+  ESEF iXBRL (Helsinki machine-readable filings). Each one a
+  one-day implementation following the proven `inderes_client.py`/
+  `yahoo_client.py` shape.
 - **API→MCP adapters** — the user's sketch labels this `API2MCP`.
-  Pattern: wrap any non-MCP API in an adapter that exposes it through
-  the same interface as the rest of the data layer
+  Pattern: wrap any non-MCP API in an adapter that exposes it
+  through the same interface as the rest of the data layer.
 - **Database** — for user state (watchlists, saved researches,
   thumbs-up/down history, insight ledger). Doesn't need to be
-  Postgres on day one — SQLite or even structured files work
-- **Caching layer** — when calls are repeated and expensive, cache
-  with TTL
+  Postgres on day one — SQLite or even structured files work.
+- **Caching layer** — Yahoo MCP already has 15-min hot cache +
+  diskcache stale-fallback. Inderes-side caching not yet a need.
 
-The single-MCP simplicity is currently a feature: you don't need
-abstractions you don't have multiple sources for. Build the
-abstractions only when adding the second source forces them.
+**Lesson learned moving from one MCP to two:** the per-agent
+partition was already in place for Inderes (one MCP, but
+domain-scoped tool subsets per subagent). Adding Yahoo as a
+second MCP was mechanical — same partition shape, same builder
+pattern, same fabrication-guard treats both identically. The
+abstraction we built for Inderes paid back the day Yahoo joined.
 
 ### Critical pitfalls
 

@@ -105,31 +105,72 @@ READING ORDER (with specific extraction targets per file)
    contrast with.
 
 8. **CHANGELOG.md** — extract: trajectory v0.1 → v0.2, with focus
-   on the proportion of UI vs prompt vs infrastructure changes.
+   on the proportion of UI vs prompt vs infrastructure changes. Look
+   at the latest two unreleased entries (2026-05-11 and 2026-05-12)
+   for the dual-MCP integration and the Gemini error-classification
+   refactor — both are good worked examples of "what production
+   maintenance looks like once the system has users".
+
+9. **docs/agentic_patterns_mapping_2026-05-11.md** — *concentrated
+   transferability content.* Maps this project's patterns against
+   `nibzard/awesome-agentic-patterns` (178 patterns, public
+   catalogue). Extract: the ~12 patterns already implemented (with
+   ★ ratings), the 6 worth adopting (Lethal Trifecta Threat Model,
+   Action Caching & Replay, Subject Hygiene, Agent Circuit Breaker
+   at tool level, Tool Search Lazy Loading), the 5 explicitly
+   skipped with rationale. Use this when applying patterns to your
+   own X — saves you weeks of re-discovering names that already
+   have community consensus.
+
+10. **docs/agentic_research_digest_2026-05-11.md** — critical
+    reading of an external 12-month roadmap synthesis. Captures
+    the "continuity + evidence + proof" trinity as the
+    load-bearing framework, and filters synthesis recommendations
+    against single-user + paid Tier 1 + Streamlit Cloud
+    constraints. Useful as a template for "external advice
+    coming in vs project context filtering it."
 
 CODE TO SKIM (shape, not line-by-line)
 ======================================
 
 - `src/inderes_agent/orchestration/{router.py, workflows.py,
   synthesis.py}` — three-stage Brain: classify → fan out → synthesize.
+- `src/inderes_agent/agents/_common.py` — `with_yahoo()` helper and
+  `with_code_execution()` — small composition primitives for
+  agent-builder tool lists.
 - `src/inderes_agent/agents/prompts/*.md` — Harness layer made
   concrete: per-agent system prompts including anti-capabilities.
   Some are in Finnish.
 - `src/inderes_agent/llm/gemini_client.py` — multi-vendor LLM
-  fallback wrapper (primary 503 → fallback model).
-- `src/inderes_agent/mcp/{oauth.py, inderes_client.py}` — OAuth
-  PKCE flow + tool wrapping with JSON-Schema sanitization +
-  rotation-race recovery.
+  fallback wrapper with **structured error classification**
+  (`_classify_gemini_error`: transient / rate_limit_minute /
+  rate_limit_day / other) + retry-with-backoff + diagnostic
+  logging that extracts `code`/`status`/`quotaId` from
+  `google.genai.errors.APIError`. Replaced an earlier substring-
+  matching heuristic that misdiagnosed transient rate limits as
+  fatal daily quota.
+- `src/inderes_agent/mcp/_compat.py` — shared `SanitizingMCPTool`
+  used by both MCP clients.
+- `src/inderes_agent/mcp/{oauth.py, inderes_client.py,
+  yahoo_client.py}` — **dual-MCP** data layer. Inderes uses OAuth
+  PKCE + gist mirror; Yahoo is self-hosted MIT-public sidecar
+  ([yahoo-finance-mcp](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp)).
+  Same `allowed_tools` partition shape in both clients so adding
+  a third MCP later is mechanical.
 - `scripts/refresh_inderes_tokens.py` +
-  `.github/workflows/refresh-inderes-tokens.yml` — cron heartbeat
-  infrastructure for keeping cloud SSO sessions warm. Note this
-  is **triggered by an external scheduler (cron-job.org)** because
-  GitHub Actions free-tier scheduling proved unreliable.
+  `.github/workflows/refresh-inderes-tokens.yml` — token-refresh
+  cron, runs every 5 min.
+- **`inderes-mcp-auto-relogin` separate private repo** — Playwright
+  headless Keycloak re-auth, GitHub Actions cron twice per day
+  outside Helsinki working hours, pushes fresh tokens to shared
+  gist. The recovery path that runs when the refresh-token chain
+  itself dies (SSO Session Max hits the 10h cap).
 - `ui/app.py` — Streamlit "Trading Desk" surface with
-  public-safe error handling, recovery counter, and embedded
-  demo video on auth-expired card.
-- `scripts/relogin.sh` — one-shot recovery flow for the
-  predictable ~10h Inderes Keycloak SSO Session Max.
+  public-safe error handling, recovery counter, embedded demo
+  video on auth-expired card, FI/EN language switcher.
+- `scripts/relogin.sh` — legacy one-shot recovery flow, now
+  largely replaced by the auto-relogin cron but kept as a manual
+  override.
 
 OUTPUT — write a briefing with exactly these sections
 =====================================================
@@ -216,4 +257,6 @@ expect to lose comparability across runs.
 
 ---
 
-*Document version: 2026-05-06 · v1*
+*Document version: 2026-05-12 · v2 (added Yahoo MCP + auto-relogin
+sidecar + Gemini error classification + agentic patterns mapping
+references to the reading order and code-to-skim sections)*

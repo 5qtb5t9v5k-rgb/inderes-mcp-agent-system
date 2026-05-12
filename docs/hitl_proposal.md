@@ -1,9 +1,29 @@
 # Human-in-the-Loop (HITL) — proposal
 
-**Status:** Draft for Wk 2 implementation
-**Date:** 2026-05-10
+**Status:** Draft proposal — **not yet implemented**
+**Date drafted:** 2026-05-10
+**Last review:** 2026-05-12 — still applicable; tracked in BACKLOG §1 Wk 3
 **Owner:** core
-**Track:** Wk 2 "learning feature" — explicit learning goals, not just trust UX
+**Track:** Originally Wk 2 "learning feature" — deferred to Wk 3+ as
+Reflexion was also deferred (no cost-doubling has materialised yet)
+
+> **Status update 2026-05-12.** HITL Step 1 (pre-flight cost gate) is
+> BACKLOG'd but unshipped. Reflexion + retry was also deferred
+> (BACKLOG §1 #2 still 💭), so the cost-doubling concern in §1.2
+> hasn't yet materialised in practice. When Reflexion lands, this
+> proposal becomes a prerequisite.
+>
+> Relevant developments since this proposal was drafted:
+>
+> - **Hard limits at orchestration boundary** shipped Wk 1 (OWASP T1
+>   `max_iter` / `max_tool_calls` / `max_cost` / `max_duration` /
+>   kill-switch). These are the *automatic* ceiling. HITL would add a
+>   *user-visible* pre-flight gate before the request goes out.
+> - **Project spend cap** (Google AI Studio billing-side limit) is
+>   now a known failure mode — see TROUBLESHOOTING.md. A pre-flight
+>   HITL gate would have surfaced "you have $X left this month, this
+>   query will cost ~$Y" cleanly. Different layer than the in-app
+>   limits, but related UX.
 
 ---
 

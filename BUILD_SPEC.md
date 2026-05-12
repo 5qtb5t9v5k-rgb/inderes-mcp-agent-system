@@ -1,8 +1,30 @@
 # inderes-research-agent — build specification
 
-> **Status**: design specification for a multi-agent stock research system on Microsoft Agent Framework (Python) using Google Gemini and Inderes MCP. The implementation has authority to make decisions where this spec is silent.
+> **Status**: **historical document.** This is the original specification used
+> to bootstrap the project. It is preserved for reference but is **not the
+> source of truth** for the current system state.
 >
-> **Note**: this is the original specification used to bootstrap the project. The current implementation is described in [`ARCHITECTURE.md`](ARCHITECTURE.md). Some details here (e.g. exact API choices) were updated during build; see [`CHANGELOG.md`](CHANGELOG.md) for what changed.
+> For the system as it stands today see:
+> - [`ARCHITECTURE.md`](ARCHITECTURE.md) — current implementation, file-by-file
+> - [`README.md`](README.md) — quick-start, dual-MCP architecture, test inventory
+> - [`CHANGELOG.md`](CHANGELOG.md) — what changed since this spec
+> - [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md) — generic layered model the spec inspired
+>
+> **Major divergences from this spec since shipped (2026-05-12):**
+> - **Dual-MCP data layer** (Inderes + Yahoo Finance MCP sidecar) — this spec
+>   describes Inderes only.
+> - **Valuation subagent** with its own deterministic Greenwald-Gordon engine
+>   — added 2026-04-30, not in this spec.
+> - **Auto-relogin Playwright cron** (separate private repo) — replaces the
+>   manual relogin flow this spec implied.
+> - **Structured Gemini error classification** (`_classify_gemini_error`) —
+>   the substring-matching heuristic this spec implied was replaced 2026-05-12.
+> - **Fabrication guard** (orchestration-tier rejection of zero-tool-call
+>   subagent outputs) — added after empirical hallucination Case 001.
+> - **Conflict detector + plan-then-execute toggle** — added during Wk 2.
+>
+> The implementation has authority where the spec is silent or contradicted
+> by reality.
 
 ---
 

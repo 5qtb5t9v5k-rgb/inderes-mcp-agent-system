@@ -69,33 +69,73 @@ JetBrains Mono throughout, color-coded agent personas with glyphs (◆ LEAD,
 - Status bar with MCP host, model, error/fallback counters
 - Chat input "Kysy jotain Pohjoismaisista osakkeista…"
 
+## Yahoo Finance MCP toggle
+
+When `YAHOO_MCP_URL` env var is set (e.g. `http://localhost:8000/mcp`
+for local dev, or a hosted Fly.io URL for Streamlit Cloud), each
+subagent picks up its assigned Yahoo tools alongside its Inderes
+tools — see the dual-MCP architecture diagram in the root
+[`README.md`](../README.md#architecture-at-a-glance) and the
+per-domain partition table.
+
+For local dev:
+
+```bash
+# In a separate terminal:
+cd /path/to/yahoo-finance-mcp && make serve   # listens on :8000
+
+# Then the Streamlit launch:
+YAHOO_MCP_URL=http://localhost:8000/mcp streamlit run ui/app.py
+```
+
+If `YAHOO_MCP_URL` is unset, the agents silently skip Yahoo and
+operate Inderes-only — no errors, strictly additive toggle.
+
+## FI / EN language switcher
+
+Tiny inline switcher in the titlebar (`INDERES//AGENT DESK FI // EN
+VERKOSSA`). Clicking either letter writes `?lang=fi|en` to the URL,
+which `ui/app.py` reads and stores into `st.session_state.ui_lang`
+then `st.rerun()`s. The titlebar + landing hero + sidebar both
+respect the chosen language. Default is Finnish.
+
 ## What it doesn't do (yet)
 
-- Hosting (local-only — the OAuth callback expects localhost)
 - Streaming answers (synthesis prints all at once)
-- Model picker (uses the same `PRIMARY_MODEL` / `FALLBACK_MODEL` from `.env`)
+- Model picker UI (uses the same `PRIMARY_MODEL` / `FALLBACK_MODEL`
+  from `.env` — there IS a sidebar "Tarkka kaikki" toggle but it's
+  binary, not per-agent)
 - Concurrency tuning UI (use `MAX_CONCURRENT_AGENTS` env var)
+- Multi-user mode
 
 ## Hosting (Streamlit Cloud)
 
 Single-user, public, password-gated deployment is supported. See
 [`DEPLOY.md`](DEPLOY.md) for step-by-step instructions covering:
 
-- Capturing your OAuth tokens locally and pasting them as a Streamlit secret
+- Capturing your OAuth tokens locally and pasting them as a Streamlit
+  secret
 - Mirroring tokens to a private GitHub gist for durable refresh
+  (`§6.5`)
+- **Auto-relogin sidecar** via Playwright headless Keycloak flow
+  (`§6.6`) — eliminates the manual ~10h re-auth chore
+- **Yahoo MCP** for international coverage (`§6.7`)
 - Setting an app password and a daily query cap
-- Configuring a Gemini budget cap so a leaked password can't run away with cost
-- Day-to-day operational tasks (token rotation, password rotation)
+- Configuring a Gemini budget cap so a leaked password can't run away
+  with cost
+- Day-to-day operational tasks (token rotation, password rotation,
+  spend-cap monitoring)
 
 For long-lived deployments, also enable
 [`.github/workflows/refresh-inderes-tokens.yml`](../.github/workflows/refresh-inderes-tokens.yml).
-It runs every 15 min and refreshes the Inderes refresh-token chain via the
-gist mirror, so the Keycloak SSO session stays warm even when the app is
-idle for hours.
+It runs every 15 min and refreshes the Inderes refresh-token chain
+via the gist mirror, so the Keycloak SSO session stays warm even
+when the app is idle for hours.
 
-Multi-user OAuth (each user logs in with their own Inderes credentials) would
-require coordination with Inderes to register the deployed URL as a Keycloak
-redirect URI — out of scope for this project.
+Multi-user OAuth (each user logs in with their own Inderes
+credentials) would require coordination with Inderes to register the
+deployed URL as a Keycloak redirect URI — out of scope for this
+project.
 
 ## Stopping the server
 

@@ -8,8 +8,9 @@ pipeline's quality.
 | Path | What |
 |---|---|
 | `judge_selection.md` | Why we picked Gemini 2.5 Pro as judge (benchmark-backed, May 2026) |
-| `findings_2026-05-09.md` | Heikkoudet löydetty 183 oikean ajon analyysistä |
-| `golden.yaml` | Eval cases. Each has `hard` (deterministic) and `soft` (LLM-graded) assertions |
+| `findings_2026-05-09.md` | Heikkoudet löydetty 183 oikean ajon analyysistä (baseline) |
+| `findings_2026-05-10.md` | Status audit — the four 2026-05-09 fail-cases were all already fixed by commits 5e5dea7 / 80c6fd0 / 2039967 / 870749a before re-baselining. Re-baseline cadence added as outstanding action. |
+| `golden.yaml` | Eval cases (`case_001` … `case_008`+). Each has `hard` (deterministic) and `soft` (LLM-graded) assertions. **Structural validation is CI-gated** via `tests/test_evals_yaml.py` (9 tests on every push, no live LLM run). |
 | `rubric.md` | Rubric prompt the LLM-judge sees |
 | `judge.py` | `JudgeBackend` Protocol + `GeminiJudge` impl. Designed so GPT-4.1 can be added later |
 | `runner.py` | Orchestrator. Loads golden, runs hard asserts, calls judge, writes report |

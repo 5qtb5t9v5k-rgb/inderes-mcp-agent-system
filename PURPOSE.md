@@ -30,18 +30,29 @@ systems that work reliably in production:
 
 - **v0.1** — single-agent foundation, one Gemini call against 16 MCP
   tools, REPL surface, basic forensic logging
-- **v0.2** *(current)* — five-agent fan-out (LEAD + QUANT + RESEARCH +
+- **v0.2** — five-agent fan-out (LEAD + QUANT + RESEARCH +
   SENTIMENT + PORTFOLIO), Trading Desk UI, durable cloud-deployable
   OAuth (gist mirror + external cron), public-safe error handling,
   reliable cross-platform keepalive, empirically-measured IdP
   constraints, layered architecture model documented as a generic
   primer
-- **future** — see [`BACKLOG.md`](BACKLOG.md) and
-  [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md) for the
-  trajectory toward measurable quality (golden datasets, user feedback),
-  reflection-and-retry loops, proactive workflows (watchlist briefings,
-  insight ledger), and the move from purely reactive to event-driven
-  agentic patterns
+- **v0.3** *(current, 2026-05-12)* — adds VALUATION subagent with a
+  deterministic Greenwald-Gordon engine, plan-then-execute toggle,
+  conflict-detector pre-synthesis, fabrication guard at the
+  orchestration boundary, **dual-MCP architecture** (Inderes +
+  self-hosted Yahoo Finance MCP sidecar with per-agent partitions),
+  **auto-relogin** via headless Playwright Keycloak flow in a
+  separate private repo, structured Gemini error classification
+  with retry-with-backoff, ~375 tests across 25 suites
+- **future** — see [`BACKLOG.md`](BACKLOG.md),
+  [`MULTI_AGENT_ARCHITECTURE.md`](MULTI_AGENT_ARCHITECTURE.md), and
+  the agentic-patterns mapping at
+  [`docs/agentic_patterns_mapping_2026-05-11.md`](docs/agentic_patterns_mapping_2026-05-11.md)
+  for the trajectory toward measurable quality (golden datasets,
+  user feedback, Langfuse observability), reflection-and-retry
+  loops, per-claim citation chips, proactive workflows (watchlist
+  briefings, insight ledger), and the move from purely reactive to
+  event-driven agentic patterns
 
 The trajectory is not linear. Earlier failed attempts (Claude Agent SDK
 "do everything", Cursor agent mode) are part of the record; the current

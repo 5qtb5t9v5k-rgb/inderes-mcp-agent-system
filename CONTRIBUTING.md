@@ -97,23 +97,44 @@ ls -1t ~/.inderes_agent/runs/ | head -5         # 5 most recent
 ## Testing
 
 ```bash
-pytest -q                                       # all unit tests
+pytest -q                                       # all 375 unit tests
 pytest -v                                       # verbose
 pytest tests/test_router.py                     # one file
 pytest -k "fallback"                            # by test name pattern
 ```
 
 Unit tests do not hit the real Gemini API or Inderes MCP. They mock at the
-chat-client and workflow seams.
+chat-client, MCP-tool, and workflow seams.
 
-### What's covered
+### What's covered (375 tests as of 2026-05-12)
 
-- **Router** (`tests/test_router.py`): JSON extraction with code fences, prose
-  leaks, plain JSON; `QueryClassification` Pydantic validation.
-- **Fallback client** (`tests/test_fallback.py`): 503 retry, 429 quota
-  exhaustion, success-without-fallback paths.
-- **Workflows** (`tests/test_workflows.py`): per-company fan-out for
-  comparisons, no fan-out for single-domain queries, concurrency cap.
+Top categories by test count:
+
+| Suite | Count | What it covers |
+|---|---:|---|
+| `tests/valuation/test_engine.py` | 49 | Greenwald-Gordon math (FV, EPV, growth value, dual implied), edge cases, quality classification |
+| `tests/test_router.py` | 43 | JSON extraction variants, `QueryClassification` validation, valuation-intent gate (33 parametrized incl. Finnish morphology) |
+| `tests/valuation/test_parser.py` | 39 | Agent JSON → engine input validation, multi-company array, Levenshtein-≤2 typo tolerance |
+| `tests/test_charts.py` | 33 | Plotly extraction, outlier filtering, provenance captions, multi-company colour assignment |
+| `tests/valuation/test_roe_selection.py` | 23 | Deterministic sustainable-ROE rule (median, trend, agent-choice validation) |
+| `tests/valuation/test_excel_parity.py` | 20 | 10 Finnish companies vs the user's `Arvonmääritys2023.xlsx` (±0.02€) |
+| `tests/test_fallback.py` | 17 | **Structured error classification** (per-day vs per-minute vs transient vs other), retry-with-backoff, diagnostic logging |
+| `tests/test_footnote_markers.py` | 17 | `[Q1]/[R1]/[S1]/[P1]/[V1]` source-tag emission |
+| `tests/test_valuation_tool_guard.py` | 17 | Zero-MCP-call valuation reject |
+| `tests/test_oauth_runtime.py` | 16 | Token refresh, gist sync, `_load_tokens` ordering |
+| `tests/test_output_parts.py` | 16 | MAF response-part parsing for trace renderer |
+| `tests/test_fabrication_guard.py` | 14 | Orchestration-tier zero-tool-call rejection |
+| `tests/test_oauth_bootstrap.py` | 12 | Cold-start ordering, refresh-token rotation, env-bridge |
+| `tests/test_feedback.py` | 12 | 👍/👎 round-trip |
+| `tests/test_yahoo_mcp_wiring.py` | 11 | **Yahoo + Inderes per-agent partitioning**, `YAHOO_MCP_URL` toggle, regression-when-disabled |
+| `tests/test_limits.py` | 11 | OWASP T1 hard limits |
+| `tests/test_evals_yaml.py` | 9 | `golden.yaml` structural validation as CI gate |
+| (smaller suites) | ~16 | `test_paattely_parser`, `test_tila_c_banner`, `test_app_imports`, `test_workflows` |
+
+**Design choice**: tests are **structural**, not "did the LLM say the
+right thing". They verify the agent *refuses* to fabricate, *partitions*
+tools correctly, *surfaces* sources in expected format. This isolates
+us from model-version drift.
 
 ### What's not covered
 

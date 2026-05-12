@@ -228,6 +228,22 @@ Short version of what MAF specifically does NOT abstract away:
 - **Multi-model fallback isn't built in.** `GeminiChatClient` targets
   one model. When you want Pro → Flash → Lite-Preview on 503/429,
   you subclass. We did this in `FallbackGeminiChatClient`.
+- **Structured error classification isn't built in.** `google-genai`
+  returns `APIError` with `code`, `status`, `details.error.details[].
+  violations[].quotaId` — but figuring out which 429 is *recoverable*
+  (per-minute rate limit, retry with backoff) vs *terminal* (per-day
+  quota, give up) vs *billing-related* (project monthly spend cap,
+  raise it) requires parsing those fields yourself. We did this in
+  `_classify_gemini_error` (`gemini_client.py`, 2026-05-12). Without
+  it, the substring-matching heuristic we started with misdiagnosed
+  every rate limit as a fatal daily quota — locking the user out
+  for a day when 60s of waiting would have worked.
+- **Multi-MCP partitioning isn't built in either.** If you have two
+  MCP servers (we have Inderes + Yahoo) and want each subagent to
+  see only its own subset of tools from each, you do it yourself via
+  `allowed_tools` lists and a small `with_yahoo()` helper. MAF
+  doesn't have a concept of "agent X gets these tools from MCP A
+  and those tools from MCP B".
 - **Per-company fan-out + `asyncio.Semaphore` concurrency cap is
   application-layer work.** MAF orchestrates ONE agent's tool loop;
   multi-agent fan-out with quota guards is yours to write.
@@ -251,8 +267,8 @@ Short version of what MAF specifically does NOT abstract away:
   directory where you can `grep` after the fact. We wrote
   `attach_console_log_handler` + `write_run` ourselves.
 
-Five subclasses, each 50–200 LOC, each load-bearing. **Plan to
-subclass before you start.**
+Seven subclasses/helpers, each 50–250 LOC, each load-bearing. **Plan
+to subclass before you start.**
 
 For the full version with concrete error messages, root-cause
 analysis, and reproduction steps for each, see

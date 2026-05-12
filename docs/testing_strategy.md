@@ -1,9 +1,31 @@
 # Testing strategy
 
-**Status:** Draft for Wk 2 implementation
-**Date:** 2026-05-10
+**Status:** Strategy document, partially executed
+**Date drafted:** 2026-05-10
+**Last review:** 2026-05-12 — strategy upheld, status notes added below
 **Owner:** core
 **Audience:** future you (3 months from now), and the AI pair that will write most of the tests
+
+> **Status update 2026-05-12.** The strategy below was drafted at Wk 2
+> entry. Since then ~210 new tests have shipped across the gaps this
+> doc identified. **Current total: 375 tests across 25 suites.** The
+> "zero tests on critical paths" portfolio described in §1 has been
+> filled in: OAuth runtime (16 tests), OAuth bootstrap (12), Yahoo MCP
+> wiring (11), Gemini fallback classifier (17 — including the
+> regression test for tonight's "spend-cap-not-daily-quota"
+> misdiagnosis), fabrication guard (14), workflows (3), feedback (12),
+> agent prompts validated structurally via `test_app_imports.py`.
+>
+> Items still open from the strategy:
+> - **Live evals nightly** still manual, not autonomous (§5 in this
+>   doc anticipated this; the autonomous-self-repair version sits in
+>   BACKLOG §10).
+> - **Integration tests against real Inderes MCP / Yahoo MCP** still
+>   gated behind manual runs — the live-probe pattern in
+>   yahoo-finance-mcp (`YAHOO_MCP_LIVE=1`) is the right shape if we
+>   want to bring it into main repo.
+> - **Per-claim numeric verifier** — captured in BACKLOG §4
+>   "numeric-trace guard" but not shipped.
 
 ---
 
