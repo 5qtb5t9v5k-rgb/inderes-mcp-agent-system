@@ -604,3 +604,205 @@ For the designer to reference:
 view, and intentionally neutral where the designer should drive.
 Update the brief in place as design decisions land — it should be a
 living doc, not a one-shot.*
+
+---
+
+## Part 2 — Strategy follow-up (2026-05-12 afternoon)
+
+After the initial brief, the project owner raised a follow-on
+concern: *"this direction is more tailored to me; I'm not sure if
+it should be a separate product, and I want to think about how the
+company deep-dives integrate with the agent engine."*
+
+This part captures the strategic ponder that follows, so a designer
+reading the brief sees both the surface ask AND the underlying
+product-strategy frame.
+
+### Why "tailored to me" is not the right axis for the fork decision
+
+The project is explicitly a personal learning tool (see
+[`PURPOSE.md`](../../PURPOSE.md) first paragraph). Tailoring it
+further to the project owner's actual workflow is not a compromise
+on generality — it is the natural maturation of any personal tool.
+Bloomberg Terminal is not "generic"; it is tailored to hedge-fund
+traders. It just happens to be tailored to 100 000 of them. The
+methodology that drives this brief (Greenwald-Gordon scenarios,
+the 5×3 buy-price grid) is itself an established institutional
+framework, not a homemade variant — Bruce Greenwald + Mario
+Gabelli value-investing canon, implemented over five years in the
+owner's Excel.
+
+So the right question is **not** *"should this stay generic vs.
+become personal?"* but *"do the two modes serve a coherent product
+purpose for a single audience (you), and does separating them
+break that?"*
+
+### The morning workflow that determines product shape
+
+A realistic morning with both modes available:
+
+```
+07:30  Coffee. Browser opens to the leaderboard page (default landing).
+07:32  Scan: three names in red (>40% safety margin vs Perus-EPV).
+07:33  Click into Honkarakenne → per-company view.
+07:34  Buy-price grid shows current 2.64 € is below book value.
+07:34  One question forming: "why is this trading below tasearvo?"
+07:35  Click "Ask agent about Honkarakenne".
+        → agent fans out across Inderes news + transcripts + forum
+        → 20 s answer: "Q3 unprofitable, construction market weak,
+          but solvency strong, Inderes target unchanged at 3.20 €..."
+07:38  User clicks "Add to notebook" → response appended under
+       today's date in notes/HONBS.HE.md.
+07:39  Back to leaderboard. Next name. Repeat.
+```
+
+**This flow cannot survive splitting the modes into two products.**
+The "Ask agent" click cannot navigate to a different repo, a
+different auth domain, a different deploy. The agent answer cannot
+write to a notebook the leaderboard view doesn't see. The leaderboard
+cannot show *"last week you noted: 'watch for Q4'"* if the notebook
+lives elsewhere.
+
+The two modes are not two products. They are **two views of the
+same product surface**, and the killer flow (browse → notice →
+drill into per-company → ask agent → capture in notebook) crosses
+the boundary between them on every single interaction.
+
+### When fork DOES become a real question
+
+Real fork-pressure happens when **the audience splits**:
+
+- *Chat agent* could plausibly be exposed publicly (Streamlit Cloud
+  with password, or a sanitised demo for other developers studying
+  multi-agent architecture).
+- *Leaderboard view* contains personal portfolio data (holdings,
+  cost basis, position sizes if added) and personal scenario
+  judgements. It belongs strictly to the project owner.
+
+If/when public exposure of the chat-agent becomes a goal, the fork
+is justified. **That is a Q4 2026 problem at the earliest**, after
+both modes are built well enough to know what the split-line should
+even be.
+
+Until then, the cheap path is: **single repo, both modes, defer the
+fork decision**. Fork is mechanical (`git mv` + new repo + import
+the shared library); merge is hard. The asymmetry favours staying
+together.
+
+### How the agent engine integrates with the company view, concretely
+
+The agent engine does NOT get replaced. It gets **promoted from
+primary surface to a callable component within a richer UI**. The
+agent code is essentially unchanged — only its invocation context
+shifts:
+
+| Aspect | Today | Future |
+|---|---|---|
+| User typing the question | yes, free-form | sometimes (chat mode), and click-launched from per-company page (leaderboard mode) |
+| Per-query context | session conversation only | session + per-ticker notebook + current scenario inputs the user is viewing |
+| Where the answer lives | `runs/<ts>/synthesis.txt` and chat scrollback | same + appended to `notes/<TICKER>.md` if user clicks "add to notebook" |
+| MCP backend, partitioning, fabrication guard | unchanged | unchanged |
+
+Two new tools added to the agent's tool surface (no other code
+changes needed):
+
+```python
+@tool
+def read_ticker_notebook(ticker: str) -> str:
+    """Read accumulated notes on this ticker from notes/<TICKER>.md."""
+    ...
+
+@tool
+def append_ticker_notebook(ticker: str, section: str, content: str) -> str:
+    """Append a dated section to ticker's notebook."""
+    ...
+```
+
+Per-agent partition:
+
+- **LEAD** gets both (can append synthesis to ticker history at end
+  of run)
+- **RESEARCH** gets both (qualitative narrative is the natural
+  notebook content)
+- **QUANT / SENTIMENT / VALUATION / PORTFOLIO** get `read_*` only
+  (they CAN consult prior notes for context, but writing belongs to
+  the narrative agent)
+
+This is ~3-4 hours of engine work using the existing per-agent
+partition pattern (`inderes_client.py:63–111`,
+`yahoo_client.py:37–63`), and it is already BACKLOG'd as Pull #4 in
+[`docs/agentic_research_digest_2026-05-11.md`](../agentic_research_digest_2026-05-11.md)
+§2.
+
+### What the leaderboard mode needs that ISN'T in the agent engine
+
+Four pieces are genuinely new but **none of them touch agent code**:
+
+1. **SQLite state layer** (`db/companies.sqlite`): per-ticker row
+   carrying current price, latest fair-value scenarios, Inderes
+   recommendation, last refresh timestamp.
+2. **Nightly batch cron** (`scripts/refresh_leaderboard.py` +
+   GitHub Actions workflow): for each ticker in scope, calls the
+   existing MCP tools, recomputes scenarios via the existing
+   `valuation/engine.py`, writes a row to SQLite. **Zero LLM calls
+   in the batch.** The math is pure Python; the LLM is invoked only
+   on user-triggered "Ask agent" drill-downs.
+3. **Streamlit leaderboard page** (`ui/pages/02_leaderboard.py`):
+   reads SQLite, renders sortable table.
+4. **Streamlit per-company page** (`ui/pages/03_company.py`): reads
+   one SQLite row + the corresponding `notes/<TICKER>.md`, renders
+   buy-price grid + scenario sliders + "Ask agent" button.
+
+Total new code: ~600-900 LOC across these four. Existing valuation
+engine, MCP stack, agent fleet untouched.
+
+### Recommended phased build — incremental and reversible
+
+Each phase is shippable on its own; the user can stop after any of
+them and still have something useful:
+
+| Phase | What ships | Effort | Why this order |
+|---|---|---|---|
+| **1** | Per-ticker markdown notebook + agent tools | ~3 h | Continuity per company exists; agent answers start accumulating. No new UI yet. |
+| **2** | SQLite state + nightly batch cron | ~3 h | Leaderboard data is fresh daily, but no UI to view it yet. Validates the data pipeline before investing in UI. |
+| **3** | Simple leaderboard table page (Stockopedia-style) | ~3 h | Daily browsing becomes possible; no scenario sliders yet, just current state. |
+| **4** | Per-company drill-down page with buy-price grid + "Ask agent" | ~4 h | The killer flow lands. Cross-mode click-through wired. |
+| **5** | Scenario sliders + market-pricing reverse-engineering | ~4 h | Interactive scenario analysis from the Excel methodology becomes live. |
+| **6** | Visual polish, Hybrid-vs-Card-vs-Table designer call | open | Claude Design conversation closes the UX questions in §7. |
+
+**Total ~17-20 hours of focused work**, spreadable across 5-7
+evenings or weekend afternoons. After Phase 4 the product
+demonstrably handles the morning workflow described above. Phases
+5-6 are quality-of-experience improvements on top.
+
+### Two roadmaps, one product
+
+The strategic frame I recommend the designer + project owner adopt
+together:
+
+```
+ONE REPO ─┬─ Agent-engine roadmap (existing BACKLOG §§ 1, 3, 4, 6)
+          │  - cross-source retry, footnotes, Reflexion, debate,
+          │    Bloomberg ANR table, Lethal Trifecta guard,
+          │    Langfuse observability, numeric-trace guard...
+          │
+          └─ Company-view roadmap (new BACKLOG section to add)
+             - per-ticker notebook, SQLite state, nightly batch,
+               leaderboard, per-company page, scenario sliders,
+               buy-price grid, scoring & ranking refinements
+```
+
+The two roadmaps share infrastructure (MCP stack, valuation engine,
+deploy, auth) and have explicit integration points (the notebook is
+the bridge — agent writes it, company-view reads it, agent reads it
+in subsequent queries for context).
+
+**Decisions to make NOW:** none about the fork. The fork question is
+deferred until both roadmaps have produced shipped artefacts to
+evaluate against.
+
+**Decisions to make for the designer:** the 8 questions in §7, plus
+the UI shape choice in §5. Both still stand; this Part 2 just
+reframes them as "design decisions within a coherent unified
+product" rather than "design decisions for a potential standalone
+product".
