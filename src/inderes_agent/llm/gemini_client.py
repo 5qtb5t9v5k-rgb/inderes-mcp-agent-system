@@ -29,18 +29,156 @@ from ..settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 
+# Error classification — replaces the old loose substring heuristics. The
+# previous implementation matched any "429" / "quota" / "resource_exhausted"
+# substring anywhere in the exception message, causing two bugs in production:
+# (1) per-minute rate limits were misdiagnosed as fatal daily-quota exhaustion
+# (the user has to wait until midnight Pacific) when in reality a 60-second
+# wait would have succeeded; (2) non-Gemini errors that happened to mention
+# "429" or "quota" in their metadata triggered the same false-positive. The
+# replacement parses the structured ``APIError`` returned by google-genai and
+# reads the ``quotaId`` field that distinguishes daily vs per-minute limits.
+
+_TRANSIENT_HTTP_CODES = frozenset({500, 502, 503, 504})
+
+
+def _classify_gemini_error(exc: BaseException) -> str:
+    """Return one of: ``transient`` / ``rate_limit_minute`` /
+    ``rate_limit_day`` / ``other``.
+
+    Only ``rate_limit_day`` should escalate to ``QuotaExhaustedError``.
+    ``transient`` and ``rate_limit_minute`` should be retried with backoff.
+    ``other`` should propagate immediately — those are bugs, not rate limits.
+    """
+    try:
+        from google.genai.errors import APIError
+    except ImportError:
+        return "other"
+
+    if not isinstance(exc, APIError):
+        return "other"
+
+    code = getattr(exc, "code", None)
+    if code in _TRANSIENT_HTTP_CODES:
+        return "transient"
+
+    if code != 429:
+        return "other"
+
+    # 429 — distinguish per-day from per-minute by reading the quotaId from
+    # the response body. Gemini's API returns a structured QuotaFailure with
+    # one or more violations; each violation carries a ``quotaId`` that
+    # names the specific limit (e.g. ``GenerateRequestsPerMinutePerProject
+    # PerModel-FreeTier`` vs ``GenerateRequestsPerDayPerProjectPerModel``).
+    details = getattr(exc, "details", None) or {}
+    error_block = details.get("error", {}) if isinstance(details, dict) else {}
+    detail_list = error_block.get("details", []) if isinstance(error_block, dict) else []
+    quota_ids: list[str] = []
+    if isinstance(detail_list, list):
+        for d in detail_list:
+            if not isinstance(d, dict):
+                continue
+            for v in d.get("violations") or []:
+                qid = v.get("quotaId") if isinstance(v, dict) else None
+                if qid:
+                    quota_ids.append(qid)
+    quota_str = " ".join(quota_ids).lower()
+    if "perday" in quota_str or "daily" in quota_str:
+        return "rate_limit_day"
+    # Default for 429 with no quotaId info: treat as per-minute. Safer
+    # default than locking the user out for a day — if it actually is daily,
+    # the retry will fail again and surface eventually.
+    return "rate_limit_minute"
+
+
+def _log_genai_error(event: str, model: str, exc: BaseException) -> None:
+    """Log a Gemini API error with full structural detail.
+
+    Previous code logged only ``falling_back_to_secondary`` without the
+    triggering exception, leaving us unable to diagnose what actually
+    broke. This helper extracts ``code``, ``status``, ``message``, and
+    quota-violation IDs from a Genai ``APIError`` and emits one
+    structured warning line. Non-APIError exceptions get a generic
+    fallback that still includes type + first 500 chars of ``str(exc)``.
+    """
+    fields: dict[str, Any] = {
+        "event": event,
+        "model": model,
+        "exc_type": type(exc).__name__,
+    }
+    try:
+        from google.genai.errors import APIError
+        if isinstance(exc, APIError):
+            fields["code"] = getattr(exc, "code", None)
+            fields["status"] = getattr(exc, "status", None)
+            fields["message"] = (getattr(exc, "message", None) or "")[:300]
+            details = getattr(exc, "details", None) or {}
+            error_block = details.get("error", {}) if isinstance(details, dict) else {}
+            detail_list = error_block.get("details", []) if isinstance(error_block, dict) else []
+            violations: list[dict[str, Any]] = []
+            if isinstance(detail_list, list):
+                for d in detail_list:
+                    if not isinstance(d, dict):
+                        continue
+                    for v in d.get("violations") or []:
+                        if isinstance(v, dict):
+                            violations.append({
+                                "quotaId": v.get("quotaId"),
+                                "quotaMetric": v.get("quotaMetric"),
+                            })
+            if violations:
+                fields["quota_violations"] = violations
+    except Exception:  # noqa: BLE001
+        # Defensive: never let a logging helper crash the agent
+        pass
+    fields["raw"] = str(exc)[:500]
+    log.warning("%s %s", event, fields)
+
+
+# ---------------------------------------------------------------------------
+# Legacy compatibility shims — keep the old function names working so any
+# callers / tests outside this module don't break. New code should use
+# ``_classify_gemini_error`` directly.
+# ---------------------------------------------------------------------------
+
+
 def _is_unavailable(exc: BaseException) -> bool:
+    """True if the error is a retryable transient (503 etc.).
+
+    Now backed by ``_classify_gemini_error``. Loose substring matching
+    retained as a fallback for non-APIError exceptions because callers
+    in test code construct plain ``RuntimeError("503 UNAVAILABLE")``.
+    """
+    if _classify_gemini_error(exc) == "transient":
+        return True
     msg = str(exc).lower()
     return "503" in msg or "unavailable" in msg
 
 
 def _is_quota_exhausted(exc: BaseException) -> bool:
-    msg = str(exc).lower()
-    return "429" in msg or "resource_exhausted" in msg or "quota" in msg
+    """True only for genuine per-day quota exhaustion.
+
+    Replaces the old promiscuous substring matcher. Per-minute rate
+    limits, concurrent-request limits, and other 429 sub-variants no
+    longer trigger this — they go through the backoff retry path
+    instead.
+    """
+    return _classify_gemini_error(exc) == "rate_limit_day"
+
+
+def _is_rate_limited_transient(exc: BaseException) -> bool:
+    """True for per-minute rate limits or transient 5xx — retry with backoff."""
+    kind = _classify_gemini_error(exc)
+    return kind in ("rate_limit_minute", "transient")
 
 
 class QuotaExhaustedError(RuntimeError):
-    """Raised when both primary and fallback exhaust quota (BUILD_SPEC §6.8)."""
+    """Raised when both primary and fallback exhaust their per-DAY quota.
+
+    Per-minute rate limits and transient 5xx errors are handled by the
+    backoff-retry loop in ``_fallback_call`` and do NOT raise this
+    error. If you see this, the day-quota is genuinely exhausted.
+    """
 
 
 class FallbackGeminiChatClient(GeminiChatClient):
@@ -165,60 +303,128 @@ class FallbackGeminiChatClient(GeminiChatClient):
         return self._awaitable_call(messages, *args, **kwargs)
 
     async def _awaitable_call(self, messages, *args: Any, **kwargs: Any):
-        """Non-streaming: try primary, retry on 503, fall back on persistent failure."""
+        """Non-streaming path with three layers of resilience:
+
+        1. **In-place retry with backoff** for per-minute rate limits and
+           transient 5xx on the *primary* model. Most of the failures
+           tonight (2026-05-11 21:04–21:19) were sub-400ms immediate
+           rejects — almost certainly per-minute caps or concurrent-
+           request limits that resolve in 30–90 s. Used to give up
+           immediately by falling back, which then ALSO rate-limited,
+           and the user saw a misleading "Daily quota exhausted" error.
+        2. **Fallback to secondary model** only after primary's local
+           retries are exhausted, or for non-rate-limit failures (e.g.
+           transient 5xx that retries can't resolve).
+        3. **QuotaExhaustedError** only when classification confirms a
+           per-DAY quota with quotaId containing "perday"/"daily".
+        """
         async def _send() -> Any:
             self._set_model(self.primary_model)
             return await super(FallbackGeminiChatClient, self).get_response(messages, *args, **kwargs)
 
-        try:
-            return await _send()
-        except Exception as exc:
-            if _is_unavailable(exc) and self.max_retries > 0:
-                log.warning("primary_model_503_retry model=%s", self.primary_model)
-                await asyncio.sleep(self.retry_delay)
-                try:
-                    return await _send()
-                except Exception as exc2:
-                    if _is_unavailable(exc2) or _is_quota_exhausted(exc2):
-                        return await self._fallback_call(messages, *args, **kwargs)
-                    raise
-            if _is_unavailable(exc) or _is_quota_exhausted(exc):
-                return await self._fallback_call(messages, *args, **kwargs)
-            raise
+        # Local retry on the primary first — handles the most common
+        # case (transient burst hitting per-minute cap during fan-out).
+        primary_exc: BaseException | None = None
+        for attempt in range(3):
+            try:
+                return await _send()
+            except Exception as exc:
+                primary_exc = exc
+                kind = _classify_gemini_error(exc)
+                if kind == "rate_limit_day":
+                    # Genuine daily exhaustion — go straight to fallback,
+                    # don't waste attempts on a model that's locked out.
+                    _log_genai_error("primary_day_quota_exhausted", self.primary_model, exc)
+                    break
+                if kind in ("rate_limit_minute", "transient"):
+                    if attempt == 2:
+                        _log_genai_error(
+                            "primary_retries_exhausted", self.primary_model, exc,
+                        )
+                        break
+                    wait = (attempt + 1) * 30  # 30s, 60s
+                    log.warning(
+                        "primary_retry attempt=%d wait=%ds kind=%s exc_type=%s",
+                        attempt + 1, wait, kind, type(exc).__name__,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                # `other` — propagate immediately, this is a bug not a rate limit
+                _log_genai_error("primary_non_retryable_error", self.primary_model, exc)
+                raise
 
-    async def _fallback_call(self, messages, *args: Any, **kwargs: Any):
-        log.warning(
-            "falling_back_to_secondary primary=%s fallback=%s",
-            self.primary_model,
-            self.fallback_model,
+        # If we reach here, primary failed despite retries. Try the fallback.
+        if primary_exc is not None:
+            return await self._fallback_call(messages, primary_exc, *args, **kwargs)
+        # Defensive: should be unreachable
+        raise RuntimeError("primary exhausted without recording exception")
+
+    async def _fallback_call(
+        self,
+        messages,
+        primary_exc: BaseException,
+        *args: Any,
+        **kwargs: Any,
+    ):
+        """Switch to fallback model. Same retry-with-backoff discipline as primary."""
+        _log_genai_error(
+            "falling_back_to_secondary",
+            f"{self.primary_model}→{self.fallback_model}",
+            primary_exc,
         )
         self.fallback_event_count += 1
         self._set_model(self.fallback_model)
-        # Give the fallback model 2 attempts with backoff — when Gemini's load is high,
-        # both flash-lite-preview and 2.5-flash can both 503 simultaneously, but a few
-        # seconds later the fallback typically recovers.
-        last_exc: BaseException | None = None
-        for attempt in range(2):
+
+        fallback_exc: BaseException | None = None
+        for attempt in range(3):
             try:
                 return await super().get_response(messages, *args, **kwargs)
             except Exception as exc:
-                last_exc = exc
-                if _is_quota_exhausted(exc):
+                fallback_exc = exc
+                kind = _classify_gemini_error(exc)
+                if kind == "rate_limit_day":
+                    _log_genai_error("fallback_day_quota_exhausted", self.fallback_model, exc)
                     raise QuotaExhaustedError(
-                        "Daily Gemini quota exhausted on both primary and fallback models. "
-                        "Try again tomorrow or upgrade to paid tier."
+                        "Genuine daily quota exhausted on BOTH "
+                        f"{self.primary_model} AND {self.fallback_model}. "
+                        "Check https://aistudio.google.com/app/usage for confirmation. "
+                        "Resets at 00:00 Pacific (10:00 Helsinki)."
                     ) from exc
-                if not _is_unavailable(exc) or attempt == 1:
-                    raise
-                log.warning("fallback_503_retry attempt=%d", attempt + 1)
-                await asyncio.sleep(self.retry_delay * (attempt + 1) * 2)  # 2s, 4s
-        # Should not reach here
-        if last_exc:
-            raise last_exc
-        raise RuntimeError("fallback exhausted without explicit error")
+                if kind in ("rate_limit_minute", "transient"):
+                    if attempt == 2:
+                        _log_genai_error(
+                            "fallback_retries_exhausted", self.fallback_model, exc,
+                        )
+                        # Re-raise the LAST seen exception with full context,
+                        # rather than the misleading "daily quota" message
+                        raise RuntimeError(
+                            f"Rate-limited on both primary ({type(primary_exc).__name__}) "
+                            f"and fallback after retries. Latest fallback error: {exc!s}"
+                        ) from exc
+                    wait = (attempt + 1) * 30
+                    log.warning(
+                        "fallback_retry attempt=%d wait=%ds kind=%s",
+                        attempt + 1, wait, kind,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                # `other` — non-retryable, surface as-is
+                _log_genai_error("fallback_non_retryable_error", self.fallback_model, exc)
+                raise
+
+        if fallback_exc is not None:
+            raise fallback_exc
+        raise RuntimeError("fallback exhausted without recording exception")
 
     async def _streaming_stream(self, messages, *args: Any, **kwargs: Any):
-        """Streaming path: re-stream on fallback. Yields chunks."""
+        """Streaming path: re-stream on fallback. Yields chunks.
+
+        Streaming retries are trickier than non-streaming — we can't sleep
+        between chunks. Strategy: if the initial stream-open fails with a
+        retryable error, we fall back to the secondary model immediately
+        (no in-place retry). The non-streaming path absorbs most rate-limit
+        bursts before agents ever reach streaming output.
+        """
         try:
             self._set_model(self.primary_model)
             stream = super().get_response(messages, *args, **kwargs)
@@ -227,13 +433,10 @@ class FallbackGeminiChatClient(GeminiChatClient):
                 yield chunk
             return
         except Exception as exc:
-            if not (_is_unavailable(exc) or _is_quota_exhausted(exc)):
+            kind = _classify_gemini_error(exc)
+            if kind == "other":
                 raise
-            log.warning(
-                "streaming_falling_back primary=%s fallback=%s",
-                self.primary_model,
-                self.fallback_model,
-            )
+            _log_genai_error("streaming_falling_back", self.primary_model, exc)
             self.fallback_event_count += 1
             self._set_model(self.fallback_model)
             try:
@@ -242,10 +445,14 @@ class FallbackGeminiChatClient(GeminiChatClient):
                 async for chunk in stream:
                     yield chunk
             except Exception as exc2:
-                if _is_quota_exhausted(exc2):
+                kind2 = _classify_gemini_error(exc2)
+                if kind2 == "rate_limit_day":
+                    _log_genai_error("streaming_fallback_day_quota", self.fallback_model, exc2)
                     raise QuotaExhaustedError(
-                        "Daily Gemini quota exhausted on both primary and fallback models."
+                        "Genuine daily quota exhausted on BOTH "
+                        f"{self.primary_model} AND {self.fallback_model}."
                     ) from exc2
+                _log_genai_error("streaming_fallback_failed", self.fallback_model, exc2)
                 raise
 
 
