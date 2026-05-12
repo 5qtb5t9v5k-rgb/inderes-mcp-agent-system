@@ -144,14 +144,52 @@ distinctly (violet for subagents, amber for LEAD), surfacing the
 multi-agent reasoning to the user without burying it behind tool-call
 logs.
 
-### Inderes MCP integration
+### MCP integration — dual-source (Inderes + Yahoo)
 
 Files: [`src/inderes_agent/mcp/`](src/inderes_agent/mcp/)
 
 | File | Role |
 |---|---|
 | `oauth.py` | OAuth 2.0 Authorization Code + PKCE flow against Inderes' Keycloak SSO. Discovers endpoints from `https://mcp.inderes.com/.well-known/oauth-protected-resource` (RFC 9728), then `https://sso.inderes.fi/auth/realms/Inderes/.well-known/openid-configuration`. Browser opens for first-time login; tokens cached at `~/.inderes_agent/tokens.json` with `0600` permissions. Refresh token used silently on subsequent runs. |
-| `inderes_client.py` | Builds `MCPStreamableHTTPTool` per agent with: (a) `allowed_tools` filtering, (b) `httpx.AsyncClient(auth=...)` with `_InderesBearerAuth` for per-request token injection, (c) `_SanitizingMCPTool` subclass that strips `$schema` and other JSON-Schema metadata that Gemini's `FunctionDeclaration` rejects, (d) `load_prompts=False` because Inderes MCP exposes only tools and the default `prompts/list` call would crash with `Method not found`. |
+| `_compat.py` | **Shared** `SanitizingMCPTool` subclass that strips `$schema` and other JSON-Schema metadata Gemini's `FunctionDeclaration` rejects. Used by both Inderes and Yahoo clients (and any future MCP). |
+| `inderes_client.py` | Builds `MCPStreamableHTTPTool` per agent with: (a) `allowed_tools` filtering, (b) `httpx.AsyncClient(auth=...)` with `_InderesBearerAuth` for per-request Bearer-token injection, (c) `_SanitizingMCPTool` from `_compat.py`, (d) `load_prompts=False` because Inderes MCP exposes only tools and the default `prompts/list` call would crash with `Method not found`. |
+| `yahoo_client.py` | **Added 2026-05-11.** Parallel to `inderes_client.py` for the self-hosted Yahoo Finance MCP sidecar ([`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp), MIT-public). Same `SanitizingMCPTool` + `allowed_tools` partition shape. **No auth** (single-tenant local/Modal deploy). `build_yahoo_mcp_tool(name, allowed)` returns `None` when `YAHOO_MCP_URL` env var is empty — the agents' construction code checks for `None` and silently skips the Yahoo tool, preserving Inderes-only behaviour bit-for-bit on unconfigured deployments. |
+
+**Per-agent tool partitioning** is the architectural backbone: each
+subagent sees only the tools relevant to its domain. The
+partitioning constants in both clients have the same shape so a
+future third MCP can slot in identically:
+
+```python
+# inderes_client.py:63–111            # yahoo_client.py:37–63
+QUANT_TOOLS = (                        YAHOO_QUANT_TOOLS = (
+  "search-companies",                    "search_ticker",
+  "get-fundamentals",                    "get_snapshot",
+  "get-inderes-estimates",               "get_history",
+)                                      )
+
+SENTIMENT_TOOLS = (                    YAHOO_SENTIMENT_TOOLS = (
+  "search-companies",                    "search_ticker",
+  "list-insider-transactions",           "get_news",
+  "search-forum-topics",                 "get_holders",  # ← parallel
+  "get-forum-posts",                   )                #   to list-insider-
+  "list-calendar-events",                                #   transactions
+)
+# ... and so on for RESEARCH / VALUATION / PORTFOLIO
+```
+
+The agent builders use `with_yahoo(inderes_tool, yahoo_tool)` in
+`agents/_common.py` to assemble the agent's `tools=[...]` list,
+returning the Inderes-only list when Yahoo is disabled.
+
+**Critical empirical finding (2026-05-11 testing):** the LLM picks
+up new Yahoo tools from their tool-call descriptions alone — no
+prompt-level guidance was needed for `get_holders` to fire on
+*"Kuka omistaa Microsoftia?"* or for `get_history` to fire on
+*"Miten Nvidia on kehittynyt vuoden aikana?"*. **Concrete tool
+descriptions > rigid prompts.** This validates the per-agent
+partitioning approach: keep each agent's tool surface small + well-
+described, and the model self-orchestrates.
 
 **Why custom OAuth instead of MAF's auth?** MAF's `MCPStreamableHTTPTool` exposes
 a `header_provider` callback for tool invocations, but **not** for the
@@ -184,30 +222,66 @@ dead refresh-token. The local `tokens.json` cache and gist are kept
 consistent: PR #27 changed cold-start logic to always pull the gist version
 first rather than trusting a stale local file.
 
-### Gemini client with fallback
+### Gemini client with structured error classification + fallback
 
 File: [`src/inderes_agent/llm/gemini_client.py`](src/inderes_agent/llm/gemini_client.py)
 
-`FallbackGeminiChatClient` subclasses `agent_framework_gemini.GeminiChatClient` and
-overrides `get_response`. Logic:
+`FallbackGeminiChatClient` subclasses
+`agent_framework_gemini.GeminiChatClient` and overrides `get_response`.
 
-1. Try **primary** (`gemini-3.1-flash-lite-preview` by default)
-2. On `503 UNAVAILABLE` → wait `RETRY_DELAY_MS`, retry primary once
-3. On second 503 OR any `429 RESOURCE_EXHAUSTED` → switch to **fallback** (`gemini-2.5-flash`) for that single request
-4. Fallback gets two more attempts with 2 s and 4 s backoff
-5. If all attempts exhausted → raise `QuotaExhaustedError`
+**Three-tier error classification** (`_classify_gemini_error`, added
+2026-05-12) parses real `google.genai.errors.APIError` by HTTP code +
+gRPC status + `quotaId` field:
 
-The model that handled each request is recorded on `self.last_used_model`. The
-workflow reads this when building `SubagentResult` so the trace and `narrative.md`
-show which model handled each subagent.
+| Category | Trigger | Action |
+|---|---|---|
+| `transient` | HTTP 500/502/503/504 | Retry with backoff |
+| `rate_limit_minute` | 429 with `quotaId` containing "perminute" or no quotaId (defensive default) | Retry with backoff |
+| `rate_limit_day` | 429 with `quotaId` containing "perday"/"daily" | Skip retries, raise `QuotaExhaustedError` with explicit reset-time message |
+| `other` | 400/401/403/422 or non-APIError exception | Propagate immediately — this is a bug, not a rate limit |
 
-Streaming and non-streaming paths are dispatched separately (streaming is wired
-but not currently used by the REPL — synthesis prints the full answer at once).
+**Retry-with-backoff** (per category that allows retry):
 
-**Why subclass instead of MAF middleware?** MAF middleware operates at the agent
-level. We need control at the chat-client level so every LLM call goes through the
-fallback wrapper regardless of which agent makes it. Subclassing is the right
-seam.
+1. Primary attempts 3× with 30s/60s backoff
+2. If primary exhausted, fall back to secondary model (3× with same
+   schedule)
+3. `QuotaExhaustedError` fires only on confirmed per-day quotaId from
+   both models. New error message identifies BOTH model names and the
+   reset time (Helsinki 10:00).
+
+**Diagnostic logging** (`_log_genai_error`, added 2026-05-12) extracts
+`code`, `status`, `message`, and `quota_violations` from APIError and
+emits structured log lines at every failover point:
+
+```
+WARNING gemini_client — falling_back_to_secondary
+    {'event': '...', 'model': 'flash-lite-preview→flash',
+     'exc_type': 'ClientError', 'code': 429,
+     'status': 'RESOURCE_EXHAUSTED',
+     'message': 'Your project has exceeded its monthly spending cap...',
+     'quota_violations': []}
+```
+
+The diagnostic logging immediately paid off on first deployment: it
+revealed the actual cause of a recurring 429 cascade was a **project
+monthly spending cap** at AI Studio's billing layer, not any rate
+limit — invisible in dashboard usage metrics and silently masked by
+the old substring-matching heuristic.
+
+The model that handled each request is recorded on
+`self.last_used_model`. The workflow reads this when building
+`SubagentResult` so the trace and `narrative.md` show which model
+handled each subagent.
+
+Streaming and non-streaming paths are dispatched separately. Streaming
+uses simplified retry — no in-place backoff, just primary→fallback on
+the initial stream-open failure. The non-streaming path absorbs most
+rate-limit bursts before agents reach streaming output.
+
+**Why subclass instead of MAF middleware?** MAF middleware operates at
+the agent level. We need control at the chat-client level so every
+LLM call goes through the fallback wrapper regardless of which agent
+makes it. Subclassing is the right seam.
 
 ### CLI
 

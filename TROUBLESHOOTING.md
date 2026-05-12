@@ -165,6 +165,79 @@ which python                                                # should print .../.
 
 ---
 
+## Streamlit shows old behavior after pulling fixes
+
+**Symptom**: You `git pull`-ed a fix, the file on disk has the new
+code, but the Streamlit UI keeps behaving like the old version. For
+example: you see `"Daily Gemini quota exhausted, upgrade to paid tier"`
+in the UI but the source file's `gemini_client.py` raises a different
+message; or the FI/EN toggle still doesn't switch; or a recent prompt
+change isn't reflected.
+
+**Diagnosis**: Python caches imported modules in process memory.
+Streamlit's auto-reload watches the main script (`ui/app.py`) but
+does **not** propagate to deep import-graph changes like
+`src/inderes_agent/llm/gemini_client.py`. The running process has
+the old bytecode in `sys.modules` forever until you restart it.
+
+Confirm with:
+```bash
+ps aux | grep -E "streamlit run ui/app" | grep -v grep
+# Look at the timestamp — if it's hours old, the process has old code.
+```
+
+**Fix**:
+```bash
+pkill -f "streamlit run ui/app.py"
+# Wait a beat, then restart with the project venv:
+YAHOO_MCP_URL=http://localhost:8000/mcp .venv/bin/streamlit run ui/app.py
+```
+
+**Verify the new code is actually loaded** before testing the bug:
+```bash
+.venv/bin/python -c "
+from inderes_agent.llm.gemini_client import QuotaExhaustedError
+import inspect
+src = inspect.getsource(QuotaExhaustedError)
+assert 'per-DAY' in src, 'OLD code still cached somewhere'
+print('NEW code OK')
+"
+```
+
+This pattern hits roughly weekly during active development; it's the
+modal LLM-app development bug. Two-process setup (one for Yahoo MCP,
+one for Streamlit) makes it doubly easy to forget to restart the
+right one.
+
+---
+
+## Streamlit Cloud token-staleness after deploy
+
+**Symptom**: Local Streamlit works fine; Cloud-deployed Streamlit
+returns `HeadlessAuthError: OAuth flow requires opening a browser`
+on every query, even though the auto-relogin cron ran successfully
+and the gist has fresh tokens.
+
+**Diagnosis**: `_load_tokens()` in `oauth.py` uses a process-global
+flag `_GIST_PULLED_THIS_PROCESS` to pull from gist **exactly once
+per process boot**. Subsequent calls use the local cache (fast — no
+network). When auto-relogin updates the gist mid-session, the
+running Cloud container's local cache is unaware.
+
+**Fix**: reboot the Cloud app.
+1. https://share.streamlit.io → your app → **"Manage app"** → **"Reboot app"**
+2. OR push any commit to main → Streamlit Cloud auto-redeploys
+   (effectively the same end-state).
+
+The first call in the new process pulls fresh tokens from the gist.
+
+**Long-term fix** (BACKLOG §4 candidate): self-healing gist re-pull
+when an in-process token refresh fails with `invalid_grant`. ~30
+min code change. Would make the system tolerant of mid-session
+expiry without requiring manual reboot.
+
+---
+
 ## Inderes MCP returns 401 Unauthorized
 
 **Symptom**:
@@ -283,32 +356,84 @@ fallback wrapper handles both.
 
 ---
 
-## Free-tier daily quota exhausted (429)
+## Gemini 429 — three flavours, different fixes
 
-**Symptom**:
+> *Updated 2026-05-12 after the heuristic-refinement fix in
+> `gemini_client.py` (`e44a053`). The old code conflated all three of
+> these into one fatal `QuotaExhaustedError` with the misleading
+> "upgrade to paid tier" message. The new structured classifier
+> distinguishes them and the diagnostic logging tells you exactly
+> which one hit.*
+
+**Symptom**: a query fails immediately or after retries; console log
+shows one of:
+
 ```
-QuotaExhaustedError: Daily Gemini quota exhausted on both primary and fallback
-models. Try again tomorrow or upgrade to paid tier.
+WARNING gemini_client — primary_retry attempt=1 wait=30s kind=rate_limit_minute
+WARNING gemini_client — primary_day_quota_exhausted {'event': '...', 'code': 429, 'quota_violations': [{'quotaId': '...PerDay...'}]}
+RuntimeError: Rate-limited on both primary (ClientError) and fallback after retries. Latest fallback error: ...
+QuotaExhaustedError: Genuine daily quota exhausted on BOTH ...
 ```
 
-**Diagnosis**: Free-tier daily limits are very tight:
+**Diagnosis**: read the `quotaId` field (or the textual `message`) in
+the structured log line. There are three categories, each with a
+different fix:
 
-| Model | Requests/day |
+### Flavour 1: per-minute / per-token rate limit (`rate_limit_minute`)
+
+`quotaId` contains "perminute" or "perminute-tokens", or the 429 has
+no quotaId at all (defensive default). **Resolves in 30–90 seconds.**
+
+- **Fix**: wait, retry. The client already does 30s + 60s + 90s
+  backoff before giving up. Most bursts resolve on the second retry.
+- **Prevention**: throttle parallel fan-out via
+  `settings.MAX_CONCURRENT_AGENTS` (default 2). Higher concurrency
+  → more bursts. On paid Tier 1 you have 4K RPM; on free tier
+  preview-model has hidden lower caps.
+
+### Flavour 2: project monthly spending cap (the gotcha)
+
+`message` contains "monthly spending cap". This is **NOT a Google
+quota** — it's a user-set safety limit on the AI Studio project.
+
+```json
+{
+  "error": {
+    "code": 429,
+    "message": "Your project has exceeded its monthly spending cap.
+                Please go to AI Studio at https://ai.studio/spend
+                to manage your project spend cap.",
+    "status": "RESOURCE_EXHAUSTED"
+  }
+}
+```
+
+- **Fix**: visit https://ai.studio/spend, raise or remove the
+  monthly cap. **No retry will succeed** until you do — the cap is
+  project-wide, not a window-based rate limit.
+- **Why it's confusing**: same HTTP code (429) and same gRPC status
+  (`RESOURCE_EXHAUSTED`) as actual quotas. The old substring-matching
+  heuristic locked the user out for a day before the classifier
+  refinement.
+
+### Flavour 3: genuine per-day quota (`rate_limit_day`)
+
+`quotaId` contains "perday" or "daily". Free tier daily limits:
+
+| Model | RPD (free) |
 |---|---|
-| `gemini-3.1-flash-lite-preview` (primary) | 500 |
-| `gemini-2.5-flash` (fallback) | 20 |
+| `gemini-3.1-flash-lite-preview` (primary) | ~500 |
+| `gemini-2.5-flash` (fallback) | ~20 |
 
-A single multi-domain query can burn 8–15 LLM calls. Realistic free-tier
-capacity is ~30–50 queries/day before hitting limits, mostly bounded by the
-fallback model's 20-RPD limit.
+Paid Tier 1 limits are 10–400× higher; **dashboard at
+https://aistudio.google.com/app/usage** shows your actual numbers.
 
-**Fix**:
-1. **Wait until midnight Pacific Time** (10:00 Helsinki time) for daily reset.
-2. **Switch to paid tier** for sustained use.
-3. **Test with simpler single-domain queries** while developing — they use
-   fewer LLM calls.
-
-Inspect your usage at https://aistudio.google.com/app/usage.
+- **Fix #1**: wait until **00:00 Pacific Time** (10:00 Helsinki) for
+  daily reset.
+- **Fix #2**: switch to paid tier — the per-USD-spent cost is small
+  but the limits open up dramatically.
+- **Fix #3**: reduce fan-out per query (use single-domain queries
+  while testing) or enable adaptive depth router (BACKLOG §1).
 
 ---
 

@@ -615,6 +615,95 @@ that need a real review.
 
 ---
 
+## Lessons from the 2026-05-11/12 debug arc
+
+Three days of intense work compressed three real production lessons
+worth distilling.
+
+### Diagnostic logging beats heuristic refinement
+
+The Gemini quota-error bug had a wrong heuristic at its core
+(`"429" in str(exc).lower() → fatal`), but I'd been blind to it for
+weeks because **the actual exception was never logged**. Five
+consecutive failures over 15 minutes left only "falling_back_to_
+secondary" in the run logs — no `code`, no `status`, no `quotaId`,
+no `message`. Every debugging hour was speculative until I added
+`_log_genai_error()` and the very next failure surfaced the real
+cause in plain text:
+
+```
+'message': 'Your project has exceeded its monthly spending cap'
+```
+
+The fix wasn't more careful classification — it was making the
+error visible. **Classification was easy ONCE I could see what to
+classify**. If I'd built the structured logger first and never
+touched the heuristic, the user would have known to raise the spend
+cap immediately. The heuristic refinement was secondary.
+
+Generalisation: in any LLM/agent system, if an error path raises
+without logging the triggering exception's full structure, that's a
+production-priority defect. Substring-matching heuristics on
+exception strings are the worst kind of false sense of safety —
+they pass tests that use the SAME string but fail silently on every
+real-world variant.
+
+### Self-healing > manual recovery
+
+The OAuth gist-pull is a one-shot per process: first call pulls
+fresh tokens, every subsequent call uses local cache. When the
+auto-relogin cron updates the gist mid-session, the running Cloud
+container is blind to the update — requires manual reboot.
+
+This worked OK during my single-user testing because I always
+restarted Streamlit after pulling code. But in production it
+manifests as **"the app worked yesterday, now it returns
+HeadlessAuthError"** for no apparent reason. The auto-relogin cron
+succeeded; the tokens are fresh in the gist; the running process is
+just stale.
+
+The fix is one if-statement: when local token refresh fails with
+`invalid_grant`, re-pull from gist once before raising. ~30 min of
+code. I deferred it for weeks because "the user can just reboot" —
+but every single time it broke, the symptom looked like a different
+bug ("did the cron fail?", "did the secret expire?", "is the gist
+wrong?") and the diagnosis took an hour. Self-healing would have
+saved cumulative hours over the course of the project.
+
+Generalisation: **the cost of a manual recovery step is paid every
+time it triggers, not once.** Self-healing pays its implementation
+cost back after ~3 incidents.
+
+### Stale processes are the modal LLM-app dev bug
+
+Through the same week I hit "stale process running old code" twice
+under different disguises:
+
+1. **Streamlit local restart forgotten** after pushing the Gemini
+   error fix — UI kept showing the old error message because
+   `gemini_client.py` was cached in the running Python's
+   `sys.modules`.
+2. **Streamlit Cloud restart needed** after auto-relogin updated
+   the gist — the running container was still using the
+   first-boot's gist-pulled (now-stale) tokens.
+
+Both are the same bug shape: Python module imports are global +
+cached forever within a process, and Streamlit's auto-reload
+mechanism doesn't propagate to deep import-graph changes. Anyone
+running iterative agent development hits this weekly.
+
+Mitigations I now reach for first:
+- Always check `ps aux | grep streamlit` after a git pull
+- Add a `make reload` target that kills and restarts cleanly
+- Add a verify-import smoke test that asserts a sentinel string is
+  in the loaded code (`assert "per-DAY" in inspect.getsource(...)`)
+  before declaring the fix deployed
+
+The 30 seconds spent verifying the import beats 30 minutes
+debugging "why isn't the fix working".
+
+---
+
 ## Open questions
 
 These are real uncertainties, not rhetorical:

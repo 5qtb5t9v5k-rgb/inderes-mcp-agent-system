@@ -2,7 +2,23 @@
 
 > **⚠️ Personal research project.** Independent learning experiment — **not affiliated with, endorsed by, or developed in collaboration with Inderes Oyj.** Uses the publicly available Inderes MCP server through the user's own Inderes Premium subscription. All Inderes analyst content (recommendations, target prices, written research) surfaced by this system is © Inderes Oyj.
 
-A multi-agent stock-research conversation system for Nordic equities. Built on **Microsoft Agent Framework 1.0+** (Python 3.11+), powered by **Google Gemini** with primary→fallback model selection, querying **Inderes MCP** at `https://mcp.inderes.com`.
+A multi-agent stock-research conversation system for Nordic + international
+equities. Built on **Microsoft Agent Framework 1.0+** (Python 3.11+), powered
+by **Google Gemini** with structured error classification and primary→fallback
+model selection. Data plane is a **dual-MCP architecture**:
+
+- **Inderes MCP** at `https://mcp.inderes.com` — analyst content, target
+  prices, transcripts, forum sentiment, model portfolio (Finnish-equity
+  primary source).
+- **Yahoo Finance MCP** (own MIT-public sidecar:
+  [`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp))
+  — live price, Q-fresh BVPS, OHLCV history, news, institutional holders.
+  Toggle on/off via `YAHOO_MCP_URL` env var; agents are wired with
+  per-domain partitions mirroring the Inderes pattern.
+
+Together: Inderes covers Helsinki names with depth, Yahoo covers
+international + freshness gaps Inderes can't fill (BVPS lag, live price,
+US/EU/Asian tickers).
 
 ```bash
 $ python -m inderes_agent "Mitä Sammon nykytilanteesta tulisi ajatella?"
@@ -40,6 +56,10 @@ decision; the agent shows them the data.
 > - [`BACKLOG.md`](BACKLOG.md) — feature ideas not yet built, ordered by interest
 > - [`CONTRIBUTING.md`](CONTRIBUTING.md) — developer setup, testing, extending
 > - [`BUILD_SPEC.md`](BUILD_SPEC.md) — original build specification (historical)
+> - [`docs/agentic_patterns_mapping_2026-05-11.md`](docs/agentic_patterns_mapping_2026-05-11.md) — this project mapped against [nibzard's `awesome-agentic-patterns`](https://github.com/nibzard/awesome-agentic-patterns) catalogue (~178 patterns)
+> - [`docs/agentic_research_digest_2026-05-11.md`](docs/agentic_research_digest_2026-05-11.md) — critical reading of an external 12-month roadmap synthesis; 5 concrete BACKLOG pulls + 4 verify-first items + 6 context-specific skips
+> - [`docs/research_prompts/`](docs/research_prompts/) — self-contained research prompts for spinning off Deep Research sessions
+> - **Sidecar repos**: [`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp) (MIT-public, 5 tools + tests + CI), [`inderes-mcp-auto-relogin`](https://github.com/5qtb5t9v5k-rgb/inderes-mcp-auto-relogin) (private, Playwright headless re-auth cron)
 
 ---
 
@@ -267,16 +287,29 @@ In the REPL: `/explain` does the same for the current session's last run.
                     │  Router LLM │  Gemini, structured-output JSON
                     └─────┬───────┘
                           │
-                ┌─────────┼─────────┬──────────┬──────────┐
-                ▼         ▼         ▼          ▼          ▼
+            ┌─────────────┴────────┐
+            ▼                      ▼
+       Lead-planner       Per-domain plan-snippets injected
+       (opt-in toggle)    into each subagent's prompt
+            │
+            ▼
+                ┌─────────┬─────────┬──────────┬──────────┬──────────┐
+                ▼         ▼         ▼          ▼          ▼          ▼
            aino-quant  aino-research  aino-sentiment  aino-portfolio  aino-valuation
-                │         │         │          │          │
-                └─────────┴─────────┴──────────┴──────────┘
+                │         │         │          │          │          │
+                └────┬────┴────┬────┴────┬─────┴────┬─────┴────┬─────┘
+                     │         │         │          │          │
+                     ▼         ▼         ▼          ▼          ▼
+         Inderes MCP        ──────────  ──────────  ─────────  ─────────
+         (16 tools,       ←──── per-agent partitioning ──── (server-side
+         OAuth)             enforced via allowed_tools         tool guard)
+                                       │
+                                       ▼
+         Yahoo MCP        ←──── enabled when YAHOO_MCP_URL set ────
+         (6 tools, opt-in)      partitioned identically to Inderes
                           │
                           ▼     bounded by MAX_CONCURRENT_AGENTS
-                    Inderes MCP (16 tools, partitioned)
-                          │
-                          ▼     ┌─ valuation/ ──── deterministic engine
+                          │     ┌─ valuation/ ──── deterministic engine
                           │     │  (pure Python, Greenwald-Gordon
                           │     │   formulas, no LLM dependency)
                           │     └─ runs after agent emits JSON
@@ -286,25 +319,39 @@ In the REPL: `/explain` does the same for the current session's last run.
                 │ (Gemini, JSON output)│  subagents before synthesis
                 └─────────┬────────────┘
                           ▼
+                ┌──────────────────────┐
+                │ Fabrication guard    │  rejects subagent outputs that
+                │ (orchestration tier) │  emitted text with ZERO MCP calls
+                └─────────┬────────────┘
+                          ▼
                     ┌─────────────┐
-                    │  aino-lead  │  reads subagent outputs +
+                    │  aino-lead  │  reads (verified) subagent outputs +
                     └─────┬───────┘  conflict report, synthesizes
                           ▼
-                     Final answer
+                     Final answer + [Q1]/[R1]/[S1]/[P1]/[V1] sources
 ```
 
 ### Subagent → MCP tool mapping
 
-| Agent | Role | MCP tools |
-|---|---|---|
-| `aino-quant` | Numerical analysis: P/E, ROE, target prices, recommendations | `search-companies`, `get-fundamentals`, `get-inderes-estimates` |
-| `aino-research` | Inderes' analyst content, transcripts, filings | `search-companies`, `list-content`, `get-content`, `list-transcripts`, `get-transcript`, `list-company-documents`, `get-document`, `read-document-sections` |
-| `aino-sentiment` | Insider trades, forum, calendar | `search-companies`, `list-insider-transactions`, `search-forum-topics`, `get-forum-posts`, `list-calendar-events` |
-| `aino-portfolio` | Inderes' own model portfolio | `get-model-portfolio-content`, `get-model-portfolio-price`, `search-companies` |
-| `aino-valuation` *(opt-in)* | Alternative valuation: fetches BVPS, ROE history, current price; emits parameters for the deterministic Greenwald-Gordon engine | `search-companies`, `get-fundamentals` |
-| `aino-lead` | Synthesizes subagent outputs (no tools) | — |
+Each subagent sees only its allowed subset of tools (enforced via
+`MCPStreamableHTTPTool(allowed_tools=...)`). When `YAHOO_MCP_URL` is set,
+agents additionally receive their domain-specific Yahoo tool subset.
 
-Each subagent only sees its allowed subset (enforced via `MCPStreamableHTTPTool(allowed_tools=...)`).
+| Agent | Role | Inderes tools | Yahoo tools *(if enabled)* |
+|---|---|---|---|
+| `aino-quant` | Numerical analysis: P/E, ROE, target prices, recommendations | `search-companies`, `get-fundamentals`, `get-inderes-estimates` | `search_ticker`, `get_snapshot`, `get_history` |
+| `aino-research` | Analyst content, transcripts, filings, news narrative | `search-companies`, `list-content`, `get-content`, `list-transcripts`, `get-transcript`, `list-company-documents`, `get-document`, `read-document-sections` | `search_ticker`, `get_news` |
+| `aino-sentiment` | Insider trades, forum sentiment, institutional ownership, calendar | `search-companies`, `list-insider-transactions`, `search-forum-topics`, `get-forum-posts`, `list-calendar-events` | `search_ticker`, `get_news`, `get_holders` |
+| `aino-portfolio` | Inderes' own model portfolio | `get-model-portfolio-content`, `get-model-portfolio-price`, `search-companies` | `search_ticker`, `get_snapshot`, `get_history` |
+| `aino-valuation` *(opt-in)* | Alternative valuation: BVPS, ROE history, current price → Greenwald-Gordon engine | `search-companies`, `get-fundamentals`, `get-inderes-estimates` | `search_ticker`, `get_snapshot` |
+| `aino-lead` | Synthesizes subagent outputs (no tools) | — | — |
+
+**Per-domain rationale**: `get_holders` is the Yahoo parallel of Inderes
+`list-insider-transactions` (SENTIMENT-only). `get_snapshot` parallels
+`get-fundamentals` (QUANT + VALUATION shared). `get_history` has *no*
+Inderes equivalent — Inderes MCP doesn't expose price-history time series,
+so this is a pure new capability for QUANT/PORTFOLIO charting on both
+Finnish AND international tickers.
 
 The **valuation subagent** is opt-in — it runs only when the sidebar toggle *"Käytä
 vaihtoehtoista arvonmääritystä"* is enabled AND the query has clear valuation intent
@@ -483,47 +530,62 @@ uv pip install -e '.[dev]'
 pytest -q
 ```
 
-146+ unit tests across:
+**375 tests** across the agent, MCP, valuation, observability, and UI
+layers — all mocked, zero live LLM calls, CI-gated on every push. Top
+categories by test count:
 
-- **Router** (`test_router.py`): JSON parsing with code fences, prose leaks,
-  plain JSON; `QueryClassification` Pydantic validation incl. invalid-domain
-  rejection; valuation-intent gate (33 parametrized cases covering explicit
-  valuation queries, qualitative queries that must not fire, case-insensitivity,
-  and Finnish morphology variants).
-- **Fallback client** (`test_fallback.py`): 503 retry → fallback model,
-  429 → `QuotaExhaustedError`, success-without-fallback, hybrid tool-config
-  injection for server-side tools.
-- **Workflow** (`test_workflows.py`): per-company branching for
-  comparisons, no fan-out for single-domain queries, concurrency cap
-  enforcement.
-- **Output parts** (`test_output_parts.py`): MAF response-part parsing
-  (text, code, code-result, function-call, function-result combinations)
-  used by the Streamlit trace renderer.
-- **OAuth bootstrap** (`test_oauth_bootstrap.py`): gist mirror push/pull,
-  cold-start ordering, refresh-token rotation, env-bridge fallback.
-- **Per-agent specs** (`tests/test_agents/`): prompt/tool-set sanity checks
-  per subagent (lead, quant, research, sentiment, portfolio).
-- **Valuation engine** (`tests/valuation/test_engine.py`): 26 tests on
-  Greenwald-Gordon math correctness (FV, EPV, growth value, GM, dual
-  implied), edge cases (P/B≈1 degeneracy, implied_g≥k explosion, negative
-  ROE rejection), quality classification thresholds with ±2% buffer.
-- **Excel parity** (`tests/valuation/test_excel_parity.py`): 20 tests on
-  10 Finnish companies (laatu / tuhoutuva mix) reproducing the user's
-  `Arvonmääritys2023.xlsx` Data-sheet outputs to within 0.02€ tolerance.
-- **ROE selection rule** (`tests/valuation/test_roe_selection.py`): 21
-  tests on the deterministic sustainable-ROE rule (medians, trend
-  classification, validation tolerances, agent-choice validation against
-  the rule).
-- **Valuation parser** (`tests/valuation/test_parser.py`): 35 tests on
-  agent-output JSON validation (happy path, malformed/short outputs,
-  percentage-vs-decimal mistakes, k≤g rejection, sustainable-ROE rule
-  enforcement, Levenshtein-≤2 typo tolerance for `*_rationale` fields,
-  sibling-protection so `g_rationale` cannot absorb `k_rationale`'s value).
-- **Tool-call guard + edge-case warnings** (`test_valuation_tool_guard.py`):
-  10 tests on the orchestration-boundary guard that rejects valuation
-  outputs with zero `get-fundamentals` calls (closing the hallucination
-  path), plus warnings for absurd safety-margins and manual-override-
-  tuhoutuva combinations.
+- **Valuation engine** (`tests/valuation/test_engine.py`): 49 tests on
+  Greenwald-Gordon math (FV, EPV, growth value, dual implied), edge
+  cases, quality classification with ±2% buffer.
+- **Router** (`test_router.py`): 43 tests on JSON parsing variants,
+  `QueryClassification` validation, valuation-intent gate (33
+  parametrized cases incl. Finnish morphology).
+- **Valuation parser** (`test_parser.py`): 39 tests on agent JSON →
+  engine input validation, multi-company array handling, Levenshtein-≤2
+  typo tolerance, sibling-protection between `*_rationale` fields.
+- **QUANT charts** (`test_charts.py`): 33 tests on Plotly extraction,
+  outlier filtering, provenance captions, multi-company colour
+  assignment.
+- **ROE selection rule** (`test_roe_selection.py`): 23 tests on the
+  deterministic sustainable-ROE rule (medians, trend, agent-choice
+  validation).
+- **Excel parity** (`test_excel_parity.py`): 20 tests on 10 Finnish
+  companies reproducing the user's `Arvonmääritys2023.xlsx` Data-sheet
+  outputs to within 0.02€ tolerance.
+- **Gemini fallback client** (`test_fallback.py`): 17 tests covering
+  structured error classification (per-day quota vs per-minute rate
+  limit vs transient 5xx vs non-retryable), retry-with-backoff,
+  diagnostic logging.
+- **Footnote markers** (`test_footnote_markers.py`): 17 tests on
+  `[Q1]/[R1]/[S1]/[P1]/[V1]` source-tag emission.
+- **Valuation tool-call guard** (`test_valuation_tool_guard.py`): 17
+  tests rejecting zero-MCP-call valuation outputs.
+- **OAuth runtime** (`test_oauth_runtime.py`): 16 tests on token
+  refresh, gist sync, `_load_tokens` ordering.
+- **Output parts** (`test_output_parts.py`): 16 tests on MAF response-
+  part parsing for the Streamlit trace renderer.
+- **Fabrication guard** (`test_fabrication_guard.py`): 14 tests on the
+  orchestration-tier rejection of zero-tool-call subagent outputs.
+- **OAuth bootstrap** (`test_oauth_bootstrap.py`): 12 tests on cold-
+  start ordering, refresh-token rotation, env-bridge fallback.
+- **Feedback** (`test_feedback.py`): 12 tests on 👍/👎 round-trip.
+- **Yahoo MCP wiring** (`test_yahoo_mcp_wiring.py`): 11 tests on
+  per-agent partitioning, `YAHOO_MCP_URL` toggle semantics, build-
+  time regression checks.
+- **Hard limits** (`test_limits.py`): 11 tests on OWASP T1 hard
+  limits (max_iter / max_tool_calls / max_cost / max_duration).
+- **Evals YAML** (`test_evals_yaml.py`): 9 tests on `golden.yaml`
+  structural validation as a CI gate.
+- **Other** (`test_paattely_parser`, `test_tila_c_banner`,
+  `test_app_imports`, `test_workflows`): smaller suites covering
+  reasoning extraction, valuation-mode UI gating, UI smoke tests,
+  end-to-end orchestration.
+
+**Design choice: tests are structural, not LLM-correctness.** They
+verify the agent *refuses* to fabricate, *partitions* tools correctly,
+*surfaces* sources in the expected format — not that the LLM "says the
+right thing." That distinction matters: prompt-correctness drifts
+across model versions; structural enforcement does not.
 
 End-to-end tests against the real Gemini API and Inderes MCP are not in CI
 (they require live credentials and consume quota). Run them manually:

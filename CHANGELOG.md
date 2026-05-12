@@ -4,6 +4,186 @@ All notable changes to this project. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com); the project does not yet follow
 [SemVer](https://semver.org) strictly.
 
+## [unreleased] — 2026-05-12 (Gemini error classification + UI toggle fix)
+
+### Fixed — Gemini quota-error misclassification (`e44a053`)
+
+The previous heuristic `_is_quota_exhausted` matched any "429" /
+"quota" / "resource_exhausted" substring in `str(exc)` and escalated
+immediately to `QuotaExhaustedError` with a misleading *"Daily Gemini
+quota exhausted, upgrade to paid tier"* message. The user is on paid
+Tier 1 with dashboard showing 0.1% RPD usage — the "Daily quota"
+verdict was empirically wrong.
+
+Debug session captured the smoking gun: 5 quick-fire failures on
+2026-05-11 21:04–21:19, each with primary failing in <400ms and
+fallback engaging without further log output. The <400ms reject
+pattern was an immediate 4xx, NOT a 503 overload — almost certainly
+per-minute or concurrent-request limits that resolve in 30–90s. The
+old code gave up on every 429 instead of retrying.
+
+Replaced with three components:
+
+- **`_classify_gemini_error(exc)`** parses real
+  `google.genai.errors.APIError` by code + status + quotaId, returning
+  one of `transient` / `rate_limit_minute` / `rate_limit_day` /
+  `other`. Defensive default for 429 without quotaId: treat as
+  per-minute (safer than locking the user out for a day).
+- **`_log_genai_error(event, model, exc)`** extracts `code`, `status`,
+  `message`, and `quota_violations` from APIError and emits structured
+  log lines at every failover point. Previous code logged only
+  `falling_back_to_secondary` without the triggering exception,
+  leaving zero visibility into what actually broke.
+- **Retry-with-backoff**: primary attempts 3× with 30s/60s backoff
+  before falling back; fallback uses same schedule. `QuotaExhaustedError`
+  fires ONLY when both models confirm explicit daily quotaId.
+
+The diagnostic logging immediately paid off — first real-world hit
+revealed the actual cause was a **project monthly spending cap**
+(`'message': 'Your project has exceeded its monthly spending cap'`),
+not any rate limit. User raised the cap; system recovered.
+
+17 new tests in `test_fallback.py` covering classifier categories,
+legacy-shim compat, end-to-end retry-fallback scenarios.
+
+### Fixed — FI/EN language toggle on landing page (`9607953`)
+
+Bug #5 reported 2026-05-11 evening. Two issues conspiring: (1) `<a
+href="?lang=...">` links carried legacy `target="_top"` inherited
+from an older `st.html`-based render — actively breaks Streamlit
+Cloud navigation; (2) `del st.query_params["lang"]` schedules rerun
+AFTER the current run completes, so titlebar + hero + toggles could
+render with stale `_lang`. Removed the target + added explicit
+`st.rerun()` after lang change.
+
+### Updated — Documentation refresh for system as it stands today
+
+- `README.md` dual-MCP architecture (Inderes + Yahoo) in description,
+  architecture diagram, subagent-tool-mapping table. Updated test
+  count 146 → 375. Doc map references new agentic patterns +
+  research docs and sidecar repos.
+- `TROUBLESHOOTING.md` added project spend cap, stale-Streamlit-
+  process trap, Cloud token staleness entries.
+- `LESSONS.md` added 3 distilled lessons from 2026-05-11/12:
+  diagnostic logging beats heuristic refinement, OAuth gist-pull
+  is one-shot per process, stale processes are the modal LLM-app
+  bug.
+
+---
+
+## [unreleased] — 2026-05-11 (Yahoo MCP integration + agentic patterns docs)
+
+### Added — yahoo-finance-mcp integration into agent fleet (`3137a4f`)
+
+Wires a self-hosted Yahoo Finance MCP sidecar
+([`yahoo-finance-mcp`](https://github.com/5qtb5t9v5k-rgb/yahoo-finance-mcp),
+MIT-public, 5 tools + tests + CI) into all 5 subagents behind a single
+`YAHOO_MCP_URL` env-var toggle. Empty (default) = no change, Inderes-
+only flow preserved bit-for-bit. Non-empty = each agent picks up its
+assigned Yahoo subset alongside its Inderes tools.
+
+Per-agent partitioning mirrors `inderes_client.py:63–111`:
+
+```
+QUANT     = search_ticker, get_snapshot, get_history
+VALUATION = search_ticker, get_snapshot
+RESEARCH  = search_ticker, get_news
+SENTIMENT = search_ticker, get_news, get_holders
+PORTFOLIO = search_ticker, get_snapshot, get_history
+```
+
+Rationale: `get_holders` ≈ Inderes `list-insider-transactions`
+(SENTIMENT-only), `get_snapshot` ≈ `get-fundamentals` (QUANT +
+VALUATION shared), `get_news` ≈ `list-content` (RESEARCH + SENTIMENT
+for tone). `get_history` has *no Inderes parallel* — pure new
+capability for QUANT/PORTFOLIO charting on Finnish AND international
+tickers.
+
+15 live test queries on 2026-05-11 evening confirmed end-to-end.
+Critical empirical finding: **`get_holders` and `get_history` fired
+automatically without prompt nudging** — LLM picked them from tool
+descriptions alone.
+
+Changes:
+
+- `src/inderes_agent/mcp/_compat.py` (new) — shared `SanitizingMCPTool`.
+- `src/inderes_agent/mcp/yahoo_client.py` (new) — 5 tool partitions +
+  `build_yahoo_mcp_tool` returning None when `YAHOO_MCP_URL` empty.
+- `settings.py` — `YAHOO_MCP_URL: str = ""`.
+- `agents/_common.py` — `with_yahoo(inderes, yahoo)` helper.
+- 5 agent builders updated.
+- `tests/test_yahoo_mcp_wiring.py` (new) — 11 tests covering toggle,
+  partitioning, regression-when-disabled.
+
+### Added — auto-relogin headless Keycloak via Playwright
+
+Separate private repo
+[`inderes-mcp-auto-relogin`](https://github.com/5qtb5t9v5k-rgb/inderes-mcp-auto-relogin).
+GitHub Actions cron runs Playwright + Chromium twice per day (02:00
++ 17:00 UTC, outside Helsinki 08–16) for full Keycloak OAuth re-auth.
+Pushes fresh tokens to shared gist. Removes the previously-required
+daily manual `bash scripts/relogin.sh` step.
+
+7-iteration debug arc through custom-Keycloak-theme + JS-driven
+submit + `chrome-error://`-URL masking. Critical fix:
+`page.on("request", listener)` captures callback URL BEFORE Chromium
+tries to load `localhost:9999` and fails.
+
+Repo kept private because workflow file contains
+`INDERES_USERNAME` + `INDERES_PASSWORD` as repo secrets.
+
+### Added — UI bug fixes (`6a9f592`, `d357c10`)
+
+- **"Avaa suunnitelma" rendering** — previously didn't appear until
+  user clicked "Avaa loki" first. Root cause: `st.button` +
+  `session_state` + `st.rerun` pattern didn't paint on first render.
+  Replaced with native `<details>/<summary>` HTML element.
+- **Sentiment.md prompt tightened** — 226 → 195 lines. Insider
+  taxonomy compressed 54 → 14 lines while preserving three-bucket
+  structure (Voluntary / Compensation / Risk).
+- **Subagent error surfacing** — agent-card status pill now shows
+  actual error text instead of generic "error".
+
+### Added — Documentation pass for agentic patterns + research
+
+- `docs/agentic_patterns_mapping_2026-05-11.md` (~720 lines) — deep
+  mapping of this project against
+  [nibzard/awesome-agentic-patterns](https://github.com/nibzard/awesome-agentic-patterns).
+  ~12 patterns we already implement (★-rated), 8 BACKLOG'd, 6 worth
+  adopting (Lethal Trifecta, Action Replay, Subject Hygiene, etc.),
+  5 explicitly skipped with reasoning. Decision framework for
+  nibzard (micro) vs Google Cloud (macro) catalogues.
+- `docs/research_prompts/agentic_ai_expansions_2026-05-11.md` —
+  self-contained 30-axis research prompt for Deep Research
+  sessions. Includes nibzard + Google Cloud as seed material.
+- `docs/research_outputs/agentic_expansions_synthesis_2026-05-11.md`
+  — verbatim capture of external research synthesis (12-month
+  roadmap, 6-axis taxonomy).
+- `docs/agentic_research_digest_2026-05-11.md` — critical reading
+  filtered against project constraints. 5 BACKLOG pulls + 4
+  verify-first + 6 context-specific skips. Captures the
+  "continuity + evidence + proof" trinity as the keeper insight.
+
+### Updated — `BACKLOG.md` mass cleanup
+
+- Yahoo MCP entry has full Fly.io deployment plan (Path A vs B vs C
+  analysis), per-agent partitioning constants, empirically-confirmed
+  status.
+- Cross-source retry promoted to 🟡 *next* with ASML + Smart Eye
+  evidence captured.
+- Gap 5 sector-level queries added (research+sentiment fab when no
+  anchor company).
+- Gap 6 Yahoo-first BVPS+price added (Q-fresh Yahoo vs LFY-locked
+  Inderes for banks).
+- §4 Quota-error-diagnostic + heuristic-refinement entry with full
+  patch snippets (later shipped 2026-05-12 morning).
+- Avaa-suunnitelma + FI/EN bugs marked ✅ shipped with commit refs.
+- Grounding-with-Google-Search added as §1 Open-medium with risk
+  analysis (provenance dilution, fabrication-guard interference) +
+  opt-in pattern recommendation.
+
+---
+
 ## [unreleased] — 2026-05-10 (afternoon — Wk 2 foundation + quick wins)
 
 ### Added — CI gate (`0a16299`)
