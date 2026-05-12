@@ -1091,11 +1091,15 @@ Reference research in conversation log 2026-05-11.
   `st.rerun` pattern didn't paint on first render. Replaced with native
   HTML `<details>/<summary>` element which renders deterministically
   on the initial pass.
-- 🐛 **UI: FI / EN language toggle non-functional on landing page**
-  — reported 2026-05-11 evening. Toggle in the title bar doesn't switch
-  the UI language on the landing/empty-state view. Likely a missing
-  st.rerun() or session_state propagation. Verify behaviour after a
-  query is submitted (may only break before any run exists).
+- ✅ **UI: FI / EN language toggle on landing page** *(shipped
+  2026-05-12 commit `9607953` — fix(ui): FI/EN language toggle now
+  works on landing page)*. Two issues conspiring: (a) anchors
+  carried legacy `target="_top"` which actively breaks the navigation
+  in Streamlit Cloud where the parent context isn't the app itself;
+  (b) `del st.query_params["lang"]` schedules rerun AFTER the
+  current run completes, so the rest of the run (titlebar + hero +
+  toggles) could render with stale `_lang`. Removed the `_top`
+  target + added explicit `st.rerun()` after lang change.
 
 ### Open — high priority (gateway for AI features, see §6)
 
