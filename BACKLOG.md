@@ -1075,11 +1075,39 @@ Reference research in conversation log 2026-05-11.
   iski). Discovered 2026-05-11 morning. Should fail-red so the
   email-on-failure alert fires; right now we only notice when the
   Streamlit app starts returning empty results.
-- 💭 **Auto-relogin smart-timing** — currently re-logs in unconditionally
-  twice per day. Could decode the JWT in the gist tokens, read
-  `auth_time`, and skip when SSO Session Max is still >2 h away.
-  Useful when the user does a manual relogin during the day. Spec
-  + skip-logic outline in `inderes-mcp-auto-relogin/README.md`.
+- ✅ **Auto-relogin cron tightened to every 6h** *(shipped 2026-05-12
+  in `inderes-mcp-auto-relogin` commit `a3ef68a`)*. Previous schedule
+  `0 2,17 * * *` gave a 15h gap between consecutive runs, leaving
+  mid-evening exposure when morning tokens hit SSO Session Max
+  around dinner time Helsinki (observed 2026-05-12 around 19:00 H —
+  morning tokens from 08:43 hit Max at ~18:43, next scheduled
+  relogin not until 20:30+). New schedule `0 2,8,14,20 * * *` =
+  4×/day, worst-case gap 6h + GitHub Actions slip = ~7.5h, leaves
+  ~2.5h safety buffer before SSO Max. Cost: 100 min/month, trivial
+  under free-tier quota.
+
+- 💭 **Self-healing chain trigger** *(next, ~30 min)* — when
+  refresh-tokens cron detects `invalid_grant` 400, immediately fire
+  `repository_dispatch` against `inderes-mcp-auto-relogin` workflow
+  instead of just exiting with the (cosmetic) success status.
+  Recovery time shrinks from "wait for next scheduled cron" to
+  "5-7 min after SSO Max hits". Requires a `workflow`-scope PAT
+  stored as `AUTO_RELOGIN_DISPATCH_TOKEN` secret in this repo.
+
+- 💭 **App-level gist re-pull on token failure** *(next, ~30 min)*
+  — currently `_GIST_PULLED_THIS_PROCESS=True` blocks re-pull in
+  the running Cloud container even when gist has fresh tokens.
+  Add a self-heal path: on `invalid_grant` from MCP call, re-pull
+  from gist once before raising. Removes the need for manual Cloud
+  reboot after auto-relogin updates the gist mid-session.
+
+- 💭 **Auto-relogin JWT-aware smart-timing** *(deferred, lower
+  priority now that 6h cron is in place)* — could decode JWT
+  `auth_time` and skip a scheduled run when SSO Max is still >2h
+  away. Saves ~50s of GitHub Actions time per skip, but the cost
+  saving is trivial (already ~100 min/month total). Useful only
+  if free-tier limits change. Spec + skip-logic outline in
+  `inderes-mcp-auto-relogin/README.md`.
 - 💭 **sentiment.md prompt length** — same issue as research.md two
   sessions ago. The smart-insider-taxonomy block expanded the prompt
   significantly; Flash-Lite started occasionally skipping MCP calls
