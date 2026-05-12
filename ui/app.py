@@ -99,6 +99,7 @@ from components import (  # noqa: E402
     render_plan_expander,
     render_recommendation_badge,
     render_routing_card,
+    render_sensitivity_tables,
     render_sidebar_disclaimer,
     render_statusbar,
     render_timeline_strip,
@@ -999,6 +1000,15 @@ for msg in st.session_state.history:
                 from charts import render_time_series_charts
                 render_time_series_charts(run_dir, lang=_lang_main)
 
+            # 5. Sensitivity tables (🔍 Herkkyystaulukot) — collapsible
+            # heatmap-style grids for alt-valuation runs only. ROE × k
+            # and g × k, deterministic engine output. Silently no-ops
+            # when valuation.json is missing or has no sensitivity
+            # grids (older runs or non-valuation queries). Same
+            # <details>/<summary> UX as the plan expander.
+            if run_dir is not None:
+                render_sensitivity_tables(run_dir, lang=_lang_main)
+
             # Followup question chips — extracted from the LEAD synthesis
             # itself; clicking one writes to st.session_state.pending_query
             # and triggers a rerun that submits it as a new query.
@@ -1383,6 +1393,9 @@ if prompt:
             # rendering. Silent no-op without QUANT data.
             from charts import render_time_series_charts as _rtc
             _rtc(run_dir, lang=_lang_live)
+            # Sensitivity tables — collapsible heatmap grids for
+            # alt-valuation runs. Silent no-op for non-valuation queries.
+            render_sensitivity_tables(run_dir, lang=_lang_live)
             render_followup_chips(answer, run_dir_name=run_dir.name)
             render_trace_expander(run_dir)
             # 👍/👎 feedback widget — Wk 1 #4. Persists to feedback.json

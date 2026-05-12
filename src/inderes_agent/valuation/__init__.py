@@ -17,7 +17,13 @@ The engine is consumed by the ``valuation`` agent (see ``agents/valuation.py``)
 when the user has the "vaihtoehtoinen arvonmääritys" toggle enabled in the UI.
 """
 
-from .engine import Valuation, value_stock
+from .engine import (
+    SensitivityAxis,
+    SensitivityGrid,
+    Valuation,
+    sensitivity_grid,
+    value_stock,
+)
 from .parser import (
     ValuationAgentOutput,
     ValuationAgentSkipped,
@@ -26,10 +32,13 @@ from .parser import (
 )
 
 __all__ = [
+    "SensitivityAxis",
+    "SensitivityGrid",
     "Valuation",
     "ValuationAgentOutput",
     "ValuationAgentSkipped",
     "ValuationParseError",
     "parse",
+    "sensitivity_grid",
     "value_stock",
 ]

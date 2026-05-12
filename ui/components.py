@@ -2830,3 +2830,236 @@ def _esc(s: Any) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sensitivity tables — alt-valuation heatmaps
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The valuation engine in ``src/inderes_agent/valuation/`` computes two
+# sensitivity grids per company in ``synthesis._process_valuation_subagents``:
+# ROE × k (the analyst's headline question) and g × k (driver decomposition).
+# Both are persisted to ``runs/<ts>/valuation.json`` alongside the base
+# valuation. This renderer reads that file and produces collapsible
+# heatmap-style tables — colour-coded by fair-value vs current price,
+# centre cell highlighted to anchor the analyst's chosen scenario.
+#
+# Rendered as ``<details>/<summary>`` so the answer body stays the focus —
+# user expands when they want to stress-test the assumptions, same UX
+# pattern as ``render_plan_expander`` and the 📊 Aikasarjat charts.
+
+
+_AXIS_LABEL_FI = {
+    "roe": "ROE",
+    "k": "Tuottovaatimus k",
+    "g": "Kasvu g",
+}
+_AXIS_LABEL_EN = {
+    "roe": "ROE",
+    "k": "Required return k",
+    "g": "Growth g",
+}
+
+
+def _fmt_pct(x: float, decimals: int = 1) -> str:
+    """Render a decimal as a localised Finnish percentage with comma separator."""
+    return f"{x * 100:.{decimals}f} %".replace(".", ",")
+
+
+def _fmt_eur(x: float | None, decimals: int = 2) -> str:
+    """Render a euro value with comma separator. Returns "—" for None."""
+    if x is None:
+        return "—"
+    return f"{x:.{decimals}f} €".replace(".", ",")
+
+
+def _heatmap_class(cell: float | None, price: float) -> str:
+    """Colour-code a fair-value cell relative to current market price.
+
+    Five buckets matching the Excel safety-margin colour scale:
+      green     fv ≥ 1.30 × price   — significantly undervalued
+      yellow-g  1.10 × price ≤ fv < 1.30 × price
+      neutral   0.90 × price ≤ fv < 1.10 × price
+      yellow-r  0.70 × price ≤ fv < 0.90 × price
+      red       fv < 0.70 × price   — significantly overvalued
+      undefined (k ≤ g degenerate cell) — special grey shade
+    """
+    if cell is None:
+        return "hm-na"
+    ratio = cell / price if price > 0 else 1.0
+    if ratio >= 1.30:
+        return "hm-good"
+    if ratio >= 1.10:
+        return "hm-good-mild"
+    if ratio >= 0.90:
+        return "hm-neutral"
+    if ratio >= 0.70:
+        return "hm-warn"
+    return "hm-bad"
+
+
+def _render_one_grid(
+    grid: dict[str, Any],
+    title: str,
+    lang: str,
+) -> str:
+    """Render a single SensitivityGrid dict (deserialised from valuation.json)
+    as an HTML table with heatmap colouring. Returns HTML string (caller
+    decides how to wrap it).
+
+    Expected grid shape (from ``_asdict(SensitivityGrid)``):
+        x_axis, y_axis: str       — one of "roe"/"k"/"g"
+        x_values, y_values: list  — sweep ticks (length 5 by default)
+        values: list[list[float|None]]  — fair-value at each (y, x)
+        base_x, base_y: float     — highlight position
+        base_fair_value: float    — fair value at base
+        fixed: dict[str, float]   — the third Gordon input + bvps
+        price: float              — current market price for colour ref
+    """
+    x_axis = grid["x_axis"]
+    y_axis = grid["y_axis"]
+    x_values: list[float] = list(grid["x_values"])
+    y_values: list[float] = list(grid["y_values"])
+    rows: list[list[float | None]] = [list(r) for r in grid["values"]]
+    price = grid["price"]
+    base_x = grid["base_x"]
+    base_y = grid["base_y"]
+    base_fv = grid["base_fair_value"]
+    fixed = grid["fixed"]
+
+    labels = _AXIS_LABEL_FI if lang == "fi" else _AXIS_LABEL_EN
+    x_label = labels.get(x_axis, x_axis)
+    y_label = labels.get(y_axis, y_axis)
+
+    # Tolerance for "is this cell the base point?" — use the cell value
+    # itself rather than the x/y values, because the analyst's base may
+    # not sit exactly on a sweep tick (custom ranges or float rounding).
+    EPS = 1e-6
+
+    # ── Caption (held-constant axis + price reference) ──
+    fixed_parts = []
+    for name, value in fixed.items():
+        if name == "bvps":
+            fixed_parts.append(f"BVPS={_fmt_eur(value)}")
+        else:
+            fixed_parts.append(f"{labels.get(name, name)}={_fmt_pct(value)}")
+    fixed_str = " · ".join(fixed_parts)
+    price_str = _fmt_eur(price)
+    fv_str = _fmt_eur(base_fv)
+
+    if lang == "fi":
+        caption = (
+            f"Solu = osakekohtainen fair value ({y_label} pystyssä, "
+            f"{x_label} vaaka). Kiinnitetyt: {fixed_str}. "
+            f"Nykykurssi {price_str}, base fair value {fv_str}. "
+            f"Vihreä = aliarvostettu, punainen = yliarvostettu suhteessa "
+            f"nykykurssiin."
+        )
+    else:
+        caption = (
+            f"Cell = fair value per share ({y_label} vertical, "
+            f"{x_label} horizontal). Held constant: {fixed_str}. "
+            f"Current price {price_str}, base fair value {fv_str}. "
+            f"Green = undervalued, red = overvalued vs current price."
+        )
+
+    # ── Table body ──
+    header_cells = "".join(
+        f'<th class="x">{_fmt_pct(x)}</th>' for x in x_values
+    )
+    body_rows = []
+    for i, y in enumerate(y_values):
+        cells_html = []
+        for j, x in enumerate(x_values):
+            cell = rows[i][j]
+            klass = _heatmap_class(cell, price)
+            is_base = abs(x - base_x) < EPS and abs(y - base_y) < EPS
+            if is_base:
+                klass += " hm-base"
+            content = _fmt_eur(cell)
+            cells_html.append(f'<td class="{klass}">{content}</td>')
+        body_rows.append(
+            f'<tr><th class="y">{_fmt_pct(y)}</th>{"".join(cells_html)}</tr>'
+        )
+
+    table = (
+        f'<div class="ia-sens-wrap"><div class="ia-sens-cap">{_esc(caption)}</div>'
+        f'<table class="ia-sens"><thead>'
+        f'<tr><th class="corner">{_esc(y_label)} \\ {_esc(x_label)}</th>{header_cells}</tr>'
+        f'</thead><tbody>{"".join(body_rows)}</tbody></table></div>'
+    )
+    return f'<div class="ia-sens-block"><h5>{_esc(title)}</h5>{table}</div>'
+
+
+def render_sensitivity_tables(run_dir: Path, lang: str = "fi") -> None:
+    """Read ``valuation.json`` and render any sensitivity grids found.
+
+    Silent no-op when ``valuation.json`` doesn't exist (= valuation mode
+    was off for this run) or contains no records with sensitivity grids
+    (= an older run that pre-dates the sensitivity-grid feature, or one
+    where the engine failed before reaching the sweep step).
+
+    Rendered as a ``<details>`` block (default collapsed) so it doesn't
+    push LEAD's prose answer down on the page. The analyst opens it
+    when they want to stress-test; otherwise the headline conclusion
+    is what they see.
+    """
+    val_path = run_dir / "valuation.json"
+    if not val_path.exists():
+        return
+
+    try:
+        payload = json.loads(val_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+
+    if not isinstance(payload, list):
+        return
+
+    # Collect renderable grids per company
+    blocks: list[str] = []
+    for record in payload:
+        if not isinstance(record, dict):
+            continue
+        company = record.get("company") or "?"
+        grids_for_company: list[str] = []
+
+        roe_k = record.get("sensitivity_roe_k")
+        if isinstance(roe_k, dict) and roe_k.get("values"):
+            title = (
+                "ROE × tuottovaatimus k"
+                if lang == "fi"
+                else "ROE × required return k"
+            )
+            grids_for_company.append(_render_one_grid(roe_k, title, lang))
+
+        g_k = record.get("sensitivity_g_k")
+        if isinstance(g_k, dict) and g_k.get("values"):
+            title = (
+                "Kasvu g × tuottovaatimus k"
+                if lang == "fi"
+                else "Growth g × required return k"
+            )
+            grids_for_company.append(_render_one_grid(g_k, title, lang))
+
+        if grids_for_company:
+            company_label = f'<div class="ia-sens-company">{_esc(company)}</div>'
+            blocks.append(company_label + "".join(grids_for_company))
+
+    if not blocks:
+        return
+
+    summary_label = (
+        "🔍 Herkkyystaulukot (skenaarioiden vaikutus arvonmääritykseen)"
+        if lang == "fi"
+        else "🔍 Sensitivity tables (assumption impact on valuation)"
+    )
+
+    body = f'<div class="ia-sens-body">{"".join(blocks)}</div>'
+
+    st.html(
+        f'<details class="ia-sens-details">'
+        f'<summary class="ia-sens-summary">{_esc(summary_label)}</summary>'
+        f'{body}'
+        f'</details>'
+    )

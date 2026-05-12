@@ -22,10 +22,12 @@ from typing import Any
 
 from ..agents import build_conflict_detector_agent, build_lead_agent
 from ..valuation import (
+    SensitivityGrid,
     Valuation,
     ValuationAgentOutput,
     ValuationAgentSkipped,
     ValuationParseError,
+    sensitivity_grid,
     value_stock,
 )
 from ..valuation import (
@@ -198,6 +200,14 @@ class ValuationRecord:
     Holds the agent's parsed output + the engine's deterministic computation,
     so run_log.write_run can persist both the agent's parameter rationale
     and the resulting fair value to ``valuation.json``.
+
+    Optional ``sensitivity_*`` fields carry two-axis grids computed
+    automatically when the base valuation succeeds. These let the UI
+    render Excel-style heatmaps ("what if ROE is 5pp lower, what if k
+    is 1pp higher") without re-running the workflow. The grids are
+    deterministic so we always compute them when we have a
+    ``valuation`` — no toggle, no extra cost (a 5×5 grid is 25
+    arithmetic operations, microseconds).
     """
     company: str
     agent_output: ValuationAgentOutput | None = None
@@ -205,6 +215,12 @@ class ValuationRecord:
     skipped: ValuationAgentSkipped | None = None
     parse_error: str | None = None
     raw_text: str | None = None  # for forensic logging when parse fails
+
+    # Two grids: ROE × k (analyst's headline question) and g × k
+    # (driver decomposition). ``None`` when ``valuation`` is None
+    # (no base to sweep around).
+    sensitivity_roe_k: SensitivityGrid | None = None
+    sensitivity_g_k: SensitivityGrid | None = None
 
 
 @dataclass
@@ -456,10 +472,32 @@ def _process_valuation_subagents(
             ))
             continue
 
+        # Deterministic sensitivity grids — pure math, ~25 cells each.
+        # Both centered on the analyst's base inputs so the heatmap
+        # highlights the central scenario. Wrapped in try/except as
+        # belt-and-braces: a degenerate sweep shouldn't kill the
+        # whole valuation block.
+        sensitivity_roe_k: SensitivityGrid | None = None
+        sensitivity_g_k: SensitivityGrid | None = None
+        try:
+            engine_kwargs = parsed.to_engine_kwargs()
+            sensitivity_roe_k = sensitivity_grid(
+                **engine_kwargs, y_axis="roe", x_axis="k",
+            )
+            sensitivity_g_k = sensitivity_grid(
+                **engine_kwargs, y_axis="g", x_axis="k",
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Don't crash the whole record over a sensitivity-sweep edge
+            # case — the base valuation is still meaningful on its own.
+            log.warning("sensitivity grid failed for %s: %s", company, exc)
+
         records.append(ValuationRecord(
             company=company,
             agent_output=parsed,
             valuation=valuation,
+            sensitivity_roe_k=sensitivity_roe_k,
+            sensitivity_g_k=sensitivity_g_k,
             raw_text=sr.text,
         ))
 

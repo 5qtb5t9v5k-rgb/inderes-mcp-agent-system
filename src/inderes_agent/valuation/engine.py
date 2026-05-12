@@ -14,6 +14,13 @@ Implements Juho's 8-step valuation philosophy:
 The engine reproduces the calculations on the Data-sheet of
 ``Arvonmääritys2023.xlsx`` exactly. See ``tests/valuation/test_excel_parity.py``
 for the verification against 10 hand-picked Finnish companies.
+
+In addition to single-point ``value_stock()``, the engine also exposes
+``sensitivity_grid()`` which sweeps two axes (ROE, k, or g) over a
+caller-specified range and returns a 2D fair-value grid. Used by the
+UI's heatmap renderer to show how robust a valuation is to assumption
+changes — the analyst's "what if I'm 1% off on k" sanity check
+visible at a glance instead of a separate mental computation.
 """
 
 from __future__ import annotations
@@ -366,4 +373,205 @@ def value_stock(
         entry_aloitus=0.90 * fair_value,
         entry_nosto=0.80 * fair_value,
         entry_taysi=0.75 * fair_value,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sensitivity grids
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Axis identifiers — restricted to the three Gordon inputs that the analyst
+# varies in practice. ``bvps`` is treated as a fixed observation (it's a
+# reported number, not a judgement call); ``price`` is the market data point
+# the grid is rendered against rather than swept over.
+SensitivityAxis = Literal["roe", "k", "g"]
+
+
+@dataclass(frozen=True)
+class SensitivityGrid:
+    """A 2D fair-value grid for two-axis sensitivity analysis.
+
+    Used to render Excel-style heatmaps that answer "how robust is my
+    valuation to a ±1pp shift in k, or a ±5pp shift in ROE?" — the
+    standard "show your work + show the band" output that turns a
+    single fair-value number into a defensible range.
+
+    Structure:
+      ``x_axis``, ``y_axis`` — which two of {roe, k, g} are swept
+      ``x_values``, ``y_values`` — the actual sweep ticks (length ≥ 2)
+      ``values`` — fair-value at each (y, x) cell; ``values[i][j]``
+                   is the fair value when y_axis=y_values[i],
+                   x_axis=x_values[j]. ``None`` when the formula
+                   degenerates (k ≤ g) so the renderer can mark cells
+                   as undefined rather than producing a misleading
+                   number.
+      ``base_x``, ``base_y`` — the analyst's chosen base values
+                                (highlight position on the heatmap)
+      ``base_fair_value`` — fair-value at the base point, redundant
+                            with the cell at (base_y, base_x) but
+                            exposed as a top-level field so callers
+                            don't have to index.
+      ``fixed`` — the third Gordon input that was held constant,
+                   e.g. {"bvps": 8.25, "g": 0.04} when sweeping
+                   roe × k.
+      ``price`` — current market price, included so the heatmap
+                   renderer can colour cells relative to it ("which
+                   assumption combinations imply the stock is
+                   undervalued vs overvalued at the current price").
+
+    The grid is intentionally a frozen dataclass rather than a
+    DataFrame: keeps the engine layer free of pandas dependency
+    and makes the structure trivially serialisable for JSON
+    transport between engine → workflow → UI.
+    """
+
+    x_axis: SensitivityAxis
+    y_axis: SensitivityAxis
+    x_values: tuple[float, ...]
+    y_values: tuple[float, ...]
+    values: tuple[tuple[float | None, ...], ...]
+    base_x: float
+    base_y: float
+    base_fair_value: float
+    fixed: dict[str, float]
+    price: float
+
+
+def _fmt_axis(name: str) -> str:
+    """Human-readable axis label for tooling/logging. Not for UI render."""
+    return {"roe": "ROE", "k": "k (tuottovaatimus)", "g": "g (kasvu)"}.get(
+        name, name
+    )
+
+
+def sensitivity_grid(
+    *,
+    bvps: float,
+    roe: float,
+    k: float,
+    g: float,
+    price: float,
+    x_axis: SensitivityAxis = "k",
+    y_axis: SensitivityAxis = "roe",
+    x_values: tuple[float, ...] | None = None,
+    y_values: tuple[float, ...] | None = None,
+) -> SensitivityGrid:
+    """Compute a 2D fair-value grid by sweeping two axes around the base.
+
+    The two most analytically valuable grids — and the defaults if no
+    custom ranges are passed:
+
+      - ``y=roe`` × ``x=k`` — answers "is my valuation a knife-edge bet
+        on the cost-of-equity assumption, or is there comfort across
+        the realistic ROE band?" The most common version in the
+        analyst's mental model.
+      - ``y=g`` × ``x=k`` (with ``roe`` fixed) — answers "is the
+        valuation driven by aggressive long-term growth or by the
+        spread between ROE and k?" Tells you which assumption to
+        defend hardest.
+
+    The cells use the same ``value_stock`` math as the single-point
+    valuation. When a particular (k, g) combination makes k ≤ g
+    (Gordon's formula breaks), that cell is set to ``None`` so the
+    renderer can mark it as undefined.
+
+    Args:
+        bvps / roe / k / g / price: the **base** inputs. These are
+            the analyst's central scenario. The grid is centered
+            around the base point.
+        x_axis / y_axis: which two of {"roe", "k", "g"} to sweep.
+            Must be distinct.
+        x_values / y_values: explicit sweep ticks. If ``None``,
+            the engine picks sensible defaults centred on the base:
+              - roe sweep: base ±10pp in 5 ticks (e.g. 0.20→0.30 for base 0.25)
+              - k sweep:   base ±4pp in 5 ticks (e.g. 0.08→0.12 for base 0.10)
+              - g sweep:   base ±2pp in 5 ticks (e.g. 0.03→0.07 for base 0.05)
+
+    Returns:
+        ``SensitivityGrid`` with all cells filled and ``base_x`` /
+        ``base_y`` set to the closest tick that contains the base
+        value. The renderer can match these to highlight the
+        analyst's central scenario on the heatmap.
+
+    Raises:
+        ValueError: if ``x_axis == y_axis``, or if either axis name
+            is not one of {"roe", "k", "g"}.
+    """
+    if x_axis == y_axis:
+        raise ValueError(
+            f"x_axis and y_axis must differ, got both={x_axis!r}"
+        )
+
+    base_lookup = {"roe": roe, "k": k, "g": g}
+    if x_axis not in base_lookup or y_axis not in base_lookup:
+        raise ValueError(
+            f"axis names must be from {set(base_lookup)}, "
+            f"got x={x_axis!r} y={y_axis!r}"
+        )
+
+    # ── Default sweep ranges centred on the base value ──
+    # Designed to match the analyst's mental model: "show me ±a couple
+    # standard guesses around what I think it is." Width was tuned so
+    # the heatmap covers both the "I'm wrong by a believable amount"
+    # band AND the "this is wildly wrong" band, without wasting cells
+    # on values nobody would actually defend.
+    def _default_range(axis: SensitivityAxis, centre: float) -> tuple[float, ...]:
+        widths = {"roe": 0.10, "k": 0.04, "g": 0.02}
+        half = widths[axis] / 2
+        return tuple(round(centre - half + (i / 4) * 2 * half, 4) for i in range(5))
+
+    xs = x_values if x_values is not None else _default_range(x_axis, base_lookup[x_axis])
+    ys = y_values if y_values is not None else _default_range(y_axis, base_lookup[y_axis])
+
+    # ── Sweep ──
+    # We build the grid in row-major order: outer loop over y (rows),
+    # inner over x (columns). That matches how the UI will render it
+    # (one HTML table row per y_value) and how an analyst reads it
+    # (varying one axis at a time).
+    rows: list[tuple[float | None, ...]] = []
+    for y in ys:
+        row: list[float | None] = []
+        for x in xs:
+            inputs = {"roe": roe, "k": k, "g": g}
+            inputs[x_axis] = x
+            inputs[y_axis] = y
+            try:
+                v = value_stock(bvps=bvps, price=price, **inputs)
+                row.append(v.fair_value)
+            except ValueError:
+                # k ≤ g, or other invariant violation — Gordon's
+                # formula breaks here. Mark as undefined; the
+                # renderer can shade these cells differently.
+                row.append(None)
+        rows.append(tuple(row))
+
+    # ── Base value for highlighting ──
+    # The analyst's central scenario should sit ON the grid as a
+    # highlight target, not be approximated. We re-compute at the
+    # exact base point rather than relying on the closest sweep tick,
+    # so the highlighted number matches the rest of the valuation
+    # report exactly.
+    base_fv = value_stock(bvps=bvps, roe=roe, k=k, g=g, price=price).fair_value
+
+    # ── "Fixed" axis = whichever Gordon input isn't being swept ──
+    # Plus bvps which is always fixed (it's an observation, not a
+    # judgement call). The renderer uses this for the caption
+    # "BVPS=8.25, g=4.0% (kiinnitetty)".
+    fixed_axis = next(
+        a for a in ("roe", "k", "g") if a != x_axis and a != y_axis
+    )
+    fixed = {fixed_axis: base_lookup[fixed_axis], "bvps": bvps}
+
+    return SensitivityGrid(
+        x_axis=x_axis,
+        y_axis=y_axis,
+        x_values=tuple(xs),
+        y_values=tuple(ys),
+        values=tuple(rows),
+        base_x=base_lookup[x_axis],
+        base_y=base_lookup[y_axis],
+        base_fair_value=base_fv,
+        fixed=fixed,
+        price=price,
     )

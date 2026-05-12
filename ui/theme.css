@@ -1835,3 +1835,141 @@ details[open] > .ia-plan-summary {
   box-shadow: none !important;
   border-color: var(--p-lead) !important;
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+ * Sensitivity tables (alt-valuation heatmaps)
+ *
+ * Rendered by render_sensitivity_tables() from valuation.json. Two
+ * grids per company: ROE × k and g × k. Each cell coloured by fair-
+ * value vs current price; centre cell highlighted as the analyst's
+ * base scenario.
+ *
+ * Wrapped in <details>/<summary> so the answer body stays the focus.
+ * ───────────────────────────────────────────────────────────────── */
+
+.ia-sens-details {
+  margin: 12px 0;
+  border: 1px solid var(--line, #232831);
+  border-radius: var(--r-md, 4px);
+  background: var(--bg-1, #101216);
+}
+.ia-sens-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+  font-family: var(--mono, 'JetBrains Mono', monospace);
+  font-size: var(--t-micro, 11px);
+  letter-spacing: var(--ls-caps, 0.08em);
+  text-transform: uppercase;
+  color: var(--ink-1, #b6bcc6);
+  border-radius: var(--r-md, 4px);
+}
+.ia-sens-summary::-webkit-details-marker { display: none; }
+.ia-sens-summary::before {
+  content: "▶";
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--p-lead, #f5b942);
+  transition: transform 0.15s ease;
+}
+.ia-sens-details[open] .ia-sens-summary::before {
+  transform: rotate(90deg);
+}
+.ia-sens-summary:hover {
+  background: var(--bg-2, #161a20);
+  color: var(--ink-0, #e6e8eb);
+}
+.ia-sens-body {
+  padding: 14px 16px 18px;
+  border-top: 1px solid var(--line, #232831);
+  background: var(--bg-0, #0a0b0d);
+}
+.ia-sens-company {
+  font-size: var(--t-meta, 12px);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--ink-0, #e6e8eb);
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--line-2, #2f3640);
+}
+.ia-sens-company:first-child { margin-top: 0; }
+.ia-sens-block {
+  margin: 10px 0 16px;
+}
+.ia-sens-block h5 {
+  font-size: var(--t-micro, 11px);
+  letter-spacing: var(--ls-caps, 0.08em);
+  text-transform: uppercase;
+  color: var(--ink-2, #7a828d);
+  margin: 6px 0;
+  font-weight: 500;
+}
+.ia-sens-wrap {
+  background: var(--bg-1, #101216);
+  border: 1px solid var(--line, #232831);
+  border-radius: var(--r-md, 4px);
+  padding: 10px 12px;
+}
+.ia-sens-cap {
+  font-size: 11px;
+  color: var(--ink-3, #4d5460);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+table.ia-sens {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono, 'JetBrains Mono', monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+table.ia-sens th,
+table.ia-sens td {
+  padding: 5px 8px;
+  text-align: center;
+  border: 1px solid var(--line, #232831);
+}
+table.ia-sens th.corner {
+  background: var(--bg-2, #161a20);
+  color: var(--ink-3, #4d5460);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+table.ia-sens th.x {
+  background: var(--bg-2, #161a20);
+  color: var(--ink-2, #7a828d);
+  font-weight: 500;
+}
+table.ia-sens th.y {
+  background: var(--bg-2, #161a20);
+  color: var(--ink-2, #7a828d);
+  font-weight: 500;
+  text-align: right;
+  padding-right: 10px;
+}
+
+/* Heatmap cell shades — colour relative to current market price.
+ * Bands match the safety-margin colour scale used elsewhere in the
+ * Trading Desk (sm-pill, recommendation badges). */
+table.ia-sens td.hm-good       { background: rgba(95,210,138,0.18); color: #c9efd7; }
+table.ia-sens td.hm-good-mild  { background: rgba(95,210,138,0.08); color: #aed8bd; }
+table.ia-sens td.hm-neutral    { background: var(--bg-1, #101216); color: var(--ink-1, #b6bcc6); }
+table.ia-sens td.hm-warn       { background: rgba(245,185,66,0.08); color: #e2c388; }
+table.ia-sens td.hm-bad        { background: rgba(255,107,107,0.10); color: #f5a8a8; }
+table.ia-sens td.hm-na         {
+  background: repeating-linear-gradient(45deg, var(--bg-1, #101216),
+              var(--bg-1, #101216) 4px, var(--bg-2, #161a20) 4px,
+              var(--bg-2, #161a20) 8px);
+  color: var(--ink-3, #4d5460);
+}
+table.ia-sens td.hm-base {
+  outline: 2px solid var(--p-lead, #f5b942);
+  outline-offset: -2px;
+  font-weight: 600;
+  color: var(--ink-0, #e6e8eb);
+}
